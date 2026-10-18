@@ -1,0 +1,41 @@
+.welcome {
+  display: grid;
+  min-height: 100svh;
+  place-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.eyebrow {
+  color: #c2410c;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+}
+
+.welcome h1 {
+  color: #431407;
+  font-size: clamp(2.5rem, 12vw, 5rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0;
+}
+
+.welcome button {
+  background: #c2410c;
+  border: 0;
+  border-radius: 0.75rem;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.welcome button:focus-visible {
+  outline: 3px solid #431407;
+  outline-offset: 3px;
+}

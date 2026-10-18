@@ -1,0 +1,23 @@
+{
+  "name": "aprender-palabras",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=24.22.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @aprender-palabras/web --filter @aprender-palabras/api dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "oxlint apps packages",
+    "lint:fix": "oxlint --fix apps packages",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "oxlint": "1.88.0",
+    "prettier": "3.9.10"
+  }
+}

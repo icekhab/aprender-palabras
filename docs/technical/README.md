@@ -33,7 +33,7 @@ React PWA → NestJS API → PostgreSQL
 | TypeScript | единый язык frontend и backend |
 | Node.js LTS | среда выполнения |
 | pnpm | зависимости и monorepo |
-| ESLint + Prettier | проверка и форматирование кода |
+| Oxlint + Prettier | проверка и форматирование кода |
 | Vitest | unit и integration тесты |
 | Playwright | браузерные E2E-тесты |
 
@@ -119,7 +119,7 @@ Frontend обращается к относительному пути `/api`. �
 ├── packages/
 │   ├── contracts/            # Zod-схемы входных данных и TypeScript-типы ответов
 │   ├── domain/               # общие чистые бизнес-функции
-│   ├── eslint-config/
+│   ├── oxlint-config/
 │   └── tsconfig/
 ├── docs/
 │   ├── product/

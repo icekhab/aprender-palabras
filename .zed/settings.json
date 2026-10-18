@@ -1,0 +1,95 @@
+{
+  "auto_install_extensions": {
+    "oxc": true
+  },
+  "languages": {
+    "JavaScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "external": {
+            "command": "pnpm",
+            "arguments": [
+              "exec",
+              "prettier",
+              "--stdin-filepath",
+              "{buffer_path}"
+            ]
+          }
+        },
+        {
+          "code_action": "source.fixAll.oxc"
+        }
+      ]
+    },
+    "JSX": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "external": {
+            "command": "pnpm",
+            "arguments": [
+              "exec",
+              "prettier",
+              "--stdin-filepath",
+              "{buffer_path}"
+            ]
+          }
+        },
+        {
+          "code_action": "source.fixAll.oxc"
+        }
+      ]
+    },
+    "TypeScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "external": {
+            "command": "pnpm",
+            "arguments": [
+              "exec",
+              "prettier",
+              "--stdin-filepath",
+              "{buffer_path}"
+            ]
+          }
+        },
+        {
+          "code_action": "source.fixAll.oxc"
+        }
+      ]
+    },
+    "TSX": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "external": {
+            "command": "pnpm",
+            "arguments": [
+              "exec",
+              "prettier",
+              "--stdin-filepath",
+              "{buffer_path}"
+            ]
+          }
+        },
+        {
+          "code_action": "source.fixAll.oxc"
+        }
+      ]
+    }
+  },
+  "lsp": {
+    "oxlint": {
+      "initialization_options": {
+        "settings": {
+          "fixKind": "safe_fix",
+          "run": "onType",
+          "typeAware": false,
+          "unusedDisableDirectives": "deny"
+        }
+      }
+    }
+  }
+}
