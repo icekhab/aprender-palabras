@@ -6,6 +6,8 @@ minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.104.4'
   - '@tanstack/react-query@5.104.4'
 
-onlyBuiltDependencies:
-  - '@nestjs/core'
-  - esbuild
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true

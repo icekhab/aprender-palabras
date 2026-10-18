@@ -10,6 +10,8 @@
     "dev": "pnpm --parallel --filter @aprender-palabras/web --filter @aprender-palabras/api dev",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
+    "db:migrate": "pnpm --filter @aprender-palabras/api db:migrate",
+    "db:studio": "pnpm --filter @aprender-palabras/api db:studio",
     "build": "pnpm -r --if-present build",
     "lint": "oxlint apps packages",
     "lint:fix": "oxlint --fix apps packages",

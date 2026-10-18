@@ -22,7 +22,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: pnpm --filter @aprender-palabras/api dev
+    command: >
+      sh -c "pnpm --filter @aprender-palabras/api db:migrate &&
+      pnpm --filter @aprender-palabras/api dev"
     environment:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/aprender_palabras}
@@ -43,7 +45,7 @@ services:
           'CMD',
           'node',
           '-e',
-          "fetch('http://localhost:3000/api/hello').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+          "fetch('http://localhost:3000/api/tests').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
         ]
       interval: 5s
       timeout: 5s

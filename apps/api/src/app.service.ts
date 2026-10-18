@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common'
-import type { HelloResponse } from '@aprender-palabras/contracts'
+import type { TestsResponse } from '@aprender-palabras/contracts'
+import { PrismaService } from './prisma.service.js'
 
 @Injectable()
 export class AppService {
-  getHello(): HelloResponse {
-    return {
-      message: 'Hello world',
-    }
+  constructor(private readonly prisma: PrismaService) {}
+
+  getTests(): Promise<TestsResponse> {
+    return this.prisma.test.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    })
   }
 }

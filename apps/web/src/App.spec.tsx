@@ -25,19 +25,25 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the message returned by the API', async () => {
+  it('renders test records returned by the API', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
-      json: async () => ({ message: 'Hello world' }),
+      json: async () => [
+        { name: 'Alpha', size: 10 },
+        { name: 'Beta', size: 20 },
+      ],
     } as Response)
     vi.stubGlobal('fetch', fetchMock)
 
     renderApp()
 
     expect(
-      await screen.findByRole('heading', { name: 'Hello world' }),
+      await screen.findByRole('cell', { name: 'Alpha' }),
     ).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith('/api/hello', {
+    expect(screen.getByRole('cell', { name: '10' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Beta' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '20' })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/tests', {
       headers: {
         Accept: 'application/json',
       },
@@ -56,7 +62,7 @@ describe('App', () => {
     renderApp()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Не удалось получить ответ API.',
+      'Не удалось загрузить записи.',
     )
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
   })
