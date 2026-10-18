@@ -35,6 +35,7 @@ function renderApp(initialPath = '/') {
 
 afterEach(() => {
   cleanup()
+  window.localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -58,15 +59,125 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(user.login)).toBeInTheDocument()
     expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Cerrar sesión' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cuenta' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cuenta' })).toHaveTextContent('I')
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', {
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
       },
     })
+  })
+
+  it('opens account menu and navigates to settings', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        if (String(input) === '/api/auth/me') {
+          return jsonResponse(user)
+        }
+
+        throw new Error(`Unexpected request: ${String(input)}`)
+      }),
+    )
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () => [],
+      addEventListener: vi.fn<() => void>(),
+      removeEventListener: vi.fn<() => void>(),
+    })
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ajustes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ajustes' }),
+    ).toBeInTheDocument()
+  })
+
+  it('logs out from the account menu', async () => {
+    let authenticated = true
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return authenticated ? jsonResponse(user) : errorResponse(401)
+      }
+
+      if (url === '/api/auth/logout' && init?.method === 'POST') {
+        authenticated = false
+        return { ok: true, status: 204 } as Response
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Iniciar sesión' }),
+    ).toBeInTheDocument()
+  })
+
+  it('saves the selected Spanish voice in settings', async () => {
+    const voices = [
+      {
+        lang: 'es-ES',
+        name: 'Spanish Spain',
+        default: false,
+        localService: true,
+        voiceURI: 'es-es-voice',
+      },
+      {
+        lang: 'es-MX',
+        name: 'Spanish Mexico',
+        default: false,
+        localService: true,
+        voiceURI: 'es-mx-voice',
+      },
+    ]
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        if (String(input) === '/api/auth/me') {
+          return jsonResponse(user)
+        }
+
+        throw new Error(`Unexpected request: ${String(input)}`)
+      }),
+    )
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () => voices,
+      addEventListener: vi.fn<() => void>(),
+      removeEventListener: vi.fn<() => void>(),
+      cancel: vi.fn<() => void>(),
+      speak: vi.fn<(utterance: SpeechSynthesisUtterance) => void>(),
+    })
+    class MockUtterance {
+      text: string
+      lang = ''
+      voice: SpeechSynthesisVoice | null = null
+
+      constructor(text: string) {
+        this.text = text
+      }
+    }
+    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
+
+    renderApp('/settings')
+
+    const select = await screen.findByLabelText('Voz')
+    fireEvent.change(select, { target: { value: 'es-mx-voice' } })
+
+    expect(window.localStorage.getItem('aprender-palabras.spanishVoiceURI')).toBe(
+      'es-mx-voice',
+    )
   })
 
   it('loads suggestions after debounce', async () => {
@@ -100,6 +211,157 @@ describe('App', () => {
         credentials: 'same-origin',
       }),
     )
+  })
+
+  it('opens the add-word page from a suggestion and confirms create', async () => {
+    const draft = {
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: ['ожидать'],
+      definitionEs: 'Tener esperanza de algo.',
+      examples: ['Espero tu llamada.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: ['бежать', 'читать', 'писать'],
+      wrongSpanish: ['comer', 'vivir', 'hablar'],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      imageDownloadLocation: null,
+    }
+
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+        })
+      }
+
+      if (url === '/api/words/preview' && init?.method === 'POST') {
+        return jsonResponse(draft)
+      }
+
+      if (url === '/api/words' && init?.method === 'POST') {
+        return jsonResponse({
+          id: 'word-1',
+          ...draft,
+          createdAt: '2026-10-18T12:00:00.000Z',
+          updatedAt: '2026-10-18T12:00:00.000Z',
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Añadir palabra' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Tener esperanza de algo.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/words',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+      }),
+    )
+  })
+
+  it('speaks the Spanish word from the add-word page', async () => {
+    const draft = {
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: null,
+      examples: ['Espero tu llamada.'],
+      partOfSpeech: null,
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      imageDownloadLocation: null,
+    }
+
+    const speak = vi.fn<(utterance: SpeechSynthesisUtterance) => void>()
+    const cancel = vi.fn<() => void>()
+    vi.stubGlobal('speechSynthesis', {
+      speak,
+      cancel,
+      getVoices: () => [
+        {
+          lang: 'es-ES',
+          name: 'Spanish',
+          default: false,
+          localService: true,
+          voiceURI: 'es',
+        },
+      ],
+    })
+    class MockUtterance {
+      text: string
+      lang = ''
+      voice: SpeechSynthesisVoice | null = null
+
+      constructor(text: string) {
+        this.text = text
+      }
+    }
+    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+
+        if (url === '/api/auth/me') {
+          return jsonResponse(user)
+        }
+
+        if (url === '/api/words/preview') {
+          return jsonResponse(draft)
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderApp('/words/new?spanish=esperar&russian=%D0%B6%D0%B4%D0%B0%D1%82%D1%8C')
+
+    const listenButtons = await screen.findAllByRole('button', {
+      name: 'Escuchar',
+    })
+    fireEvent.click(listenButtons[0]!)
+
+    expect(cancel).toHaveBeenCalled()
+    expect(speak).toHaveBeenCalled()
+    const utterance = speak.mock.calls[0]?.[0] as { text: string; lang: string }
+    expect(utterance.text).toBe('esperar')
+    expect(utterance.lang).toBe('es-ES')
   })
 
   it('redirects an unauthenticated user to the login page', async () => {

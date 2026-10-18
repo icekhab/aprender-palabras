@@ -7,12 +7,14 @@ import { OriginGuard } from './auth/origin.guard.js'
 import { HealthController } from './health.controller.js'
 import { PrismaModule } from './prisma.module.js'
 import { SuggestionsModule } from './suggestions/suggestions.module.js'
+import { WordsModule } from './words/words.module.js'
 
 @Module({
   imports: [
     PrismaModule,
     AuthModule,
     SuggestionsModule,
+    WordsModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,

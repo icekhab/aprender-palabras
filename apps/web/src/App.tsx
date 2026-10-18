@@ -5,13 +5,28 @@ import {
   type AuthUser,
   type LoginInput,
   type SuggestionItem,
+  type WordDraft,
 } from '@aprender-palabras/contracts'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
+import { LogOut, Settings, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
+import { createWord, previewWord } from './shared/api/words'
+import {
+  getPreferredSpanishVoiceURI,
+  getSpanishVoices,
+  setPreferredSpanishVoiceURI,
+  speakSpanish,
+} from './shared/speech'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const SEARCH_DEBOUNCE_MS = 300
@@ -26,6 +41,22 @@ function App() {
         element={
           <ProtectedRoute>
             <HomePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/words/new"
+        element={
+          <ProtectedRoute>
+            <AddWordPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
           </ProtectedRoute>
         }
       />
@@ -173,19 +204,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function HomePage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey: AUTH_QUERY_KEY })
-      queryClient.removeQueries({ queryKey: ['suggestions'] })
-      navigate('/login', { replace: true })
-    },
-  })
+  const logoutMutation = useLogoutMutation()
 
   useEffect(() => {
     const trimmed = searchInput.trim()
@@ -218,7 +241,7 @@ function HomePage() {
             <p className="mt-1 text-sm text-orange-900/70">{user?.login}</p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="flex items-start gap-3">
             <div className="relative w-full sm:w-80">
               <label className="sr-only" htmlFor="word-search">
                 Buscar palabra
@@ -277,37 +300,535 @@ function HomePage() {
               )}
             </div>
 
-            <Button
-              variant="outline"
-              disabled={logoutMutation.isPending}
-              onClick={() => logoutMutation.mutate()}
-            >
-              {logoutMutation.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
-            </Button>
+            {user ? (
+              <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+            ) : null}
           </div>
         </div>
 
-        {logoutMutation.isError && (
+        {logoutMutation.isError ? (
           <p role="alert" className="px-5 pb-4 text-sm text-red-700 sm:px-8">
             No se pudo cerrar la sesión. Inténtalo de nuevo.
           </p>
-        )}
+        ) : null}
       </header>
     </main>
   )
 }
 
-function SuggestionRow({ item }: { item: SuggestionItem }) {
+function SettingsPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState(
+    () => getPreferredSpanishVoiceURI() ?? '',
+  )
+
+  useEffect(() => {
+    const syncVoices = () => {
+      const spanishVoices = getSpanishVoices()
+      setVoices(spanishVoices)
+
+      setSelectedVoiceURI((current) => {
+        if (current && spanishVoices.some((voice) => voice.voiceURI === current)) {
+          return current
+        }
+
+        const stored = getPreferredSpanishVoiceURI()
+        if (stored && spanishVoices.some((voice) => voice.voiceURI === stored)) {
+          return stored
+        }
+
+        return spanishVoices[0]?.voiceURI ?? ''
+      })
+    }
+
+    syncVoices()
+    window.speechSynthesis?.addEventListener('voiceschanged', syncVoices)
+
+    return () => {
+      window.speechSynthesis?.removeEventListener('voiceschanged', syncVoices)
+    }
+  }, [])
+
   return (
-    <li
-      className="border-t border-orange-100 px-4 py-3 text-sm first:border-t-0"
-      role="option"
-      aria-selected={false}
-    >
-      <span className="font-medium">{item.spanish}</span>
-      <span className="text-orange-900/50"> — </span>
-      <span>{item.russian}</span>
+    <main className="min-h-svh bg-orange-50 text-orange-950">
+      <header className="border-b border-orange-100 bg-white/90">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <div>
+            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
+              Aprender Palabras
+            </p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Ajustes</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => navigate('/')}>
+              Volver
+            </Button>
+            {user ? (
+              <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+            ) : null}
+          </div>
+        </div>
+        {logoutMutation.isError ? (
+          <p role="alert" className="px-5 pb-4 text-sm text-red-700 sm:px-8">
+            No se pudo cerrar la sesión. Inténtalo de nuevo.
+          </p>
+        ) : null}
+      </header>
+
+      <div className="mx-auto max-w-3xl space-y-6 px-5 py-6 sm:px-8">
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Voz en español</h2>
+          <p className="text-sm text-orange-900/70">
+            Elige la voz que se usará al escuchar palabras y ejemplos.
+          </p>
+
+          {voices.length === 0 ? (
+            <p className="text-sm text-orange-900/70" role="status">
+              No hay voces en español en este dispositivo. La reproducción
+              puede no estar disponible.
+            </p>
+          ) : (
+            <>
+              <label className="block text-sm font-medium" htmlFor="spanish-voice">
+                Voz
+              </label>
+              <div className="flex max-w-md items-center gap-3">
+                <select
+                  id="spanish-voice"
+                  value={selectedVoiceURI}
+                  onChange={(event) => {
+                    const nextURI = event.target.value
+                    setSelectedVoiceURI(nextURI)
+                    setPreferredSpanishVoiceURI(nextURI || null)
+                  }}
+                  className="h-10 min-w-0 flex-1 appearance-none rounded-lg border border-orange-200 bg-white bg-[length:1rem] bg-[position:right_0.75rem_center] bg-no-repeat px-3 pr-10 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a3412' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                  }}
+                >
+                  {voices.map((voice) => (
+                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                      {voice.name} ({voice.lang})
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-10"
+                  aria-label="Probar voz"
+                  disabled={!selectedVoiceURI}
+                  onClick={() => {
+                    setPreferredSpanishVoiceURI(selectedVoiceURI || null)
+                    speakSpanish('Hola, esta es una prueba de voz.')
+                  }}
+                >
+                  <Volume2 className="size-5" aria-hidden />
+                </Button>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function UserMenu({
+  userLogin,
+  logoutMutation,
+}: {
+  userLogin: string
+  logoutMutation: ReturnType<typeof useLogoutMutation>
+}) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const initial = userLogin.trim().charAt(0).toLocaleUpperCase() || '?'
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        aria-label="Cuenta"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-700 text-sm font-semibold text-white hover:bg-orange-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
+        onClick={() => {
+          setOpen((current) => !current)
+        }}
+      >
+        {initial}
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          aria-label="Cuenta"
+          className="absolute top-full right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-orange-100 bg-white shadow-sm"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-orange-50"
+            onClick={() => {
+              setOpen(false)
+              navigate('/settings')
+            }}
+          >
+            <Settings className="size-4 shrink-0" aria-hidden />
+            Ajustes
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            disabled={logoutMutation.isPending}
+            onClick={() => {
+              setOpen(false)
+              logoutMutation.mutate()
+            }}
+          >
+            <LogOut className="size-4 shrink-0" aria-hidden />
+            {logoutMutation.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function useLogoutMutation() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: AUTH_QUERY_KEY })
+      queryClient.removeQueries({ queryKey: ['suggestions'] })
+      navigate('/login', { replace: true })
+    },
+  })
+}
+
+function SuggestionRow({ item }: { item: SuggestionItem }) {
+  const navigate = useNavigate()
+  const params = new URLSearchParams({
+    spanish: item.spanish,
+    russian: item.russian,
+  })
+
+  return (
+    <li className="border-t border-orange-100 first:border-t-0" role="option">
+      <button
+        type="button"
+        className="w-full px-4 py-3 text-left text-sm hover:bg-orange-50"
+        onClick={() => {
+          navigate(`/words/new?${params}`)
+        }}
+      >
+        <span className="font-medium">{item.spanish}</span>
+        <span className="text-orange-900/50"> — </span>
+        <span>{item.russian}</span>
+      </button>
     </li>
+  )
+}
+
+function AddWordPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const spanish = searchParams.get('spanish')?.trim() ?? ''
+  const russian = searchParams.get('russian')?.trim() ?? ''
+  const hasPair = spanish.length > 0 && russian.length > 0
+
+  const previewQuery = useQuery({
+    queryKey: ['words', 'preview', spanish, russian],
+    queryFn: ({ signal }) => previewWord({ spanish, russian }, signal),
+    enabled: hasPair,
+    retry: false,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: createWord,
+    onSuccess: () => {
+      navigate('/', { replace: true })
+    },
+  })
+
+  if (!hasPair) {
+    return <Navigate replace to="/" />
+  }
+
+  return (
+    <main className="min-h-svh bg-orange-50 text-orange-950">
+      <header className="border-b border-orange-100 bg-white/90">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <div>
+            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
+              Aprender Palabras
+            </p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">
+              Añadir palabra
+            </h1>
+          </div>
+          <Button variant="outline" onClick={() => navigate('/')}>
+            Cancelar
+          </Button>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
+        {previewQuery.isPending && (
+          <p className="text-sm text-orange-900/70" role="status">
+            Generando la tarjeta…
+          </p>
+        )}
+
+        {previewQuery.isError && (
+          <div role="alert">
+            <p className="text-sm text-red-700">
+              No se pudo generar la tarjeta. Puedes reintentarlo.
+            </p>
+            <Button
+              className="mt-4"
+              onClick={() => void previewQuery.refetch()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        )}
+
+        {previewQuery.isSuccess && (
+          <WordDraftView
+            draft={previewQuery.data}
+            isSaving={createMutation.isPending}
+            saveError={createMutation.error}
+            onConfirm={() => createMutation.mutate(previewQuery.data)}
+            onCancel={() => navigate('/')}
+          />
+        )}
+      </div>
+    </main>
+  )
+}
+
+function WordDraftView({
+  draft,
+  isSaving,
+  saveError,
+  onConfirm,
+  onCancel,
+}: {
+  draft: WordDraft
+  isSaving: boolean
+  saveError: unknown
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <section className="space-y-6">
+      <div>
+        <div className="flex items-center gap-2">
+          <SpeakButton text={draft.spanish} size="lg" />
+          <p className="text-3xl font-bold tracking-tight">{draft.spanish}</p>
+        </div>
+        <p className="mt-1 text-lg text-orange-900/80">{draft.russian}</p>
+      </div>
+
+      {draft.imageUrl && (
+        <figure>
+          <img
+            src={draft.imageUrl}
+            alt=""
+            className="max-h-80 w-full rounded-2xl object-cover"
+          />
+          {draft.imagePhotographerName && draft.imagePhotographerUrl && (
+            <figcaption className="mt-2 text-xs text-orange-900/60">
+              Foto de{' '}
+              <a
+                href={draft.imagePhotographerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {draft.imagePhotographerName}
+              </a>
+              {draft.imagePageUrl && (
+                <>
+                  {' '}
+                  en{' '}
+                  <a
+                    href={draft.imagePageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    Unsplash
+                  </a>
+                </>
+              )}
+            </figcaption>
+          )}
+        </figure>
+      )}
+
+      <ReadOnlyField
+        label="Traducciones adicionales"
+        value={
+          draft.additionalTranslations.length > 0
+            ? draft.additionalTranslations.join(', ')
+            : null
+        }
+      />
+      <ReadOnlyField label="Definición" value={draft.definitionEs} />
+      <div>
+        <p className="text-sm font-medium text-orange-900/70">Ejemplos</p>
+        {draft.examples.length > 0 ? (
+          <ul className="mt-1 space-y-2">
+            {draft.examples.map((example) => (
+              <li key={example} className="flex items-start gap-2">
+                <SpeakButton text={example} className="mt-0.5" />
+                <p className="text-orange-950">{example}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
+        )}
+      </div>
+      <ReadOnlyField label="Categoría gramatical" value={draft.partOfSpeech} />
+      <ReadOnlyField
+        label="Género"
+        value={
+          draft.gender === 'masculine'
+            ? 'masculino'
+            : draft.gender === 'feminine'
+              ? 'femenino'
+              : null
+        }
+      />
+      <ReadOnlyField
+        label="Opciones incorrectas (ruso)"
+        value={
+          draft.wrongRussian.length > 0
+            ? draft.wrongRussian.join(', ')
+            : null
+        }
+      />
+      <ReadOnlyField
+        label="Opciones incorrectas (español)"
+        value={
+          draft.wrongSpanish.length > 0
+            ? draft.wrongSpanish.join(', ')
+            : null
+        }
+      />
+
+      {isConflict(saveError) ? (
+        <p role="alert" className="text-sm text-red-700">
+          Esta palabra ya existe en la base de datos.
+        </p>
+      ) : null}
+
+      {saveError && !isConflict(saveError) ? (
+        <p role="alert" className="text-sm text-red-700">
+          No se pudo guardar la palabra. Inténtalo de nuevo.
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button
+          className="bg-orange-700 hover:bg-orange-800"
+          disabled={isSaving}
+          onClick={onConfirm}
+        >
+          {isSaving ? 'Guardando…' : 'Confirmar'}
+        </Button>
+        <Button variant="outline" disabled={isSaving} onClick={onCancel}>
+          Cancelar
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function ReadOnlyField({
+  label,
+  value,
+}: {
+  label: string
+  value: string | null
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-orange-900/70">{label}</p>
+      {value ? (
+        <p className="mt-1 text-orange-950">{value}</p>
+      ) : (
+        <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
+      )}
+    </div>
+  )
+}
+
+function SpeakButton({
+  text,
+  size = 'sm',
+  className = '',
+}: {
+  text: string
+  size?: 'sm' | 'lg'
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Escuchar"
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg text-orange-700 hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 ${
+        size === 'lg' ? 'size-10' : 'size-8'
+      } ${className}`}
+      onClick={() => {
+        speakSpanish(text)
+      }}
+    >
+      <Volume2 className={size === 'lg' ? 'size-6' : 'size-4'} aria-hidden />
+    </button>
   )
 }
 
@@ -329,6 +850,10 @@ function isUnauthorized(error: unknown): boolean {
 
 function isServiceUnavailable(error: unknown): boolean {
   return error instanceof ApiError && error.status === 503
+}
+
+function isConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409
 }
 
 function FullPageStatus({

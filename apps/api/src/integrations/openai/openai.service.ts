@@ -15,11 +15,33 @@ const suggestionsPayloadSchema = z.object({
   suggestions: z.array(suggestionPairSchema).max(MAX_SUGGESTIONS),
 })
 
+const wordContentSchema = z.object({
+  additionalTranslations: z.array(z.string()).max(10),
+  definitionEs: z.string().nullable(),
+  examples: z.array(z.string()).max(3),
+  partOfSpeech: z.string().nullable(),
+  gender: z.enum(['masculine', 'feminine']).nullable(),
+  wrongRussian: z.array(z.string()).length(3),
+  wrongSpanish: z.array(z.string()).length(3),
+  unsplashQuery: z.string(),
+})
+
 export type TranslationDirection = 'ru-to-es' | 'es-to-ru'
 
 export interface TranslationSuggestion {
   spanish: string
   russian: string
+}
+
+export interface GeneratedWordContent {
+  additionalTranslations: string[]
+  definitionEs: string | null
+  examples: string[]
+  partOfSpeech: string | null
+  gender: 'masculine' | 'feminine' | null
+  wrongRussian: string[]
+  wrongSpanish: string[]
+  unsplashQuery: string
 }
 
 @Injectable()
@@ -87,6 +109,112 @@ export class OpenAiService {
       throw error
     }
   }
+
+  async generateWordContent(
+    spanish: string,
+    russian: string,
+  ): Promise<GeneratedWordContent> {
+    if (!this.client) {
+      throw new Error('OpenAI is not configured')
+    }
+
+    const prompt = `Generate learner card content for the Spanish expression "${spanish}" with the primary Russian meaning "${russian}".
+
+Rules:
+- additionalTranslations: other Russian wordings of the SAME meaning only (not other senses). May be empty.
+- definitionEs: a short definition in Spanish for this meaning, or null if unsure.
+- examples: 2 or 3 short natural Spanish example sentences using this meaning.
+- partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
+- gender: masculine or feminine only for nouns when known; otherwise null.
+- wrongRussian: exactly 3 plausible but incorrect Russian distractors for multiple choice. Must not match the primary translation or additionalTranslations.
+- wrongSpanish: exactly 3 plausible but incorrect Spanish distractors. Must not match the Spanish expression.
+- unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.`
+
+    try {
+      const response = await this.client.responses.parse({
+        model: this.model,
+        input: [
+          {
+            role: 'system',
+            content:
+              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        text: {
+          format: zodTextFormat(wordContentSchema, 'word_card_content'),
+        },
+      })
+
+      const parsed = response.output_parsed
+      if (!parsed) {
+        throw new Error('OpenAI returned empty word content')
+      }
+
+      return sanitizeWordContent(parsed)
+    } catch (error) {
+      this.logger.error('OpenAI word content request failed', error)
+      throw error
+    }
+  }
+}
+
+function sanitizeWordContent(
+  content: GeneratedWordContent,
+): GeneratedWordContent {
+  const additionalTranslations = uniqueNonEmpty(content.additionalTranslations)
+  const examples = uniqueNonEmpty(content.examples).slice(0, 3)
+  const wrongRussian = uniqueNonEmpty(content.wrongRussian).slice(0, 3)
+  const wrongSpanish = uniqueNonEmpty(content.wrongSpanish).slice(0, 3)
+  const definitionEs = normalizeOptionalText(content.definitionEs)
+  const partOfSpeech = normalizeOptionalText(content.partOfSpeech)
+  const unsplashQuery =
+    normalizeOptionalText(content.unsplashQuery) ?? 'spanish language'
+
+  return {
+    additionalTranslations,
+    definitionEs,
+    examples,
+    partOfSpeech,
+    gender: content.gender,
+    wrongRussian: wrongRussian.length === 3 ? wrongRussian : [],
+    wrongSpanish: wrongSpanish.length === 3 ? wrongSpanish : [],
+    unsplashQuery,
+  }
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>()
+  const unique: string[] = []
+
+  for (const value of values) {
+    const trimmed = value.replace(/\s+/g, ' ').trim()
+    if (!trimmed) {
+      continue
+    }
+
+    const key = trimmed.toLocaleLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    unique.push(trimmed)
+  }
+
+  return unique
+}
+
+function normalizeOptionalText(value: string | null): string | null {
+  if (value == null) {
+    return null
+  }
+
+  const trimmed = value.replace(/\s+/g, ' ').trim()
+  return trimmed || null
 }
 
 function dedupeSuggestions(

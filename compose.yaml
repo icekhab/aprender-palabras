@@ -31,6 +31,7 @@ services:
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-sol}
+      UNSPLASH_ACCESS_KEY: ${UNSPLASH_ACCESS_KEY:-}
     ports:
       - '3000:3000'
     volumes:
