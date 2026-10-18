@@ -35,12 +35,21 @@ describe('AppController (e2e)', () => {
     ]),
   }
 
+  const prismaService = {
+    word: {
+      findMany: vi.fn(async () => []),
+    },
+    userCard: {
+      findMany: vi.fn(async () => []),
+    },
+  }
+
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(PrismaService)
-      .useValue({})
+      .useValue(prismaService)
       .overrideProvider(AuthService)
       .useValue(authService)
       .overrideProvider(OpenAiService)
@@ -111,7 +120,14 @@ describe('AppController (e2e)', () => {
       .set('Cookie', 'aprender_palabras_session=session-token')
       .expect(200)
       .expect({
-        suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+        suggestions: [
+          {
+            spanish: 'esperar',
+            russian: 'ждать',
+            wordId: null,
+            progress: null,
+          },
+        ],
       })
 
     expect(openAiService.getTranslationSuggestions).toHaveBeenCalledWith(

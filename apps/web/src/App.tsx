@@ -11,9 +11,10 @@ import {
   type DictionaryListItem,
   type LoginInput,
   type SuggestionItem,
+  type SuggestionsResponse,
   type WordDraft,
 } from '@aprender-palabras/contracts'
-import { Check, LogOut, Settings, Volume2 } from 'lucide-react'
+import { Check, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
@@ -27,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
 import {
+  addExistingWord,
   createWord,
   listDictionaryWords,
   previewWord,
@@ -220,6 +222,7 @@ function HomePage() {
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const logoutMutation = useLogoutMutation()
 
   useEffect(() => {
@@ -240,7 +243,8 @@ function HomePage() {
     retry: false,
   })
 
-  const showSuggestionsPanel = debouncedQuery.length >= MIN_QUERY_LENGTH
+  const showSuggestionsPanel =
+    searchFocused && debouncedQuery.length >= MIN_QUERY_LENGTH
 
   const dictionaryQuery = useInfiniteQuery({
     queryKey: DICTIONARY_QUERY_KEY,
@@ -271,7 +275,21 @@ function HomePage() {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="relative w-full sm:w-80">
+            <div
+              className="relative w-full sm:w-80"
+              onFocus={() => {
+                setSearchFocused(true)
+              }}
+              onBlur={(event) => {
+                if (
+                  !event.currentTarget.contains(
+                    event.relatedTarget as Node | null,
+                  )
+                ) {
+                  setSearchFocused(false)
+                }
+              }}
+            >
               <label className="sr-only" htmlFor="word-search">
                 Buscar palabra
               </label>
@@ -729,25 +747,138 @@ function useLogoutMutation() {
 
 function SuggestionRow({ item }: { item: SuggestionItem }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const params = new URLSearchParams({
     spanish: item.spanish,
     russian: item.russian,
   })
 
+  const addMutation = useMutation({
+    mutationFn: () => {
+      if (!item.wordId) {
+        throw new Error('Missing word id')
+      }
+
+      return addExistingWord({ wordId: item.wordId })
+    },
+    onSuccess: async (card) => {
+      queryClient.setQueriesData<SuggestionsResponse>(
+        { queryKey: ['suggestions'] },
+        (current) => {
+          if (!current) {
+            return current
+          }
+
+          return {
+            suggestions: current.suggestions.map((suggestion) =>
+              suggestion.wordId === card.wordId
+                ? { ...suggestion, progress: card.progress }
+                : suggestion,
+            ),
+          }
+        },
+      )
+      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
+    },
+  })
+
+  const label = `${item.spanish} — ${item.russian}`
+  const inDictionary = item.wordId !== null && item.progress !== null
+  const canQuickAdd = item.wordId !== null && item.progress === null
+
+  const text = (
+    <span className="min-w-0 flex-1 text-base">
+      <span className="font-medium">{item.spanish}</span>
+      <span className="text-orange-900/50"> — </span>
+      <span>{item.russian}</span>
+    </span>
+  )
+
+  if (item.wordId === null) {
+    return (
+      <li className="border-t border-orange-100 first:border-t-0" role="option">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-orange-50"
+          onClick={() => {
+            navigate(`/words/new?${params}`)
+          }}
+        >
+          {text}
+        </button>
+      </li>
+    )
+  }
+
+  if (canQuickAdd) {
+    return (
+      <li className="border-t border-orange-100 first:border-t-0" role="option">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:opacity-60"
+          aria-label={`Añadir ${label}`}
+          disabled={addMutation.isPending}
+          onClick={() => {
+            addMutation.mutate()
+          }}
+        >
+          {text}
+          <span
+            className="grid size-7 shrink-0 place-items-center rounded-full bg-orange-600 text-white"
+            aria-hidden
+          >
+            <Plus className="size-4 stroke-[3]" />
+          </span>
+        </button>
+      </li>
+    )
+  }
+
   return (
-    <li className="border-t border-orange-100 first:border-t-0" role="option">
-      <button
-        type="button"
-        className="w-full px-4 py-3 text-left text-sm hover:bg-orange-50"
-        onClick={() => {
-          navigate(`/words/new?${params}`)
-        }}
-      >
-        <span className="font-medium">{item.spanish}</span>
-        <span className="text-orange-900/50"> — </span>
-        <span>{item.russian}</span>
-      </button>
+    <li
+      className="flex items-center gap-2 border-t border-orange-100 px-4 py-3 first:border-t-0"
+      role="option"
+    >
+      {text}
+      {inDictionary ? (
+        <SuggestionProgressIcon
+          progress={item.progress ?? 0}
+          wordLabel={label}
+        />
+      ) : null}
     </li>
+  )
+}
+
+function SuggestionProgressIcon({
+  progress,
+  wordLabel,
+}: {
+  progress: number
+  wordLabel: string
+}) {
+  const mastered = progress >= 100
+
+  return (
+    <span
+      className="shrink-0"
+      aria-label={
+        mastered
+          ? `${wordLabel}, dominada`
+          : `${wordLabel}, progreso ${progress}%`
+      }
+    >
+      {mastered ? (
+        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
+          <Check className="size-3 stroke-[3]" aria-hidden />
+        </span>
+      ) : (
+        <span
+          className="block size-5 rounded-full border border-dashed border-orange-300"
+          aria-hidden
+        />
+      )}
+    </span>
   )
 }
 

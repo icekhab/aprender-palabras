@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
+import { PrismaService } from '../prisma.service.js'
 import { detectDirection, SuggestionsService } from './suggestions.service.js'
 
 describe('detectDirection', () => {
@@ -27,21 +28,42 @@ describe('SuggestionsService', () => {
       >(),
   }
 
+  const prisma = {
+    word: {
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
+    userCard: {
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
+  }
+
   let service: SuggestionsService
 
   beforeEach(() => {
     vi.clearAllMocks()
-    service = new SuggestionsService(openAiService as unknown as OpenAiService)
+    prisma.word.findMany.mockResolvedValue([])
+    prisma.userCard.findMany.mockResolvedValue([])
+    service = new SuggestionsService(
+      openAiService as unknown as OpenAiService,
+      prisma as unknown as PrismaService,
+    )
   })
 
-  it('returns AI suggestions when OpenAI is configured', async () => {
+  it('returns AI suggestions enriched with null dictionary fields', async () => {
     openAiService.isConfigured.mockReturnValue(true)
     openAiService.getTranslationSuggestions.mockResolvedValue([
       { spanish: 'esperar', russian: 'ждать' },
     ])
 
-    await expect(service.suggest('ждать')).resolves.toEqual({
-      suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+    await expect(service.suggest('user-1', 'ждать')).resolves.toEqual({
+      suggestions: [
+        {
+          spanish: 'esperar',
+          russian: 'ждать',
+          wordId: null,
+          progress: null,
+        },
+      ],
     })
     expect(openAiService.getTranslationSuggestions).toHaveBeenCalledWith(
       'ждать',
@@ -49,10 +71,81 @@ describe('SuggestionsService', () => {
     )
   })
 
+  it('attaches wordId when the pair exists in the shared dictionary', async () => {
+    openAiService.isConfigured.mockReturnValue(true)
+    openAiService.getTranslationSuggestions.mockResolvedValue([
+      { spanish: 'Esperar', russian: 'Ждать' },
+      { spanish: 'comer', russian: 'есть' },
+    ])
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        normalizedSpanish: 'esperar',
+        normalizedRussian: 'ждать',
+      },
+    ])
+
+    await expect(service.suggest('user-1', 'esper')).resolves.toEqual({
+      suggestions: [
+        {
+          spanish: 'Esperar',
+          russian: 'Ждать',
+          wordId: 'word-1',
+          progress: null,
+        },
+        {
+          spanish: 'comer',
+          russian: 'есть',
+          wordId: null,
+          progress: null,
+        },
+      ],
+    })
+    expect(prisma.userCard.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        wordId: { in: ['word-1'] },
+        inDictionary: true,
+      },
+      select: {
+        wordId: true,
+        progress: true,
+      },
+    })
+  })
+
+  it('attaches progress when the word is already in the user dictionary', async () => {
+    openAiService.isConfigured.mockReturnValue(true)
+    openAiService.getTranslationSuggestions.mockResolvedValue([
+      { spanish: 'esperar', russian: 'ждать' },
+    ])
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        normalizedSpanish: 'esperar',
+        normalizedRussian: 'ждать',
+      },
+    ])
+    prisma.userCard.findMany.mockResolvedValue([
+      { wordId: 'word-1', progress: 40 },
+    ])
+
+    await expect(service.suggest('user-1', 'esperar')).resolves.toEqual({
+      suggestions: [
+        {
+          spanish: 'esperar',
+          russian: 'ждать',
+          wordId: 'word-1',
+          progress: 40,
+        },
+      ],
+    })
+  })
+
   it('throws when OpenAI is not configured', async () => {
     openAiService.isConfigured.mockReturnValue(false)
 
-    await expect(service.suggest('esperar')).rejects.toBeInstanceOf(
+    await expect(service.suggest('user-1', 'esperar')).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     )
   })
@@ -63,7 +156,7 @@ describe('SuggestionsService', () => {
       new Error('network'),
     )
 
-    await expect(service.suggest('esperar')).rejects.toBeInstanceOf(
+    await expect(service.suggest('user-1', 'esperar')).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     )
   })

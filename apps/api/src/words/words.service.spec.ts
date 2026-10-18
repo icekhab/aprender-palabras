@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, NotFoundException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WordDraft } from '@aprender-palabras/contracts'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
@@ -42,10 +42,15 @@ describe('WordsService', () => {
     $transaction: vi.fn<
       (callback: (client: typeof tx) => Promise<unknown>) => Promise<unknown>
     >(async (callback) => callback(tx)),
+    word: {
+      findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
     userCard: {
       count: vi.fn<(args: unknown) => Promise<number>>(),
       aggregate: vi.fn<(args: unknown) => Promise<{ _avg: { progress: number | null } }>>(),
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+      findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+      create: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
   }
 
@@ -343,5 +348,65 @@ describe('WordsService', () => {
       ConflictException,
     )
     expect(tx.userCard.create).not.toHaveBeenCalled()
+  })
+
+  it('adds an existing word to the user dictionary', async () => {
+    const addedAt = new Date('2026-10-18T12:00:00.000Z')
+    prisma.word.findUnique.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+    })
+    prisma.userCard.findUnique.mockResolvedValue(null)
+    prisma.userCard.create.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      progress: 0,
+      addedAt,
+    })
+
+    await expect(
+      service.addExisting('user-1', 'word-1'),
+    ).resolves.toEqual({
+      id: 'card-1',
+      wordId: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      progress: 0,
+      addedAt: addedAt.toISOString(),
+    })
+
+    expect(prisma.userCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-1',
+        wordId: 'word-1',
+        source: 'manual',
+        inDictionary: true,
+        progress: 0,
+      },
+    })
+  })
+
+  it('throws NotFoundException when adding a missing word', async () => {
+    prisma.word.findUnique.mockResolvedValue(null)
+
+    await expect(
+      service.addExisting('user-1', 'missing-word'),
+    ).rejects.toBeInstanceOf(NotFoundException)
+    expect(prisma.userCard.create).not.toHaveBeenCalled()
+  })
+
+  it('throws ConflictException when adding a word the user already has', async () => {
+    prisma.word.findUnique.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+    })
+    prisma.userCard.findUnique.mockResolvedValue({ id: 'card-existing' })
+
+    await expect(
+      service.addExisting('user-1', 'word-1'),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.userCard.create).not.toHaveBeenCalled()
   })
 })

@@ -2,8 +2,10 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common'
 import type {
+  DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
   Word,
@@ -105,6 +107,62 @@ export class WordsService {
         progress: card.progress,
         addedAt: card.addedAt.toISOString(),
       })),
+    }
+  }
+
+  async addExisting(
+    userId: string,
+    wordId: string,
+  ): Promise<DictionaryListItem> {
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+    })
+
+    if (!word) {
+      throw new NotFoundException('Word not found')
+    }
+
+    const existingCard = await this.prisma.userCard.findUnique({
+      where: {
+        userId_wordId: {
+          userId,
+          wordId,
+        },
+      },
+    })
+
+    if (existingCard) {
+      throw new ConflictException('Word already exists')
+    }
+
+    try {
+      const card = await this.prisma.userCard.create({
+        data: {
+          userId,
+          wordId,
+          source: 'manual',
+          inDictionary: true,
+          progress: 0,
+        },
+      })
+
+      return {
+        id: card.id,
+        wordId: word.id,
+        spanish: word.spanish,
+        russian: word.russian,
+        progress: card.progress,
+        addedAt: card.addedAt.toISOString(),
+      }
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Word already exists')
+      }
+
+      throw error
     }
   }
 

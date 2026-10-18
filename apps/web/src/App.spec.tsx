@@ -222,7 +222,14 @@ describe('App', () => {
 
       if (url.startsWith('/api/suggestions?')) {
         return jsonResponse({
-          suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
         })
       }
 
@@ -233,6 +240,7 @@ describe('App', () => {
     renderApp()
 
     const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
     fireEvent.change(searchInput, { target: { value: 'esperar' } })
 
     expect(await screen.findByText('esperar')).toBeInTheDocument()
@@ -243,6 +251,53 @@ describe('App', () => {
         credentials: 'same-origin',
       }),
     )
+  })
+
+  it('hides suggestions on blur and shows them again on focus', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByLabelText('Sugerencias')).toBeInTheDocument()
+
+    fireEvent.blur(searchInput)
+
+    expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
+
+    fireEvent.focus(searchInput)
+
+    expect(await screen.findByLabelText('Sugerencias')).toBeInTheDocument()
+    expect(screen.getByText('esperar')).toBeInTheDocument()
   })
 
   it('opens the add-word page from a suggestion and confirms create', async () => {
@@ -277,7 +332,14 @@ describe('App', () => {
 
       if (url.startsWith('/api/suggestions?')) {
         return jsonResponse({
-          suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
         })
       }
 
@@ -301,6 +363,7 @@ describe('App', () => {
     renderApp()
 
     const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
     fireEvent.change(searchInput, { target: { value: 'esperar' } })
 
     fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
@@ -322,6 +385,114 @@ describe('App', () => {
         credentials: 'same-origin',
       }),
     )
+  })
+
+  it('adds an existing dictionary word from a suggestion row', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words/existing' && init?.method === 'POST') {
+        return jsonResponse({
+          id: 'card-1',
+          wordId: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
+          spanish: 'esperar',
+          russian: 'ждать',
+          progress: 0,
+          addedAt: '2026-10-18T12:00:00.000Z',
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Añadir esperar/i }),
+    )
+
+    expect(
+      await screen.findByLabelText(/esperar — ждать, progreso 0%/i),
+    ).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/words/existing',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+      }),
+    )
+    expect(
+      screen.queryByRole('heading', { name: 'Añadir palabra' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows progress icon for suggestions already in the user dictionary', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
+              progress: 40,
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(
+      await screen.findByLabelText(/esperar — ждать, progreso 40%/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Añadir esperar/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('speaks the Spanish word from the add-word page', async () => {

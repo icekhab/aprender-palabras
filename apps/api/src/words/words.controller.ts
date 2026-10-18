@@ -8,9 +8,11 @@ import {
   Req,
 } from '@nestjs/common'
 import {
+  addExistingWordSchema,
   dictionaryListQuerySchema,
   wordDraftSchema,
   wordPairSchema,
+  type DictionaryListItem,
   type DictionaryListResponse,
   type Word,
   type WordDraft,
@@ -43,6 +45,22 @@ export class WordsController {
     }
 
     return this.wordsService.preview(result.data)
+  }
+
+  @Post('existing')
+  addExisting(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<DictionaryListItem> {
+    const result = addExistingWordSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid word id')
+    }
+
+    return this.wordsService.addExisting(
+      request.authUser.id,
+      result.data.wordId,
+    )
   }
 
   @Post()

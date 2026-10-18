@@ -21,11 +21,21 @@ export type SuggestionsQuery = z.infer<typeof suggestionsQuerySchema>
 export interface SuggestionItem {
   spanish: string
   russian: string
+  /** Present when the pair exists in the shared Word dictionary. */
+  wordId: string | null
+  /** Present when the current user already has this word in their dictionary. */
+  progress: number | null
 }
 
 export interface SuggestionsResponse {
   suggestions: SuggestionItem[]
 }
+
+export const addExistingWordSchema = z.object({
+  wordId: z.string().uuid(),
+})
+
+export type AddExistingWordInput = z.infer<typeof addExistingWordSchema>
 
 export const wordPairSchema = z.object({
   spanish: z.string().trim().min(1).max(200),

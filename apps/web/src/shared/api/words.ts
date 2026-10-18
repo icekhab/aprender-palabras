@@ -1,4 +1,6 @@
 import type {
+  AddExistingWordInput,
+  DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
   Word,
@@ -43,6 +45,18 @@ export async function createWord(draft: WordDraft): Promise<Word> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(draft),
+  })
+}
+
+export async function addExistingWord(
+  input: AddExistingWordInput,
+): Promise<DictionaryListItem> {
+  return request<DictionaryListItem>('/api/words/existing', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
   })
 }
 
