@@ -39,19 +39,12 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the protected screen for an authenticated user', async () => {
+  it('renders the home header for an authenticated user', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)
 
       if (url === '/api/auth/me') {
         return jsonResponse(user)
-      }
-
-      if (url === '/api/tests') {
-        return jsonResponse([
-          { name: 'Alpha', size: 10 },
-          { name: 'Beta', size: 20 },
-        ])
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -60,20 +53,15 @@ describe('App', () => {
 
     renderApp()
 
-    expect(await screen.findByText(user.login)).toBeInTheDocument()
     expect(
-      await screen.findByRole('cell', { name: 'Alpha' }),
+      await screen.findByText('Aprender Palabras', { selector: 'header p' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '10' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: 'Beta' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '20' })).toBeInTheDocument()
+    expect(screen.getByText(user.login)).toBeInTheDocument()
+    expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Cerrar sesión' }),
+    ).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', {
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-      },
-    })
-    expect(fetchMock).toHaveBeenCalledWith('/api/tests', {
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
@@ -81,24 +69,37 @@ describe('App', () => {
     })
   })
 
-  it('shows a retry action when the API fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>(async (input) => {
-        if (String(input) === '/api/auth/me') {
-          return jsonResponse(user)
-        }
+  it('loads suggestions after debounce', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
 
-        return errorResponse(500)
-      }),
-    )
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     renderApp()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudieron cargar los datos.',
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(screen.getByText('ждать')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/suggestions?q=esperar',
+      expect.objectContaining({
+        credentials: 'same-origin',
+      }),
     )
-    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeEnabled()
   })
 
   it('redirects an unauthenticated user to the login page', async () => {
@@ -135,10 +136,6 @@ describe('App', () => {
         return jsonResponse(user)
       }
 
-      if (url === '/api/tests') {
-        return jsonResponse([])
-      }
-
       throw new Error(`Unexpected request: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -159,9 +156,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Entrar' }))
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { name: 'Prueba' }),
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
     })
   })
 })

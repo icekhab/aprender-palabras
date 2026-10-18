@@ -12,9 +12,17 @@ export interface AuthUser {
   login: string
 }
 
-export interface TestItem {
-  name: string
-  size: number
+export const suggestionsQuerySchema = z.object({
+  q: z.string().trim().min(2).max(100),
+})
+
+export type SuggestionsQuery = z.infer<typeof suggestionsQuerySchema>
+
+export interface SuggestionItem {
+  spanish: string
+  russian: string
 }
 
-export type TestsResponse = TestItem[]
+export interface SuggestionsResponse {
+  suggestions: SuggestionItem[]
+}

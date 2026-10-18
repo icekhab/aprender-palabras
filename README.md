@@ -8,7 +8,8 @@ Mobile-first приложение для изучения испанских с�
 - `apps/api` — NestJS API, доступно по адресу `http://localhost:3000`;
 - `packages/contracts` — общие TypeScript-контракты frontend и backend.
 
-Главная страница получает записи таблицы `Test` из `GET /api/tests`.
+Главная страница показывает поиск слов; подсказки перевода приходят из
+`GET /api/suggestions` через OpenAI.
 
 ## Запуск в Docker
 
@@ -24,7 +25,7 @@ pnpm start
 После запуска доступны:
 
 - frontend — `http://localhost:5173`;
-- backend — `http://localhost:3000/api/tests`;
+- backend — `http://localhost:3000/api/health`;
 - PostgreSQL — `localhost:5432`.
 
 Исходники подключены к контейнерам, поэтому Vite и NestJS автоматически

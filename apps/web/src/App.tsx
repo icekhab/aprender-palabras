@@ -4,14 +4,18 @@ import {
   loginSchema,
   type AuthUser,
   type LoginInput,
+  type SuggestionItem,
 } from '@aprender-palabras/contracts'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
-import { getTests } from './shared/api/tests'
+import { getSuggestions } from './shared/api/suggestions'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
+const SEARCH_DEBOUNCE_MS = 300
+const MIN_QUERY_LENGTH = 2
 
 function App() {
   return (
@@ -21,7 +25,7 @@ function App() {
         path="/"
         element={
           <ProtectedRoute>
-            <TestsPage />
+            <HomePage />
           </ProtectedRoute>
         }
       />
@@ -168,87 +172,147 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return children
 }
 
-function TestsPage() {
+function HomePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
-  const tests = useQuery({
-    queryKey: ['tests'],
-    queryFn: getTests,
-    retry: false,
-  })
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: AUTH_QUERY_KEY })
-      queryClient.removeQueries({ queryKey: ['tests'] })
+      queryClient.removeQueries({ queryKey: ['suggestions'] })
       navigate('/login', { replace: true })
     },
   })
 
+  useEffect(() => {
+    const trimmed = searchInput.trim()
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(trimmed)
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [searchInput])
+
+  const suggestionsQuery = useQuery({
+    queryKey: ['suggestions', debouncedQuery],
+    queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
+    enabled: debouncedQuery.length >= MIN_QUERY_LENGTH,
+    retry: false,
+  })
+
+  const showSuggestionsPanel = debouncedQuery.length >= MIN_QUERY_LENGTH
+
   return (
-    <main className="min-h-svh bg-orange-50 p-5 text-orange-950 sm:p-8">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-10 flex items-start justify-between gap-5">
+    <main className="min-h-svh bg-orange-50 text-orange-950">
+      <header className="border-b border-orange-100 bg-white/90">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div>
-            <p className="mb-2 text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
+            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
               Aprender Palabras
             </p>
-            <p className="text-sm text-orange-900/70">{user?.login}</p>
+            <p className="mt-1 text-sm text-orange-900/70">{user?.login}</p>
           </div>
-          <Button
-            variant="outline"
-            disabled={logoutMutation.isPending}
-            onClick={() => logoutMutation.mutate()}
-          >
-            {logoutMutation.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </Button>
-        </header>
 
-        <h1 className="mb-6 text-4xl font-bold tracking-tight">Prueba</h1>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="relative w-full sm:w-80">
+              <label className="sr-only" htmlFor="word-search">
+                Buscar palabra
+              </label>
+              <input
+                id="word-search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Buscar palabra…"
+                autoComplete="off"
+                className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
+              />
+
+              {showSuggestionsPanel && (
+                <div
+                  className="absolute top-full right-0 left-0 z-10 mt-2 overflow-hidden rounded-xl border border-orange-100 bg-white shadow-sm"
+                  role="listbox"
+                  aria-label="Sugerencias"
+                >
+                  {suggestionsQuery.isFetching && (
+                    <p
+                      className="px-4 py-3 text-sm text-orange-900/70"
+                      role="status"
+                    >
+                      Buscando…
+                    </p>
+                  )}
+
+                  {suggestionsQuery.isError && (
+                    <p className="px-4 py-3 text-sm text-red-700" role="alert">
+                      {isServiceUnavailable(suggestionsQuery.error)
+                        ? 'Las sugerencias no están disponibles.'
+                        : 'No se pudieron cargar las sugerencias.'}
+                    </p>
+                  )}
+
+                  {suggestionsQuery.isSuccess &&
+                    suggestionsQuery.data.suggestions.length === 0 && (
+                      <p className="px-4 py-3 text-sm text-orange-900/70">
+                        No hay sugerencias.
+                      </p>
+                    )}
+
+                  {suggestionsQuery.isSuccess &&
+                    suggestionsQuery.data.suggestions.length > 0 && (
+                      <ul>
+                        {suggestionsQuery.data.suggestions.map((item) => (
+                          <SuggestionRow
+                            item={item}
+                            key={suggestionKey(item)}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                </div>
+              )}
+            </div>
+
+            <Button
+              variant="outline"
+              disabled={logoutMutation.isPending}
+              onClick={() => logoutMutation.mutate()}
+            >
+              {logoutMutation.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
+            </Button>
+          </div>
+        </div>
 
         {logoutMutation.isError && (
-          <p role="alert" className="mb-5 text-sm text-red-700">
+          <p role="alert" className="px-5 pb-4 text-sm text-red-700 sm:px-8">
             No se pudo cerrar la sesión. Inténtalo de nuevo.
           </p>
         )}
-
-        {tests.isPending && <p role="status">Cargando…</p>}
-
-        {tests.isError && (
-          <div role="alert">
-            <p>No se pudieron cargar los datos.</p>
-            <Button className="mt-4" onClick={() => void tests.refetch()}>
-              Reintentar
-            </Button>
-          </div>
-        )}
-
-        {tests.data && (
-          <table className="min-w-72 overflow-hidden rounded-xl bg-white text-left shadow-sm">
-            <thead className="bg-orange-100 text-orange-800">
-              <tr>
-                <th className="px-5 py-3 font-semibold" scope="col">
-                  Nombre
-                </th>
-                <th className="px-5 py-3 font-semibold" scope="col">
-                  Tamaño
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {tests.data.map((test) => (
-                <tr className="border-t border-orange-100" key={test.name}>
-                  <td className="px-5 py-3 font-medium">{test.name}</td>
-                  <td className="px-5 py-3">{test.size}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      </header>
     </main>
   )
+}
+
+function SuggestionRow({ item }: { item: SuggestionItem }) {
+  return (
+    <li
+      className="border-t border-orange-100 px-4 py-3 text-sm first:border-t-0"
+      role="option"
+      aria-selected={false}
+    >
+      <span className="font-medium">{item.spanish}</span>
+      <span className="text-orange-900/50"> — </span>
+      <span>{item.russian}</span>
+    </li>
+  )
+}
+
+function suggestionKey(item: SuggestionItem): string {
+  return `${item.spanish}|${item.russian}`
 }
 
 function useCurrentUser() {
@@ -261,6 +325,10 @@ function useCurrentUser() {
 
 function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401
+}
+
+function isServiceUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 503
 }
 
 function FullPageStatus({

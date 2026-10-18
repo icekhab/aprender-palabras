@@ -9,6 +9,7 @@
 Документы функций:
 
 - [Авторизация](./auth.md).
+- [Подсказки перевода](./suggestions.md).
 
 ## 2. Общая архитектура
 
@@ -110,7 +111,7 @@ Frontend и backend проверяют формы и входные параме
 
 | Сервис | Использование |
 |---|---|
-| OpenAI, модель `gpt-6-luna` | варианты перевода и генерация содержимого карточки |
+| OpenAI, модель `gpt-6-sol` | варианты перевода и генерация содержимого карточки |
 | Unsplash API | поиск изображений по URL с обязательной атрибуцией |
 | Web Speech API | синтез речи без создания аудиофайлов |
 
@@ -204,7 +205,7 @@ Vite перенаправляет локальные запросы `/api` на 
 ```dotenv
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aprender_palabras
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-6-luna
+OPENAI_MODEL=gpt-6-sol
 UNSPLASH_ACCESS_KEY=
 APP_ORIGIN=http://localhost:5173
 ```

@@ -29,6 +29,8 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/aprender_palabras}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-sol}
     ports:
       - '3000:3000'
     volumes:

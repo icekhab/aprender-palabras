@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser'
 import request from 'supertest'
 import { AppModule } from './../src/app.module.js'
 import { AuthService } from './../src/auth/auth.service.js'
+import { OpenAiService } from './../src/integrations/openai/openai.service.js'
 import { PrismaService } from './../src/prisma.service.js'
 
 describe('AppController (e2e)', () => {
@@ -27,24 +28,23 @@ describe('AppController (e2e)', () => {
     ),
     logout: vi.fn(async () => undefined),
   }
+  const openAiService = {
+    isConfigured: vi.fn(() => true),
+    getTranslationSuggestions: vi.fn(async () => [
+      { spanish: 'esperar', russian: 'ждать' },
+    ]),
+  }
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(PrismaService)
-      .useValue({
-        test: {
-          findMany: vi
-            .fn<() => Promise<{ name: string; size: number }[]>>()
-            .mockResolvedValue([
-              { name: 'Alpha', size: 10 },
-              { name: 'Beta', size: 20 },
-            ]),
-        },
-      })
+      .useValue({})
       .overrideProvider(AuthService)
       .useValue(authService)
+      .overrideProvider(OpenAiService)
+      .useValue(openAiService)
       .compile()
 
     app = moduleFixture.createNestApplication()
@@ -100,18 +100,31 @@ describe('AppController (e2e)', () => {
   })
 
   it('protects API routes without a session', () => {
-    return request(app.getHttpServer()).get('/api/tests').expect(401)
+    return request(app.getHttpServer())
+      .get('/api/suggestions?q=hola')
+      .expect(401)
   })
 
-  it('returns records for an authenticated session', () => {
-    return request(app.getHttpServer())
-      .get('/api/tests')
+  it('returns suggestions for an authenticated session', async () => {
+    await request(app.getHttpServer())
+      .get('/api/suggestions?q=esperar')
       .set('Cookie', 'aprender_palabras_session=session-token')
       .expect(200)
-      .expect([
-        { name: 'Alpha', size: 10 },
-        { name: 'Beta', size: 20 },
-      ])
+      .expect({
+        suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
+      })
+
+    expect(openAiService.getTranslationSuggestions).toHaveBeenCalledWith(
+      'esperar',
+      'es-to-ru',
+    )
+  })
+
+  it('rejects invalid suggestion queries', () => {
+    return request(app.getHttpServer())
+      .get('/api/suggestions?q=a')
+      .set('Cookie', 'aprender_palabras_session=session-token')
+      .expect(400)
   })
 
   it('returns the current user and logs out the current session', async () => {
