@@ -7,7 +7,8 @@ alwaysApply: true
 
 - The primary branch is `main` (there is no `master` branch).
 - Work directly in `main` unless the user explicitly requests a separate branch.
-- Do not create pull requests. Commit completed work and push it directly to `origin/main`.
+- Do not create pull requests.
+- Never commit or push changes automatically. Commit and push directly to `origin/main` only when the user explicitly requests it.
 - Before pushing, run the relevant local lint, typecheck, test, and build checks because CI/CD is not configured.
 - Pull remote updates with fast-forward only before starting new work when `main` is behind.
 - Never force-push or rewrite published history unless the user explicitly requests it.
