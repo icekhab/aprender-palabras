@@ -14,7 +14,7 @@ import {
   type SuggestionsResponse,
   type WordDraft,
 } from '@aprender-palabras/contracts'
-import { Check, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
+import { BookOpen, Check, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
@@ -25,7 +25,11 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { WordRow } from '@/components/word-row'
+import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
+import { LessonsPage } from './pages/lessons/LessonsPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
+import { addNewWordToLesson } from './shared/api/lessons'
 import { getSuggestions } from './shared/api/suggestions'
 import {
   addExistingWord,
@@ -74,8 +78,56 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/lecciones"
+        element={
+          <ProtectedRoute>
+            <LessonsRoutePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/lecciones/:id"
+        element={
+          <ProtectedRoute>
+            <LessonDetailRoutePage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
+  )
+}
+
+function LessonsRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <LessonsPage
+      userMenu={
+        user ? (
+          <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function LessonDetailRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <LessonDetailPage
+      userMenu={
+        user ? (
+          <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
   )
 }
 
@@ -475,33 +527,12 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DictionaryWordRow({ item }: { item: DictionaryListItem }) {
-  const mastered = item.progress >= 100
-
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 py-3.5">
-      <span className="shrink-0 self-center" aria-hidden>
-        {mastered ? (
-          <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
-            <Check className="size-3 stroke-[3]" />
-          </span>
-        ) : (
-          <span className="block size-5 rounded-full border border-dashed border-orange-300" />
-        )}
-      </span>
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="font-medium text-orange-950">{item.spanish}</span>
-        <span
-          className="min-w-4 flex-1 border-b border-dotted border-orange-200"
-          aria-hidden
-        />
-      </span>
-      <span className="min-w-0 text-orange-900/55">
-        {item.russian}
-        <span className="sr-only">
-          {mastered ? ', dominada' : `, progreso ${item.progress}%`}
-        </span>
-      </span>
-    </li>
+    <WordRow
+      spanish={item.spanish}
+      russian={item.russian}
+      progress={item.progress}
+    />
   )
 }
 
@@ -685,7 +716,7 @@ function UserMenu({
         aria-label="Cuenta"
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-700 text-sm font-semibold text-white hover:bg-orange-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
+        className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-orange-700 text-sm font-semibold text-white hover:bg-orange-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
         onClick={() => {
           setOpen((current) => !current)
         }}
@@ -702,7 +733,19 @@ function UserMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-orange-50"
+            className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-sm hover:bg-orange-50"
+            onClick={() => {
+              setOpen(false)
+              navigate('/lecciones')
+            }}
+          >
+            <BookOpen className="size-4 shrink-0" aria-hidden />
+            Lecciones
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full cursor-pointer items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm hover:bg-orange-50"
             onClick={() => {
               setOpen(false)
               navigate('/settings')
@@ -714,7 +757,7 @@ function UserMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className="flex w-full cursor-pointer items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={logoutMutation.isPending}
             onClick={() => {
               setOpen(false)
@@ -740,6 +783,7 @@ function useLogoutMutation() {
       queryClient.removeQueries({ queryKey: AUTH_QUERY_KEY })
       queryClient.removeQueries({ queryKey: ['suggestions'] })
       queryClient.removeQueries({ queryKey: DICTIONARY_QUERY_KEY })
+      queryClient.removeQueries({ queryKey: ['lessons'] })
       navigate('/login', { replace: true })
     },
   })
@@ -799,7 +843,7 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
       <li className="border-t border-orange-100 first:border-t-0" role="option">
         <button
           type="button"
-          className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-orange-50"
+          className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50"
           onClick={() => {
             navigate(`/words/new?${params}`)
           }}
@@ -815,7 +859,7 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
       <li className="border-t border-orange-100 first:border-t-0" role="option">
         <button
           type="button"
-          className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:opacity-60"
+          className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={`Añadir ${label}`}
           disabled={addMutation.isPending}
           onClick={() => {
@@ -888,7 +932,9 @@ function AddWordPage() {
   const [searchParams] = useSearchParams()
   const spanish = searchParams.get('spanish')?.trim() ?? ''
   const russian = searchParams.get('russian')?.trim() ?? ''
+  const lessonId = searchParams.get('lessonId')?.trim() || null
   const hasPair = spanish.length > 0 && russian.length > 0
+  const cancelPath = lessonId ? `/lecciones/${lessonId}` : '/'
 
   const previewQuery = useQuery({
     queryKey: ['words', 'preview', spanish, russian],
@@ -898,15 +944,30 @@ function AddWordPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: createWord,
+    mutationFn: (draft: WordDraft) => {
+      if (lessonId) {
+        return addNewWordToLesson(lessonId, draft)
+      }
+
+      return createWord(draft)
+    },
     onSuccess: async () => {
+      if (lessonId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['lessons', 'detail', lessonId],
+        })
+        await queryClient.invalidateQueries({ queryKey: ['lessons', 'list'] })
+        navigate(`/lecciones/${lessonId}`, { replace: true })
+        return
+      }
+
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
       navigate('/', { replace: true })
     },
   })
 
   if (!hasPair) {
-    return <Navigate replace to="/" />
+    return <Navigate replace to={cancelPath} />
   }
 
   return (
@@ -918,10 +979,10 @@ function AddWordPage() {
               Aprender Palabras
             </p>
             <h1 className="mt-1 text-xl font-bold tracking-tight">
-              Añadir palabra
+              {lessonId ? 'Añadir a la lección' : 'Añadir palabra'}
             </h1>
           </div>
-          <Button variant="outline" onClick={() => navigate('/')}>
+          <Button variant="outline" onClick={() => navigate(cancelPath)}>
             Cancelar
           </Button>
         </div>
@@ -954,7 +1015,7 @@ function AddWordPage() {
             isSaving={createMutation.isPending}
             saveError={createMutation.error}
             onConfirm={() => createMutation.mutate(previewQuery.data)}
-            onCancel={() => navigate('/')}
+            onCancel={() => navigate(cancelPath)}
           />
         )}
       </div>

@@ -5,6 +5,7 @@ import { AuthGuard } from './auth/auth.guard.js'
 import { AuthModule } from './auth/auth.module.js'
 import { OriginGuard } from './auth/origin.guard.js'
 import { HealthController } from './health.controller.js'
+import { LessonsModule } from './lessons/lessons.module.js'
 import { PrismaModule } from './prisma.module.js'
 import { SuggestionsModule } from './suggestions/suggestions.module.js'
 import { WordsModule } from './words/words.module.js'
@@ -15,6 +16,7 @@ import { WordsModule } from './words/words.module.js'
     AuthModule,
     SuggestionsModule,
     WordsModule,
+    LessonsModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,

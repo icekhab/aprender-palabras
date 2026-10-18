@@ -8,13 +8,16 @@ datasource db {
 }
 
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
-  login           String
-  normalizedLogin String     @unique
-  passwordHash    String
-  createdAt       DateTime   @default(now()) @db.Timestamptz(3)
-  sessions        Session[]
-  cards           UserCard[]
+  id               String     @id @default(uuid()) @db.Uuid
+  login            String
+  normalizedLogin  String     @unique
+  passwordHash     String
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  currentLessonId  String?    @db.Uuid
+  sessions         Session[]
+  cards            UserCard[]
+  lessons          Lesson[]   @relation("UserLessons")
+  currentLesson    Lesson?    @relation("CurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
 }
 
 model Session {
@@ -64,6 +67,7 @@ model Word {
   createdAt              DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
   cards                  UserCard[]
+  lessonWords            LessonWord[]
 
   @@unique([normalizedSpanish, normalizedRussian])
 }
@@ -81,5 +85,33 @@ model UserCard {
 
   @@unique([userId, wordId])
   @@index([userId])
+  @@index([wordId])
+}
+
+model Lesson {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  title      String
+  position   Int
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+  user       User         @relation("UserLessons", fields: [userId], references: [id], onDelete: Cascade)
+  currentFor User[]       @relation("CurrentLesson")
+  words      LessonWord[]
+
+  @@unique([userId, position])
+  @@index([userId])
+}
+
+model LessonWord {
+  id       String   @id @default(uuid()) @db.Uuid
+  lessonId String   @db.Uuid
+  wordId   String   @db.Uuid
+  position Int
+  addedAt  DateTime @default(now()) @db.Timestamptz(3)
+  lesson   Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  word     Word     @relation(fields: [wordId], references: [id], onDelete: Restrict)
+
+  @@unique([lessonId, wordId])
+  @@unique([lessonId, position])
   @@index([wordId])
 }

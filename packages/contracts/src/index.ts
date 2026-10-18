@@ -110,3 +110,110 @@ export interface DictionaryListResponse {
   hasMore: boolean
   items: DictionaryListItem[]
 }
+
+export const lessonListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+})
+
+export type LessonListQuery = z.infer<typeof lessonListQuerySchema>
+
+export const createLessonSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+})
+
+export type CreateLessonInput = z.infer<typeof createLessonSchema>
+
+export const renameLessonSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+})
+
+export type RenameLessonInput = z.infer<typeof renameLessonSchema>
+
+export const moveLessonSchema = z.object({
+  direction: z.enum(['up', 'down']),
+})
+
+export type MoveLessonInput = z.infer<typeof moveLessonSchema>
+
+export const setCurrentLessonSchema = z.object({
+  lessonId: z.string().uuid(),
+})
+
+export type SetCurrentLessonInput = z.infer<typeof setCurrentLessonSchema>
+
+export const removeLessonWordSchema = z.object({
+  disposition: z.enum(['keep_dictionary', 'delete_card']).optional(),
+})
+
+export type RemoveLessonWordInput = z.infer<typeof removeLessonWordSchema>
+
+export type LessonStatus =
+  | 'previous'
+  | 'current'
+  | 'next'
+  | 'future'
+  | 'undefined'
+
+export interface LessonListItem {
+  id: string
+  title: string
+  position: number
+  status: LessonStatus
+  wordCount: number
+  readyCount: number
+  averageProgress: number
+  createdAt: string
+}
+
+export interface LessonListResponse {
+  totalCount: number
+  hasMore: boolean
+  currentLessonId: string | null
+  items: LessonListItem[]
+}
+
+export interface LessonWordItem {
+  wordId: string
+  spanish: string
+  russian: string
+  progress: number
+  inDictionary: boolean
+  ready: boolean
+  missingFields: string[]
+  position: number
+  addedAt: string
+}
+
+export interface LessonDetail {
+  id: string
+  title: string
+  position: number
+  status: LessonStatus
+  wordCount: number
+  readyCount: number
+  averageProgress: number
+  createdAt: string
+  words: LessonWordItem[]
+}
+
+export interface SetCurrentLessonPreview {
+  lessonId: string
+  lessonTitle: string
+  nextLessonId: string | null
+  nextLessonTitle: string | null
+  wordsToAdd: number
+  wordsAlreadyInDictionary: number
+}
+
+export interface TrainingReadiness {
+  readyCount: number
+  canStart: boolean
+  missingByWord: Array<{
+    wordId: string
+    spanish: string
+    russian: string
+    missingFields: string[]
+  }>
+  trainerAvailable: false
+}

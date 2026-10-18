@@ -120,6 +120,45 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
+  it('opens account menu and navigates to lessons', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url === '/api/auth/me') {
+          return jsonResponse(user)
+        }
+
+        if (isDictionaryListRequest(url)) {
+          return emptyDictionaryResponse()
+        }
+
+        if (url.startsWith('/api/lessons?')) {
+          return jsonResponse({
+            totalCount: 0,
+            hasMore: false,
+            currentLessonId: null,
+            items: [],
+          })
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Lecciones' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Lecciones' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByText('Aún no hay lecciones. Crea la primera.'),
+    ).toBeInTheDocument()
+  })
+
   it('logs out from the account menu', async () => {
     let authenticated = true
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
