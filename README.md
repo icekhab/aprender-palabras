@@ -18,7 +18,7 @@ Mobile-first приложение для изучения испанских с�
 Frontend, backend и PostgreSQL запускаются одной командой:
 
 ```bash
-pnpm docker:up
+pnpm start
 ```
 
 После запуска доступны:
@@ -33,7 +33,7 @@ pnpm docker:up
 Остановить сервисы:
 
 ```bash
-pnpm docker:down
+pnpm stop
 ```
 
 Удалить сервисы вместе с локальными данными PostgreSQL:

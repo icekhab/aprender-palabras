@@ -200,13 +200,13 @@ APP_ORIGIN=http://localhost:5173
 Вся dev-среда запускается из корня одной командой:
 
 ```bash
-pnpm docker:up
+pnpm start
 ```
 
 Дополнительные команды:
 
 ```bash
-pnpm docker:down
+pnpm stop
 docker compose down --volumes
 docker compose logs --follow
 pnpm lint
@@ -222,8 +222,8 @@ pnpm db:studio
 | Команда | Результат |
 |---|---|
 | `pnpm db:migrate` | применить локальные Prisma-миграции |
-| `pnpm docker:up` | запустить `web`, `api` и PostgreSQL в dev-режиме |
-| `pnpm docker:down` | остановить dev-среду |
+| `pnpm start` | запустить `web`, `api` и PostgreSQL в dev-режиме |
+| `pnpm stop` | остановить dev-среду |
 | `pnpm lint` | проверить правила кода |
 | `pnpm typecheck` | проверить TypeScript без сборки |
 | `pnpm test` | выполнить unit/integration тесты |
