@@ -1,10 +1,17 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+} from '@nestjs/common'
 import {
   wordDraftSchema,
   wordPairSchema,
   type Word,
   type WordDraft,
 } from '@aprender-palabras/contracts'
+import type { AuthenticatedRequest } from '../auth/auth.types.js'
 import { WordsService } from './words.service.js'
 
 @Controller('words')
@@ -22,12 +29,15 @@ export class WordsController {
   }
 
   @Post()
-  create(@Body() body: unknown): Promise<Word> {
+  create(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<Word> {
     const result = wordDraftSchema.safeParse(body)
     if (!result.success) {
       throw new BadRequestException('Invalid word draft')
     }
 
-    return this.wordsService.create(result.data)
+    return this.wordsService.create(request.authUser.id, result.data)
   }
 }

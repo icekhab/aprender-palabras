@@ -1,15 +1,47 @@
 import { ConflictException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { WordDraft } from '@aprender-palabras/contracts'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordsService } from './words.service.js'
 
+const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
+  spanish: 'esperar',
+  russian: 'ждать',
+  additionalTranslations: [],
+  definitionEs: null,
+  examples: [],
+  partOfSpeech: null,
+  gender: null,
+  wrongRussian: [],
+  wrongSpanish: [],
+  imageUrl: null,
+  imagePhotographerName: null,
+  imagePhotographerUrl: null,
+  imagePageUrl: null,
+  imageProvider: null,
+  imageDownloadLocation: null,
+  ...overrides,
+})
+
 describe('WordsService', () => {
-  const prisma = {
+  const tx = {
     word: {
+      findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+      findUniqueOrThrow: vi.fn<(args: unknown) => Promise<unknown>>(),
       create: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
+    userCard: {
+      findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+      create: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+  }
+
+  const prisma = {
+    $transaction: vi.fn<
+      (callback: (client: typeof tx) => Promise<unknown>) => Promise<unknown>
+    >(async (callback) => callback(tx)),
   }
 
   const openAiService = {
@@ -40,6 +72,9 @@ describe('WordsService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    )
     service = new WordsService(
       prisma as unknown as PrismaService,
       openAiService as unknown as OpenAiService,
@@ -118,29 +153,10 @@ describe('WordsService', () => {
     })
   })
 
-  it('creates a word and tracks unsplash download', async () => {
+  it('creates a word and user card when the pair is new', async () => {
     const now = new Date('2026-10-18T12:00:00.000Z')
-    prisma.word.create.mockResolvedValue({
+    const createdWord = {
       id: 'word-1',
-      spanish: 'esperar',
-      russian: 'ждать',
-      additionalTranslations: [],
-      definitionEs: null,
-      examples: [],
-      partOfSpeech: null,
-      gender: null,
-      wrongRussian: [],
-      wrongSpanish: [],
-      imageUrl: 'https://images.unsplash.com/photo.jpg',
-      imagePhotographerName: 'Ada',
-      imagePhotographerUrl: 'https://unsplash.com/@ada',
-      imagePageUrl: 'https://unsplash.com/photos/abc',
-      imageProvider: 'unsplash',
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    const draft = {
       spanish: 'esperar',
       russian: 'ждать',
       additionalTranslations: [],
@@ -155,47 +171,116 @@ describe('WordsService', () => {
       imagePhotographerUrl: 'https://unsplash.com/@ada',
       imagePageUrl: 'https://unsplash.com/photos/abc',
       imageProvider: 'unsplash' as const,
-      imageDownloadLocation: 'https://api.unsplash.com/photos/abc/download',
+      createdAt: now,
+      updatedAt: now,
     }
 
-    await expect(service.create(draft)).resolves.toMatchObject({
+    tx.word.findUnique.mockResolvedValue(null)
+    tx.word.create.mockResolvedValue(createdWord)
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({ id: 'card-1' })
+
+    const draft = emptyDraft({
+      imageUrl: 'https://images.unsplash.com/photo.jpg',
+      imagePhotographerName: 'Ada',
+      imagePhotographerUrl: 'https://unsplash.com/@ada',
+      imagePageUrl: 'https://unsplash.com/photos/abc',
+      imageProvider: 'unsplash',
+      imageDownloadLocation: 'https://api.unsplash.com/photos/abc/download',
+    })
+
+    await expect(service.create('user-1', draft)).resolves.toMatchObject({
       id: 'word-1',
       spanish: 'esperar',
       russian: 'ждать',
       createdAt: now.toISOString(),
+    })
+
+    expect(tx.word.create).toHaveBeenCalled()
+    expect(tx.userCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-1',
+        wordId: 'word-1',
+        source: 'manual',
+        inDictionary: true,
+        progress: 0,
+      },
     })
     expect(unsplashService.trackDownload).toHaveBeenCalledWith(
       'https://api.unsplash.com/photos/abc/download',
     )
   })
 
-  it('throws ConflictException on duplicate pair', async () => {
-    const { Prisma } = await import('../generated/prisma/client.js')
-    prisma.word.create.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
-    )
+  it('reuses an existing word and creates only a user card', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    const existingWord = {
+      id: 'word-existing',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: ['ожидать'],
+      definitionEs: 'Esperar algo.',
+      examples: ['Espero tu llamada.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    }
 
-    await expect(
-      service.create({
-        spanish: 'esperar',
-        russian: 'ждать',
-        additionalTranslations: [],
-        definitionEs: null,
-        examples: [],
-        partOfSpeech: null,
-        gender: null,
-        wrongRussian: [],
-        wrongSpanish: [],
-        imageUrl: null,
-        imagePhotographerName: null,
-        imagePhotographerUrl: null,
-        imagePageUrl: null,
-        imageProvider: null,
-        imageDownloadLocation: null,
-      }),
-    ).rejects.toBeInstanceOf(ConflictException)
+    tx.word.findUnique.mockResolvedValue(existingWord)
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({ id: 'card-2' })
+
+    await expect(service.create('user-1', emptyDraft())).resolves.toMatchObject({
+      id: 'word-existing',
+      spanish: 'esperar',
+      russian: 'ждать',
+    })
+
+    expect(tx.word.create).not.toHaveBeenCalled()
+    expect(tx.userCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-1',
+        wordId: 'word-existing',
+        source: 'manual',
+        inDictionary: true,
+        progress: 0,
+      },
+    })
+  })
+
+  it('throws ConflictException when the user already has the card', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    tx.word.findUnique.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: null,
+      examples: [],
+      partOfSpeech: null,
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    tx.userCard.findUnique.mockResolvedValue({ id: 'card-existing' })
+
+    await expect(service.create('user-1', emptyDraft())).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(tx.userCard.create).not.toHaveBeenCalled()
   })
 })

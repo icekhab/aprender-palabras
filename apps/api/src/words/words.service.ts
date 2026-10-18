@@ -59,32 +59,88 @@ export class WordsService {
     }
   }
 
-  async create(draft: WordDraft): Promise<Word> {
+  async create(userId: string, draft: WordDraft): Promise<Word> {
     const spanish = draft.spanish.trim()
     const russian = draft.russian.trim()
     const normalizedSpanish = normalizeWordKey(spanish)
     const normalizedRussian = normalizeWordKey(russian)
 
     try {
-      const created = await this.prisma.word.create({
-        data: {
-          spanish,
-          russian,
-          normalizedSpanish,
-          normalizedRussian,
-          additionalTranslations: draft.additionalTranslations,
-          definitionEs: draft.definitionEs,
-          examples: draft.examples,
-          partOfSpeech: draft.partOfSpeech,
-          gender: draft.gender,
-          wrongRussian: draft.wrongRussian,
-          wrongSpanish: draft.wrongSpanish,
-          imageUrl: draft.imageUrl,
-          imagePhotographerName: draft.imagePhotographerName,
-          imagePhotographerUrl: draft.imagePhotographerUrl,
-          imagePageUrl: draft.imagePageUrl,
-          imageProvider: draft.imageProvider,
-        },
+      const word = await this.prisma.$transaction(async (tx) => {
+        let existing = await tx.word.findUnique({
+          where: {
+            normalizedSpanish_normalizedRussian: {
+              normalizedSpanish,
+              normalizedRussian,
+            },
+          },
+        })
+
+        if (!existing) {
+          try {
+            existing = await tx.word.create({
+              data: {
+                spanish,
+                russian,
+                normalizedSpanish,
+                normalizedRussian,
+                additionalTranslations: draft.additionalTranslations,
+                definitionEs: draft.definitionEs,
+                examples: draft.examples,
+                partOfSpeech: draft.partOfSpeech,
+                gender: draft.gender,
+                wrongRussian: draft.wrongRussian,
+                wrongSpanish: draft.wrongSpanish,
+                imageUrl: draft.imageUrl,
+                imagePhotographerName: draft.imagePhotographerName,
+                imagePhotographerUrl: draft.imagePhotographerUrl,
+                imagePageUrl: draft.imagePageUrl,
+                imageProvider: draft.imageProvider,
+              },
+            })
+          } catch (error) {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === 'P2002'
+            ) {
+              existing = await tx.word.findUniqueOrThrow({
+                where: {
+                  normalizedSpanish_normalizedRussian: {
+                    normalizedSpanish,
+                    normalizedRussian,
+                  },
+                },
+              })
+            } else {
+              throw error
+            }
+          }
+        }
+
+        const existingCard = await tx.userCard.findUnique({
+          where: {
+            userId_wordId: {
+              userId,
+              wordId: existing.id,
+            },
+          },
+        })
+
+        if (existingCard) {
+          throw new ConflictException('Word already exists')
+        }
+
+        await tx.userCard.create({
+          data: {
+            userId,
+            wordId: existing.id,
+            source: 'manual',
+            inDictionary: true,
+            progress: 0,
+          },
+        })
+
+        return existing
       })
 
       if (
@@ -94,8 +150,12 @@ export class WordsService {
         void this.unsplashService.trackDownload(draft.imageDownloadLocation)
       }
 
-      return toWordResponse(created)
+      return toWordResponse(word)
     } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error
+      }
+
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'

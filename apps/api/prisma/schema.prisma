@@ -8,12 +8,13 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
+  id              String     @id @default(uuid()) @db.Uuid
   login           String
-  normalizedLogin String    @unique
+  normalizedLogin String     @unique
   passwordHash    String
-  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @db.Timestamptz(3)
   sessions        Session[]
+  cards           UserCard[]
 }
 
 model Session {
@@ -37,6 +38,11 @@ enum ImageProvider {
   unsplash
 }
 
+enum UserCardSource {
+  manual
+  lesson
+}
+
 model Word {
   id                     String         @id @default(uuid()) @db.Uuid
   spanish                String
@@ -57,6 +63,23 @@ model Word {
   imageProvider          ImageProvider?
   createdAt              DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+  cards                  UserCard[]
 
   @@unique([normalizedSpanish, normalizedRussian])
+}
+
+model UserCard {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  wordId       String         @db.Uuid
+  source       UserCardSource
+  inDictionary Boolean        @default(true)
+  progress     Int            @default(0)
+  addedAt      DateTime       @default(now()) @db.Timestamptz(3)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word         Word           @relation(fields: [wordId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, wordId])
+  @@index([userId])
+  @@index([wordId])
 }
