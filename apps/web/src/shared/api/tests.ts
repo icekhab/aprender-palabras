@@ -2,6 +2,7 @@ import type { TestsResponse } from '@aprender-palabras/contracts'
 
 export async function getTests(): Promise<TestsResponse> {
   const response = await fetch('/api/tests', {
+    credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
     },

@@ -1,5 +1,5 @@
 ---
-description: Git workflow for a solo project without pull requests or CI/CD
+description: Git workflow for a solo project without CI/CD
 alwaysApply: true
 ---
 
@@ -7,7 +7,7 @@ alwaysApply: true
 
 - The primary branch is `main` (there is no `master` branch).
 - Work directly in `main` unless the user explicitly requests a separate branch.
-- Do not create pull requests.
+- Do not create branches or pull requests unless the user explicitly requests them.
 - Never commit or push after completing a task unless the user explicitly asks for that Git action.
 - A request to edit or implement something does not authorize a commit or push.
 - Commit only when the user explicitly asks to commit. Push only when the user explicitly asks to push.

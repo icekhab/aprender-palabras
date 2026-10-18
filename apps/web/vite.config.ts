@@ -14,8 +14,8 @@ export default defineConfig({
       manifest: {
         name: 'Aprender Palabras',
         short_name: 'Palabras',
-        description: 'Приложение для изучения испанских слов',
-        lang: 'ru',
+        description: 'Aplicación para aprender palabras en español',
+        lang: 'es',
         start_url: '/',
         display: 'standalone',
         background_color: '#fff7ed',
