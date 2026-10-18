@@ -46,6 +46,8 @@ React PWA → NestJS API → PostgreSQL
 | React | пользовательский интерфейс |
 | Vite | сборка и локальный dev server |
 | `vite-plugin-pwa` | manifest, service worker и установка PWA |
+| Tailwind CSS | стили, responsive-дизайн и layout |
+| shadcn/ui + Radix UI | UI-компоненты и доступные интерактивные примитивы |
 | React Router | маршрутизация |
 | TanStack Query | запросы к API и server state |
 | React Hook Form | формы |
@@ -53,6 +55,23 @@ React PWA → NestJS API → PostgreSQL
 | Web Speech API | воспроизведение испанского текста на устройстве |
 
 Интерфейс разрабатывается mobile-first, но должен полноценно работать на компьютере.
+
+#### Стили и UI-компоненты
+
+- Стили экранов и layout описываются Tailwind-классами непосредственно в JSX. Отдельные CSS-файлы не создаются для стилей, которые можно выразить стандартными utilities.
+- `apps/web/src/index.css` содержит только глобальные стили, Tailwind imports, тему и общие CSS variables.
+- Базовые UI-компоненты shadcn/ui хранятся в `apps/web/src/components/ui`. Это код проекта: его можно адаптировать под дизайн приложения.
+- Компоненты импортируются через alias `@`, например `import { Button } from '@/components/ui/button'`.
+- Для условного объединения классов `cn` импортируется напрямую из пакета: `import { cn } from 'cn'`. Промежуточный re-export из `lib` не используется.
+
+Новый компонент shadcn/ui добавляется из директории frontend:
+
+```bash
+cd apps/web
+pnpm dlx shadcn@latest add card
+```
+
+После добавления компонент необходимо проверить и при необходимости привести к дизайн-токенам и требованиям проекта.
 
 ### Backend
 
@@ -102,9 +121,11 @@ Frontend обращается к относительному пути `/api`. �
 │   ├── web/                  # React PWA
 │   │   ├── src/
 │   │   │   ├── app/         # router, providers, layouts
+│   │   │   ├── components/
+│   │   │   │   └── ui/      # локальные компоненты shadcn/ui
 │   │   │   ├── pages/       # страницы
 │   │   │   ├── features/    # функции продукта
-│   │   │   └── shared/      # UI, API client, utilities
+│   │   │   └── shared/      # API client и общие utilities
 │   │   └── public/
 │   └── api/                  # NestJS API
 │       ├── src/
