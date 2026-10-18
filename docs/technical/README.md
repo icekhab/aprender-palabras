@@ -162,7 +162,9 @@ Frontend обращается к относительному пути `/api`. �
 - Docker Desktop;
 - Git.
 
-PostgreSQL запускается в Docker. Frontend и backend запускаются локальными Node.js-процессами для удобной перезагрузки кода.
+Frontend, backend и PostgreSQL запускаются через Docker Compose. Исходники
+подключаются к контейнерам через bind mount, поэтому Vite и NestJS сохраняют
+автоматическую перезагрузку кода.
 
 ### 6.2. Локальные адреса
 
@@ -181,39 +183,38 @@ Vite перенаправляет локальные запросы `/api` на 
 Минимальные переменные backend:
 
 ```dotenv
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aprender_palabras
+DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aprender_palabras
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-6-luna
 UNSPLASH_ACCESS_KEY=
 APP_ORIGIN=http://localhost:5173
 ```
 
+Имя хоста `postgres` доступно backend-контейнеру во внутренней сети Compose.
+При запуске backend без Docker вместо него используется `localhost`.
+
 Приложение должно запускаться без ключей OpenAI и Unsplash, но соответствующие функции будут недоступны. Сохранение карточки вручную должно продолжать работать.
 
 ### 6.4. Команды
 
-После создания каркаса проекта используются единые команды из корня:
+Вся dev-среда запускается из корня одной командой:
 
 ```bash
-corepack enable
-pnpm install
-docker compose up -d postgres
-pnpm db:migrate
-pnpm dev
+pnpm docker:up
 ```
-
-`pnpm dev` одновременно запускает frontend и backend.
 
 Дополнительные команды:
 
 ```bash
+pnpm docker:down
+docker compose down --volumes
+docker compose logs --follow
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:e2e
 pnpm format
 pnpm db:studio
-docker compose down
 ```
 
 Ожидаемое назначение:
@@ -221,7 +222,8 @@ docker compose down
 | Команда | Результат |
 |---|---|
 | `pnpm db:migrate` | применить локальные Prisma-миграции |
-| `pnpm dev` | запустить `web` и `api` в watch mode |
+| `pnpm docker:up` | запустить `web`, `api` и PostgreSQL в dev-режиме |
+| `pnpm docker:down` | остановить dev-среду |
 | `pnpm lint` | проверить правила кода |
 | `pnpm typecheck` | проверить TypeScript без сборки |
 | `pnpm test` | выполнить unit/integration тесты |
