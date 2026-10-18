@@ -42,6 +42,11 @@ describe('WordsService', () => {
     $transaction: vi.fn<
       (callback: (client: typeof tx) => Promise<unknown>) => Promise<unknown>
     >(async (callback) => callback(tx)),
+    userCard: {
+      count: vi.fn<(args: unknown) => Promise<number>>(),
+      aggregate: vi.fn<(args: unknown) => Promise<{ _avg: { progress: number | null } }>>(),
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
   }
 
   const openAiService = {
@@ -252,6 +257,62 @@ describe('WordsService', () => {
         inDictionary: true,
         progress: 0,
       },
+    })
+  })
+
+  it('lists an empty dictionary with zero average progress', async () => {
+    prisma.userCard.count.mockResolvedValue(0)
+    prisma.userCard.aggregate.mockResolvedValue({ _avg: { progress: null } })
+    prisma.userCard.findMany.mockResolvedValue([])
+
+    await expect(
+      service.list('user-1', { limit: 20, offset: 0 }),
+    ).resolves.toEqual({
+      totalCount: 0,
+      averageProgress: 0,
+      hasMore: false,
+      items: [],
+    })
+
+    expect(prisma.userCard.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', inDictionary: true },
+      include: { word: true },
+      orderBy: { addedAt: 'desc' },
+      skip: 0,
+      take: 20,
+    })
+  })
+
+  it('lists dictionary cards with average progress and hasMore', async () => {
+    const addedAt = new Date('2026-10-18T12:00:00.000Z')
+    prisma.userCard.count.mockResolvedValue(21)
+    prisma.userCard.aggregate.mockResolvedValue({ _avg: { progress: 50.4 } })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        id: 'card-1',
+        wordId: 'word-1',
+        progress: 100,
+        addedAt,
+        word: { spanish: 'esperar', russian: 'ждать' },
+      },
+    ])
+
+    await expect(
+      service.list('user-1', { limit: 20, offset: 0 }),
+    ).resolves.toEqual({
+      totalCount: 21,
+      averageProgress: 50,
+      hasMore: true,
+      items: [
+        {
+          id: 'card-1',
+          wordId: 'word-1',
+          spanish: 'esperar',
+          russian: 'ждать',
+          progress: 100,
+          addedAt: addedAt.toISOString(),
+        },
+      ],
     })
   })
 

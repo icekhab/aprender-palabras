@@ -2,12 +2,16 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
+  Query,
   Req,
 } from '@nestjs/common'
 import {
+  dictionaryListQuerySchema,
   wordDraftSchema,
   wordPairSchema,
+  type DictionaryListResponse,
   type Word,
   type WordDraft,
 } from '@aprender-palabras/contracts'
@@ -17,6 +21,19 @@ import { WordsService } from './words.service.js'
 @Controller('words')
 export class WordsController {
   constructor(private readonly wordsService: WordsService) {}
+
+  @Get()
+  list(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: unknown,
+  ): Promise<DictionaryListResponse> {
+    const result = dictionaryListQuerySchema.safeParse(query)
+    if (!result.success) {
+      throw new BadRequestException('Invalid dictionary list query')
+    }
+
+    return this.wordsService.list(request.authUser.id, result.data)
+  }
 
   @Post('preview')
   preview(@Body() body: unknown): Promise<WordDraft> {

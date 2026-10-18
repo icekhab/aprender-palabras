@@ -3,7 +3,13 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common'
-import type { Word, WordDraft, WordPairInput } from '@aprender-palabras/contracts'
+import type {
+  DictionaryListQuery,
+  DictionaryListResponse,
+  Word,
+  WordDraft,
+  WordPairInput,
+} from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
@@ -56,6 +62,49 @@ export class WordsService {
     } catch (error) {
       this.logger.error('Word preview generation failed', error)
       return emptyDraft
+    }
+  }
+
+  async list(
+    userId: string,
+    query: DictionaryListQuery,
+  ): Promise<DictionaryListResponse> {
+    const where = {
+      userId,
+      inDictionary: true,
+    }
+
+    const [totalCount, progressAggregate, cards] = await Promise.all([
+      this.prisma.userCard.count({ where }),
+      this.prisma.userCard.aggregate({
+        where,
+        _avg: { progress: true },
+      }),
+      this.prisma.userCard.findMany({
+        where,
+        include: { word: true },
+        orderBy: { addedAt: 'desc' },
+        skip: query.offset,
+        take: query.limit,
+      }),
+    ])
+
+    const { _avg: averageFields } = progressAggregate
+    const averageProgress =
+      totalCount === 0 ? 0 : Math.round(averageFields.progress ?? 0)
+
+    return {
+      totalCount,
+      averageProgress,
+      hasMore: query.offset + cards.length < totalCount,
+      items: cards.map((card) => ({
+        id: card.id,
+        wordId: card.wordId,
+        spanish: card.word.spanish,
+        russian: card.word.russian,
+        progress: card.progress,
+        addedAt: card.addedAt.toISOString(),
+      })),
     }
   }
 

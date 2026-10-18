@@ -77,3 +77,26 @@ export interface Word {
   createdAt: string
   updatedAt: string
 }
+
+export const dictionaryListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+})
+
+export type DictionaryListQuery = z.infer<typeof dictionaryListQuerySchema>
+
+export interface DictionaryListItem {
+  id: string
+  wordId: string
+  spanish: string
+  russian: string
+  progress: number
+  addedAt: string
+}
+
+export interface DictionaryListResponse {
+  totalCount: number
+  averageProgress: number
+  hasMore: boolean
+  items: DictionaryListItem[]
+}

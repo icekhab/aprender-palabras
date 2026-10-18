@@ -1,12 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   loginSchema,
   type AuthUser,
+  type DictionaryListItem,
   type LoginInput,
   type SuggestionItem,
   type WordDraft,
 } from '@aprender-palabras/contracts'
+import { Check, LogOut, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
@@ -16,11 +23,14 @@ import {
   useNavigate,
   useSearchParams,
 } from 'react-router-dom'
-import { LogOut, Settings, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
-import { createWord, previewWord } from './shared/api/words'
+import {
+  createWord,
+  listDictionaryWords,
+  previewWord,
+} from './shared/api/words'
 import {
   getPreferredSpanishVoiceURI,
   getSpanishVoices,
@@ -29,8 +39,10 @@ import {
 } from './shared/speech'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
+const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
 const SEARCH_DEBOUNCE_MS = 300
 const MIN_QUERY_LENGTH = 2
+const DICTIONARY_PAGE_SIZE = 20
 
 function App() {
   return (
@@ -230,6 +242,23 @@ function HomePage() {
 
   const showSuggestionsPanel = debouncedQuery.length >= MIN_QUERY_LENGTH
 
+  const dictionaryQuery = useInfiniteQuery({
+    queryKey: DICTIONARY_QUERY_KEY,
+    queryFn: ({ pageParam, signal }) =>
+      listDictionaryWords(
+        { limit: DICTIONARY_PAGE_SIZE, offset: pageParam },
+        signal,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _pages, lastPageParam) =>
+      lastPage.hasMore ? lastPageParam + DICTIONARY_PAGE_SIZE : undefined,
+  })
+
+  const dictionaryPages = dictionaryQuery.data?.pages
+  const totalCount = dictionaryPages?.[0]?.totalCount ?? 0
+  const averageProgress = dictionaryPages?.[0]?.averageProgress ?? 0
+  const dictionaryItems = dictionaryPages?.flatMap((page) => page.items) ?? []
+
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
       <header className="border-b border-orange-100 bg-white/90">
@@ -301,7 +330,10 @@ function HomePage() {
             </div>
 
             {user ? (
-              <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+              <UserMenu
+                userLogin={user.login}
+                logoutMutation={logoutMutation}
+              />
             ) : null}
           </div>
         </div>
@@ -312,7 +344,146 @@ function HomePage() {
           </p>
         ) : null}
       </header>
+
+      <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
+        <div className="flex items-center gap-4">
+          <ProgressRing value={averageProgress} />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Diccionario</h1>
+            <p className="mt-1 text-sm text-orange-900/60">
+              {totalCount === 1
+                ? '1 palabra añadida'
+                : `${totalCount} palabras añadidas`}
+            </p>
+          </div>
+        </div>
+
+        {dictionaryQuery.isPending && (
+          <p className="mt-8 text-sm text-orange-900/70" role="status">
+            Cargando el diccionario…
+          </p>
+        )}
+
+        {dictionaryQuery.isError && (
+          <div className="mt-8" role="alert">
+            <p className="text-sm text-red-700">
+              No se pudo cargar el diccionario.
+            </p>
+            <Button
+              className="mt-4"
+              onClick={() => void dictionaryQuery.refetch()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        )}
+
+        {dictionaryQuery.isSuccess && dictionaryItems.length === 0 && (
+          <p className="mt-8 text-sm text-orange-900/70">
+            Aún no hay palabras. Busca una arriba para añadirla.
+          </p>
+        )}
+
+        {dictionaryQuery.isSuccess && dictionaryItems.length > 0 && (
+          <>
+            <ul className="mt-8">
+              {dictionaryItems.map((item) => (
+                <DictionaryWordRow item={item} key={item.id} />
+              ))}
+            </ul>
+
+            {dictionaryQuery.hasNextPage ? (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  disabled={dictionaryQuery.isFetchingNextPage}
+                  onClick={() => void dictionaryQuery.fetchNextPage()}
+                >
+                  {dictionaryQuery.isFetchingNextPage
+                    ? 'Cargando…'
+                    : 'Mostrar más'}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
     </main>
+  )
+}
+
+function ProgressRing({ value }: { value: number }) {
+  const size = 56
+  const strokeWidth = 4
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const clamped = Math.min(100, Math.max(0, value))
+  const offset = circumference - (clamped / 100) * circumference
+
+  return (
+    <div
+      className="relative shrink-0"
+      style={{ width: size, height: size }}
+      aria-label={`Progreso medio ${clamped}%`}
+    >
+      <svg width={size} height={size} className="-rotate-90" aria-hidden>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-orange-200"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="text-orange-700"
+        />
+      </svg>
+      <span className="absolute inset-0 grid place-items-center text-sm font-semibold text-orange-950">
+        {clamped}%
+      </span>
+    </div>
+  )
+}
+
+function DictionaryWordRow({ item }: { item: DictionaryListItem }) {
+  const mastered = item.progress >= 100
+
+  return (
+    <li className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 py-3.5">
+      <span className="shrink-0 self-center" aria-hidden>
+        {mastered ? (
+          <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
+            <Check className="size-3 stroke-[3]" />
+          </span>
+        ) : (
+          <span className="block size-5 rounded-full border border-dashed border-orange-300" />
+        )}
+      </span>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="font-medium text-orange-950">{item.spanish}</span>
+        <span
+          className="min-w-4 flex-1 border-b border-dotted border-orange-200"
+          aria-hidden
+        />
+      </span>
+      <span className="min-w-0 text-orange-900/55">
+        {item.russian}
+        <span className="sr-only">
+          {mastered ? ', dominada' : `, progreso ${item.progress}%`}
+        </span>
+      </span>
+    </li>
   )
 }
 
@@ -332,12 +503,18 @@ function SettingsPage() {
       setVoices(spanishVoices)
 
       setSelectedVoiceURI((current) => {
-        if (current && spanishVoices.some((voice) => voice.voiceURI === current)) {
+        if (
+          current &&
+          spanishVoices.some((voice) => voice.voiceURI === current)
+        ) {
           return current
         }
 
         const stored = getPreferredSpanishVoiceURI()
-        if (stored && spanishVoices.some((voice) => voice.voiceURI === stored)) {
+        if (
+          stored &&
+          spanishVoices.some((voice) => voice.voiceURI === stored)
+        ) {
           return stored
         }
 
@@ -368,7 +545,10 @@ function SettingsPage() {
               Volver
             </Button>
             {user ? (
-              <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+              <UserMenu
+                userLogin={user.login}
+                logoutMutation={logoutMutation}
+              />
             ) : null}
           </div>
         </div>
@@ -388,12 +568,15 @@ function SettingsPage() {
 
           {voices.length === 0 ? (
             <p className="text-sm text-orange-900/70" role="status">
-              No hay voces en español en este dispositivo. La reproducción
-              puede no estar disponible.
+              No hay voces en español en este dispositivo. La reproducción puede
+              no estar disponible.
             </p>
           ) : (
             <>
-              <label className="block text-sm font-medium" htmlFor="spanish-voice">
+              <label
+                className="block text-sm font-medium"
+                htmlFor="spanish-voice"
+              >
                 Voz
               </label>
               <div className="flex max-w-md items-center gap-3">
@@ -457,10 +640,7 @@ function UserMenu({
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node)
-      ) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpen(false)
       }
     }
@@ -541,6 +721,7 @@ function useLogoutMutation() {
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: AUTH_QUERY_KEY })
       queryClient.removeQueries({ queryKey: ['suggestions'] })
+      queryClient.removeQueries({ queryKey: DICTIONARY_QUERY_KEY })
       navigate('/login', { replace: true })
     },
   })
@@ -572,6 +753,7 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
 
 function AddWordPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const spanish = searchParams.get('spanish')?.trim() ?? ''
   const russian = searchParams.get('russian')?.trim() ?? ''
@@ -586,7 +768,8 @@ function AddWordPage() {
 
   const createMutation = useMutation({
     mutationFn: createWord,
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
       navigate('/', { replace: true })
     },
   })
@@ -746,17 +929,13 @@ function WordDraftView({
       <ReadOnlyField
         label="Opciones incorrectas (ruso)"
         value={
-          draft.wrongRussian.length > 0
-            ? draft.wrongRussian.join(', ')
-            : null
+          draft.wrongRussian.length > 0 ? draft.wrongRussian.join(', ') : null
         }
       />
       <ReadOnlyField
         label="Opciones incorrectas (español)"
         value={
-          draft.wrongSpanish.length > 0
-            ? draft.wrongSpanish.join(', ')
-            : null
+          draft.wrongSpanish.length > 0 ? draft.wrongSpanish.join(', ') : null
         }
       />
 

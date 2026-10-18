@@ -33,6 +33,19 @@ function renderApp(initialPath = '/') {
   )
 }
 
+function emptyDictionaryResponse() {
+  return jsonResponse({
+    totalCount: 0,
+    averageProgress: 0,
+    hasMore: false,
+    items: [],
+  })
+}
+
+function isDictionaryListRequest(url: string) {
+  return url.startsWith('/api/words?')
+}
+
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
@@ -48,6 +61,10 @@ describe('App', () => {
         return jsonResponse(user)
       }
 
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
       throw new Error(`Unexpected request: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -59,6 +76,8 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(user.login)).toBeInTheDocument()
     expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Diccionario' })).toBeInTheDocument()
+    expect(screen.getByText('0 palabras añadidas')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toHaveTextContent('I')
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', {
@@ -73,11 +92,16 @@ describe('App', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>(async (input) => {
-        if (String(input) === '/api/auth/me') {
+        const url = String(input)
+        if (url === '/api/auth/me') {
           return jsonResponse(user)
         }
 
-        throw new Error(`Unexpected request: ${String(input)}`)
+        if (isDictionaryListRequest(url)) {
+          return emptyDictionaryResponse()
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
       }),
     )
     vi.stubGlobal('speechSynthesis', {
@@ -103,6 +127,10 @@ describe('App', () => {
 
       if (url === '/api/auth/me') {
         return authenticated ? jsonResponse(user) : errorResponse(401)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
       }
 
       if (url === '/api/auth/logout' && init?.method === 'POST') {
@@ -188,6 +216,10 @@ describe('App', () => {
         return jsonResponse(user)
       }
 
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
       if (url.startsWith('/api/suggestions?')) {
         return jsonResponse({
           suggestions: [{ spanish: 'esperar', russian: 'ждать' }],
@@ -237,6 +269,10 @@ describe('App', () => {
 
       if (url === '/api/auth/me') {
         return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
       }
 
       if (url.startsWith('/api/suggestions?')) {
@@ -396,6 +432,10 @@ describe('App', () => {
         }
 
         return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
       }
 
       throw new Error(`Unexpected request: ${url}`)

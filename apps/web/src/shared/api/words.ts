@@ -1,5 +1,26 @@
-import type { Word, WordDraft, WordPairInput } from '@aprender-palabras/contracts'
+import type {
+  DictionaryListQuery,
+  DictionaryListResponse,
+  Word,
+  WordDraft,
+  WordPairInput,
+} from '@aprender-palabras/contracts'
 import { ApiError } from './auth'
+
+export async function listDictionaryWords(
+  query: DictionaryListQuery,
+  signal?: AbortSignal,
+): Promise<DictionaryListResponse> {
+  const params = new URLSearchParams({
+    limit: String(query.limit),
+    offset: String(query.offset),
+  })
+
+  return request<DictionaryListResponse>(`/api/words?${params}`, {
+    method: 'GET',
+    signal,
+  })
+}
 
 export async function previewWord(
   input: WordPairInput,
