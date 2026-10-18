@@ -10,7 +10,42 @@ Mobile-first приложение для изучения испанских с�
 
 Главная страница получает `Hello world` из `GET /api/hello`.
 
-## Локальный запуск
+## Запуск в Docker
+
+Установите или обновите [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+и убедитесь, что он запущен.
+
+Frontend, backend и PostgreSQL запускаются одной командой:
+
+```bash
+pnpm docker:up
+```
+
+После запуска доступны:
+
+- frontend — `http://localhost:5173`;
+- backend — `http://localhost:3000/api/hello`;
+- PostgreSQL — `localhost:5432`.
+
+Исходники подключены к контейнерам, поэтому Vite и NestJS автоматически
+перезапускаются при изменениях. Данные PostgreSQL сохраняются в Docker volume.
+
+Остановить сервисы:
+
+```bash
+pnpm docker:down
+```
+
+Удалить сервисы вместе с локальными данными PostgreSQL:
+
+```bash
+docker compose down --volumes
+```
+
+Настройки по умолчанию находятся в `.env.example`. Чтобы изменить их локально,
+скопируйте файл в `.env`; этот файл не попадёт в Git.
+
+## Запуск без Docker
 
 Одноразовая настройка на macOS:
 
