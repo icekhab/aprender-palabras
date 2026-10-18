@@ -35,9 +35,13 @@ React PWA → NestJS API → PostgreSQL
 | pnpm | зависимости и monorepo |
 | Oxlint + Prettier | проверка и форматирование кода |
 | Vitest | unit и integration тесты |
-| Playwright | браузерные E2E-тесты |
+| Playwright | браузерные E2E-тесты, отложенные до отдельного этапа |
 
 Точные версии фиксируются в `package.json` и `pnpm-lock.yaml` при создании проекта. Используются только стабильные версии, без beta и release candidate.
+
+Playwright пока намеренно не добавляется в зависимости и конфигурацию проекта.
+Браузерные E2E-тесты будут спроектированы и подключены позднее отдельным
+этапом.
 
 ### Frontend
 
@@ -212,7 +216,6 @@ docker compose logs --follow
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm test:e2e
 pnpm format
 pnpm db:studio
 ```
@@ -227,9 +230,9 @@ pnpm db:studio
 | `pnpm lint` | проверить правила кода |
 | `pnpm typecheck` | проверить TypeScript без сборки |
 | `pnpm test` | выполнить unit/integration тесты |
-| `pnpm test:e2e` | выполнить Playwright-тесты |
 
-Эти scripts должны быть добавлены при создании каркаса приложения; сейчас документ фиксирует их будущий контракт.
+Корневая команда `pnpm test:e2e` появится вместе с Playwright на отдельном
+этапе. До этого её отсутствие не считается незавершённостью текущего каркаса.
 
 ## 7. Порядок дальнейшей работы
 
