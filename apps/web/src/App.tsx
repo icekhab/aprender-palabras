@@ -8,6 +8,7 @@ import {
 import {
   loginSchema,
   type AuthUser,
+  type DailyTrainerItem,
   type DictionaryListItem,
   type LoginInput,
   type SuggestionItem,
@@ -31,6 +32,7 @@ import { LessonsPage } from './pages/lessons/LessonsPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { addNewWordToLesson } from './shared/api/lessons'
 import { getSuggestions } from './shared/api/suggestions'
+import { getTodayTraining } from './shared/api/training'
 import {
   addExistingWord,
   createWord,
@@ -46,9 +48,19 @@ import {
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
+const TRAINING_TODAY_QUERY_KEY = ['training', 'today'] as const
 const SEARCH_DEBOUNCE_MS = 300
 const MIN_QUERY_LENGTH = 2
 const DICTIONARY_PAGE_SIZE = 20
+
+const TRAINER_CARD_COLORS = [
+  'bg-orange-600',
+  'bg-rose-600',
+  'bg-amber-600',
+  'bg-teal-700',
+  'bg-sky-700',
+  'bg-lime-700',
+] as const
 
 function App() {
   return (
@@ -310,6 +322,11 @@ function HomePage() {
       lastPage.hasMore ? lastPageParam + DICTIONARY_PAGE_SIZE : undefined,
   })
 
+  const trainingQuery = useQuery({
+    queryKey: TRAINING_TODAY_QUERY_KEY,
+    queryFn: ({ signal }) => getTodayTraining(signal),
+  })
+
   const dictionaryPages = dictionaryQuery.data?.pages
   const totalCount = dictionaryPages?.[0]?.totalCount ?? 0
   const averageProgress = dictionaryPages?.[0]?.averageProgress ?? 0
@@ -415,11 +432,47 @@ function HomePage() {
         ) : null}
       </header>
 
+      {trainingQuery.isPending ||
+      trainingQuery.isError ||
+      (trainingQuery.isSuccess && trainingQuery.data.trainers.length > 0) ? (
+        <section className="mx-auto max-w-5xl px-5 pt-8 sm:px-8">
+          <div className="flex items-end justify-between gap-4">
+            <h1 className="text-2xl font-bold tracking-tight">
+              Entrenamiento diario
+            </h1>
+          </div>
+
+          {trainingQuery.isPending && (
+            <p className="mt-4 text-sm text-orange-900/70" role="status">
+              Preparando el entrenamiento…
+            </p>
+          )}
+
+          {trainingQuery.isError && (
+            <div className="mt-4" role="alert">
+              <p className="text-sm text-red-700">
+                No se pudo cargar el entrenamiento.
+              </p>
+              <Button
+                className="mt-3"
+                onClick={() => void trainingQuery.refetch()}
+              >
+                Reintentar
+              </Button>
+            </div>
+          )}
+
+          {trainingQuery.isSuccess && trainingQuery.data.trainers.length > 0 ? (
+            <DailyTrainerRow trainers={trainingQuery.data.trainers} />
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
         <div className="flex items-center gap-4">
           <ProgressRing value={averageProgress} />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Diccionario</h1>
+            <h2 className="text-2xl font-bold tracking-tight">Diccionario</h2>
             <p className="mt-1 text-sm text-orange-900/60">
               {totalCount === 1
                 ? '1 palabra añadida'
@@ -479,6 +532,43 @@ function HomePage() {
         )}
       </section>
     </main>
+  )
+}
+
+function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
+  return (
+    <ul
+      className="-mx-5 mt-5 flex gap-3 overflow-x-auto px-5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
+      aria-label="Entrenamientos de hoy"
+    >
+      {trainers.map((trainer, index) => {
+        const color =
+          TRAINER_CARD_COLORS[index % TRAINER_CARD_COLORS.length] ??
+          TRAINER_CARD_COLORS[0]
+        const wordLabel =
+          trainer.wordCount === 1
+            ? '1 palabra'
+            : `${trainer.wordCount} palabras`
+
+        return (
+          <li key={trainer.id} className="shrink-0">
+            <button
+              type="button"
+              className={`${color} relative flex h-40 w-40 flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:brightness-105`}
+              aria-label={`${trainer.sourceLabel}, ${wordLabel}`}
+            >
+              <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/95 text-sm font-bold text-orange-950">
+                {index + 1}
+              </span>
+              <p className="pr-8 text-sm leading-snug font-semibold">
+                {trainer.sourceLabel}
+              </p>
+              <p className="text-sm font-medium text-white/90">{wordLabel}</p>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

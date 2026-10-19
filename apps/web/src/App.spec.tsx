@@ -42,8 +42,20 @@ function emptyDictionaryResponse() {
   })
 }
 
+function emptyTrainingResponse() {
+  return jsonResponse({
+    date: '2026-10-19',
+    readyCardCount: 0,
+    trainers: [],
+  })
+}
+
 function isDictionaryListRequest(url: string) {
   return url.startsWith('/api/words?')
+}
+
+function isTrainingTodayRequest(url: string) {
+  return url === '/api/training/today'
 }
 
 afterEach(() => {
@@ -53,6 +65,54 @@ afterEach(() => {
 })
 
 describe('App', () => {
+  it('renders daily training cards above the dictionary', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return jsonResponse({
+          date: '2026-10-19',
+          readyCardCount: 3,
+          trainers: [
+            {
+              id: 'trainer-1',
+              kind: 'daily',
+              slot: 1,
+              sourceLabel: 'Palabras nuevas',
+              wordCount: 3,
+              words: [],
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Entrenamiento diario' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', {
+        name: 'Palabras nuevas, 3 palabras',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Diccionario' }),
+    ).toBeInTheDocument()
+  })
+
   it('renders the home header for an authenticated user', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)
@@ -63,6 +123,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -76,7 +140,14 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(user.login)).toBeInTheDocument()
     expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Diccionario' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Diccionario' }),
+    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('heading', { name: 'Entrenamiento diario' }),
+      ).not.toBeInTheDocument()
+    })
     expect(screen.getByText('0 palabras añadidas')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toHaveTextContent('I')
@@ -99,6 +170,10 @@ describe('App', () => {
 
         if (isDictionaryListRequest(url)) {
           return emptyDictionaryResponse()
+        }
+
+        if (isTrainingTodayRequest(url)) {
+          return emptyTrainingResponse()
         }
 
         throw new Error(`Unexpected request: ${url}`)
@@ -131,6 +206,10 @@ describe('App', () => {
 
         if (isDictionaryListRequest(url)) {
           return emptyDictionaryResponse()
+        }
+
+        if (isTrainingTodayRequest(url)) {
+          return emptyTrainingResponse()
         }
 
         if (url.startsWith('/api/lessons?')) {
@@ -170,6 +249,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       if (url === '/api/auth/logout' && init?.method === 'POST') {
@@ -259,6 +342,10 @@ describe('App', () => {
         return emptyDictionaryResponse()
       }
 
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
       if (url.startsWith('/api/suggestions?')) {
         return jsonResponse({
           suggestions: [
@@ -302,6 +389,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       if (url.startsWith('/api/suggestions?')) {
@@ -367,6 +458,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       if (url.startsWith('/api/suggestions?')) {
@@ -438,6 +533,10 @@ describe('App', () => {
         return emptyDictionaryResponse()
       }
 
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
       if (url.startsWith('/api/suggestions?')) {
         return jsonResponse({
           suggestions: [
@@ -501,6 +600,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       if (url.startsWith('/api/suggestions?')) {
@@ -646,6 +749,10 @@ describe('App', () => {
 
       if (isDictionaryListRequest(url)) {
         return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
       }
 
       throw new Error(`Unexpected request: ${url}`)

@@ -8,6 +8,7 @@ import { HealthController } from './health.controller.js'
 import { LessonsModule } from './lessons/lessons.module.js'
 import { PrismaModule } from './prisma.module.js'
 import { SuggestionsModule } from './suggestions/suggestions.module.js'
+import { TrainingModule } from './training/training.module.js'
 import { WordsModule } from './words/words.module.js'
 
 @Module({
@@ -17,6 +18,7 @@ import { WordsModule } from './words/words.module.js'
     SuggestionsModule,
     WordsModule,
     LessonsModule,
+    TrainingModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,

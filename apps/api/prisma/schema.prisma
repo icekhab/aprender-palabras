@@ -8,16 +8,18 @@ datasource db {
 }
 
 model User {
-  id               String     @id @default(uuid()) @db.Uuid
-  login            String
-  normalizedLogin  String     @unique
-  passwordHash     String
-  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
-  currentLessonId  String?    @db.Uuid
-  sessions         Session[]
-  cards            UserCard[]
-  lessons          Lesson[]   @relation("UserLessons")
-  currentLesson    Lesson?    @relation("CurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  id                     String             @id @default(uuid()) @db.Uuid
+  login                  String
+  normalizedLogin        String             @unique
+  passwordHash           String
+  createdAt              DateTime           @default(now()) @db.Timestamptz(3)
+  currentLessonId        String?            @db.Uuid
+  lastCompletedTrainerAt DateTime?          @db.Timestamptz(3)
+  sessions               Session[]
+  cards                  UserCard[]
+  lessons                Lesson[]           @relation("UserLessons")
+  currentLesson          Lesson?            @relation("CurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  trainingDays           DailyTrainingDay[]
 }
 
 model Session {
@@ -73,19 +75,73 @@ model Word {
 }
 
 model UserCard {
-  id           String         @id @default(uuid()) @db.Uuid
-  userId       String         @db.Uuid
-  wordId       String         @db.Uuid
-  source       UserCardSource
-  inDictionary Boolean        @default(true)
-  progress     Int            @default(0)
-  addedAt      DateTime       @default(now()) @db.Timestamptz(3)
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  word         Word           @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  id                    String              @id @default(uuid()) @db.Uuid
+  userId                String              @db.Uuid
+  wordId                String              @db.Uuid
+  source                UserCardSource
+  inDictionary          Boolean             @default(true)
+  progress              Int                 @default(0)
+  lastTrainedAt         DateTime?           @db.Timestamptz(3)
+  completedTrainerCount Int                 @default(0)
+  showCount             Int                 @default(0)
+  addedAt               DateTime            @default(now()) @db.Timestamptz(3)
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word                  Word                @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  trainerWords          DailyTrainerWord[]
 
   @@unique([userId, wordId])
   @@index([userId])
   @@index([wordId])
+}
+
+enum DailyTrainerKind {
+  daily
+  extra
+}
+
+enum DailyTrainerStatus {
+  not_started
+  completed
+}
+
+model DailyTrainingDay {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  date      DateTime       @db.Date
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainers  DailyTrainer[]
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model DailyTrainer {
+  id          String             @id @default(uuid()) @db.Uuid
+  dayId       String             @db.Uuid
+  kind        DailyTrainerKind
+  slot        Int
+  status      DailyTrainerStatus @default(not_started)
+  sourceLabel String
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  day         DailyTrainingDay   @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  words       DailyTrainerWord[]
+
+  @@unique([dayId, kind, slot])
+  @@index([dayId])
+}
+
+model DailyTrainerWord {
+  id         String       @id @default(uuid()) @db.Uuid
+  trainerId  String       @db.Uuid
+  userCardId String       @db.Uuid
+  position   Int
+  trainer    DailyTrainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  userCard   UserCard     @relation(fields: [userCardId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, position])
+  @@unique([trainerId, userCardId])
+  @@index([userCardId])
 }
 
 model Lesson {

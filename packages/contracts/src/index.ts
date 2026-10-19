@@ -217,3 +217,28 @@ export interface TrainingReadiness {
   }>
   trainerAvailable: false
 }
+
+export type DailyTrainerKind = 'daily' | 'extra'
+
+export interface DailyTrainerWordItem {
+  userCardId: string
+  wordId: string
+  spanish: string
+  russian: string
+  progress: number
+}
+
+export interface DailyTrainerItem {
+  id: string
+  kind: DailyTrainerKind
+  slot: number
+  sourceLabel: string
+  wordCount: number
+  words: DailyTrainerWordItem[]
+}
+
+export interface DailyTrainingTodayResponse {
+  date: string
+  readyCardCount: number
+  trainers: DailyTrainerItem[]
+}
