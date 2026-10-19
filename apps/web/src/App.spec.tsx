@@ -113,6 +113,100 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
+  it('navigates to the trainer session from a daily training card', async () => {
+    const trainerId = '0199f98d-83c0-7bde-a537-b74cf7e9ea01'
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return jsonResponse({
+          date: '2026-10-19',
+          readyCardCount: 1,
+          trainers: [
+            {
+              id: trainerId,
+              kind: 'daily',
+              slot: 1,
+              sourceLabel: 'Palabras nuevas',
+              wordCount: 1,
+              words: [],
+            },
+          ],
+        })
+      }
+
+      if (url === `/api/training/trainers/${trainerId}`) {
+        return jsonResponse({
+          id: trainerId,
+          kind: 'daily',
+          slot: 1,
+          sourceLabel: 'Palabras nuevas',
+          words: [
+            {
+              userCardId: 'card-1',
+              wordId: 'word-1',
+              completedTrainerCount: 0,
+              showIntro: true,
+              progress: 0,
+              spanish: 'hola',
+              russian: 'привет',
+              additionalTranslations: [],
+              definitionEs: null,
+              examples: [],
+              partOfSpeech: null,
+              gender: null,
+              wrongRussian: ['a', 'b', 'c'],
+              wrongSpanish: ['x', 'y', 'z'],
+              imageUrl: null,
+              imagePhotographerName: null,
+              imagePhotographerUrl: null,
+              imagePageUrl: null,
+              imageProvider: null,
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () => [],
+      cancel: vi.fn(),
+      speak: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    class MockUtterance {
+      text: string
+      lang = ''
+      voice: SpeechSynthesisVoice | null = null
+      constructor(text: string) {
+        this.text = text
+      }
+    }
+    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
+
+    renderApp()
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Palabras nuevas, 1 palabra',
+      }),
+    )
+
+    expect(await screen.findByText('hola')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Vale' })).toBeInTheDocument()
+  })
+
   it('renders the home header for an authenticated user', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)

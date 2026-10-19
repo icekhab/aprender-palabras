@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import type {
   DailyTrainingTodayResponse,
   DailyTrainerItem,
+  TrainerSessionResponse,
+  TrainerSessionWord,
 } from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
 import { isWordReadyForTrainer } from '../lessons/lesson-readiness.js'
@@ -17,6 +19,32 @@ import {
 @Injectable()
 export class TrainingService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getTrainerSession(
+    userId: string,
+    trainerId: string,
+  ): Promise<TrainerSessionResponse> {
+    const trainer = await this.prisma.dailyTrainer.findFirst({
+      where: {
+        id: trainerId,
+        status: 'not_started',
+        day: { userId },
+      },
+      include: sessionTrainerInclude,
+    })
+
+    if (!trainer) {
+      throw new NotFoundException('Trainer not found')
+    }
+
+    return {
+      id: trainer.id,
+      kind: trainer.kind,
+      slot: trainer.slot,
+      sourceLabel: trainer.sourceLabel,
+      words: trainer.words.map((item) => toSessionWord(item)),
+    }
+  }
 
   async getToday(userId: string): Promise<DailyTrainingTodayResponse> {
     const date = madridDateString()
@@ -252,6 +280,40 @@ export class TrainingService {
   }
 }
 
+const wordSessionSelect = {
+  spanish: true,
+  russian: true,
+  additionalTranslations: true,
+  definitionEs: true,
+  examples: true,
+  partOfSpeech: true,
+  gender: true,
+  wrongRussian: true,
+  wrongSpanish: true,
+  imageUrl: true,
+  imagePhotographerName: true,
+  imagePhotographerUrl: true,
+  imagePageUrl: true,
+  imageProvider: true,
+} satisfies Prisma.WordSelect
+
+const sessionTrainerInclude = {
+  words: {
+    orderBy: { position: 'asc' as const },
+    include: {
+      userCard: {
+        select: {
+          id: true,
+          wordId: true,
+          progress: true,
+          completedTrainerCount: true,
+          word: { select: wordSessionSelect },
+        },
+      },
+    },
+  },
+} satisfies Prisma.DailyTrainerInclude
+
 const trainerInclude = {
   trainers: {
     include: {
@@ -281,6 +343,10 @@ type DayWithTrainers = Prisma.DailyTrainingDayGetPayload<{
   include: typeof trainerInclude
 }>
 
+type SessionTrainer = Prisma.DailyTrainerGetPayload<{
+  include: typeof sessionTrainerInclude
+}>
+
 function toTrainerItem(
   trainer: DayWithTrainers['trainers'][number],
 ): DailyTrainerItem {
@@ -299,6 +365,35 @@ function toTrainerItem(
     sourceLabel: trainer.sourceLabel,
     wordCount: words.length,
     words,
+  }
+}
+
+function toSessionWord(
+  item: SessionTrainer['words'][number],
+): TrainerSessionWord {
+  const { word } = item.userCard
+  const completedTrainerCount = item.userCard.completedTrainerCount
+
+  return {
+    userCardId: item.userCard.id,
+    wordId: item.userCard.wordId,
+    completedTrainerCount,
+    showIntro: completedTrainerCount === 0,
+    progress: item.userCard.progress,
+    spanish: word.spanish,
+    russian: word.russian,
+    additionalTranslations: word.additionalTranslations,
+    definitionEs: word.definitionEs,
+    examples: word.examples,
+    partOfSpeech: word.partOfSpeech,
+    gender: word.gender,
+    wrongRussian: word.wrongRussian,
+    wrongSpanish: word.wrongSpanish,
+    imageUrl: word.imageUrl,
+    imagePhotographerName: word.imagePhotographerName,
+    imagePhotographerUrl: word.imagePhotographerUrl,
+    imagePageUrl: word.imagePageUrl,
+    imageProvider: word.imageProvider,
   }
 }
 

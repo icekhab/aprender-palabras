@@ -14,9 +14,10 @@
 - состав сохраняется и повторно отдаётся без перестановки;
 - `GET /training/today` возвращает только незавершённые блоки;
 - на главной секция скрыта, если видимых блоков 0;
-- клик по карточке пока ничего не делает.
+- клик по карточке открывает `/entrenamiento/:trainerId` (этап знакомства);
+- вводные карточки только для слов с `completedTrainerCount = 0`.
 
-Пока не реализовано: запуск тренажёра, упражнения, API завершения
+Пока не реализовано: проверочные упражнения, API завершения
 (при completion нужно обновлять `lastCompletedTrainerAt`, прогресс карточек).
 
 ## Якорь времени
@@ -67,3 +68,44 @@ Get-or-create набора на текущий день Madrid.
 ```
 
 `trainers` — только `status=not_started`.
+
+### `GET /training/trainers/:id`
+
+Сессия незавершённого тренажёра текущего пользователя.
+
+Ответ `200`:
+
+```json
+{
+  "id": "trainer-uuid",
+  "kind": "daily",
+  "slot": 1,
+  "sourceLabel": "Lección actual",
+  "words": [
+    {
+      "userCardId": "card-uuid",
+      "wordId": "word-uuid",
+      "completedTrainerCount": 0,
+      "showIntro": true,
+      "progress": 0,
+      "spanish": "esperar",
+      "russian": "ждать",
+      "additionalTranslations": ["ожидать"],
+      "definitionEs": "…",
+      "examples": ["Espero tu llamada."],
+      "partOfSpeech": "verbo",
+      "gender": null,
+      "wrongRussian": ["a", "b", "c"],
+      "wrongSpanish": ["x", "y", "z"],
+      "imageUrl": null,
+      "imagePhotographerName": null,
+      "imagePhotographerUrl": null,
+      "imagePageUrl": null,
+      "imageProvider": null
+    }
+  ]
+}
+```
+
+`404`, если тренажёр не найден, принадлежит другому пользователю или уже `completed`.
+`showIntro` = `completedTrainerCount === 0`.

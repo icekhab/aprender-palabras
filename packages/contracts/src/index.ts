@@ -242,3 +242,33 @@ export interface DailyTrainingTodayResponse {
   readyCardCount: number
   trainers: DailyTrainerItem[]
 }
+
+export interface TrainerSessionWord {
+  userCardId: string
+  wordId: string
+  completedTrainerCount: number
+  showIntro: boolean
+  progress: number
+  spanish: string
+  russian: string
+  additionalTranslations: string[]
+  definitionEs: string | null
+  examples: string[]
+  partOfSpeech: string | null
+  gender: WordGender | null
+  wrongRussian: string[]
+  wrongSpanish: string[]
+  imageUrl: string | null
+  imagePhotographerName: string | null
+  imagePhotographerUrl: string | null
+  imagePageUrl: string | null
+  imageProvider: 'unsplash' | null
+}
+
+export interface TrainerSessionResponse {
+  id: string
+  kind: DailyTrainerKind
+  slot: number
+  sourceLabel: string
+  words: TrainerSessionWord[]
+}

@@ -26,9 +26,11 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { SpeakButton } from '@/components/speak-button'
 import { WordRow } from '@/components/word-row'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
+import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { addNewWordToLesson } from './shared/api/lessons'
 import { getSuggestions } from './shared/api/suggestions'
@@ -103,6 +105,14 @@ function App() {
         element={
           <ProtectedRoute>
             <LessonDetailRoutePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/entrenamiento/:trainerId"
+        element={
+          <ProtectedRoute>
+            <TrainerSessionPage />
           </ProtectedRoute>
         }
       />
@@ -536,6 +546,8 @@ function HomePage() {
 }
 
 function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
+  const navigate = useNavigate()
+
   return (
     <ul
       className="-mx-5 mt-5 flex gap-3 overflow-x-auto px-5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
@@ -554,8 +566,11 @@ function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
           <li key={trainer.id} className="shrink-0">
             <button
               type="button"
-              className={`${color} relative flex h-40 w-40 flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:brightness-105`}
+              className={`${color} relative flex h-40 w-40 cursor-pointer flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:brightness-105`}
               aria-label={`${trainer.sourceLabel}, ${wordLabel}`}
+              onClick={() => {
+                void navigate(`/entrenamiento/${trainer.id}`)
+              }}
             >
               <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/95 text-sm font-bold text-orange-950">
                 {index + 1}
@@ -1265,31 +1280,6 @@ function ReadOnlyField({
         <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
       )}
     </div>
-  )
-}
-
-function SpeakButton({
-  text,
-  size = 'sm',
-  className = '',
-}: {
-  text: string
-  size?: 'sm' | 'lg'
-  className?: string
-}) {
-  return (
-    <button
-      type="button"
-      aria-label="Escuchar"
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg text-orange-700 hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 ${
-        size === 'lg' ? 'size-10' : 'size-8'
-      } ${className}`}
-      onClick={() => {
-        speakSpanish(text)
-      }}
-    >
-      <Volume2 className={size === 'lg' ? 'size-6' : 'size-4'} aria-hidden />
-    </button>
   )
 }
 
