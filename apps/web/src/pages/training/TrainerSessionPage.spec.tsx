@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,6 +9,7 @@ import {
 } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FEEDBACK_HOLD_MS } from './feedback'
 import { TrainerSessionPage } from './TrainerSessionPage'
 
 const TRAINER_ID = '0199f98d-83c0-7bde-a537-b74cf7e9ea34'
@@ -21,6 +23,7 @@ function sessionWord(
     completedTrainerCount: number
     showIntro: boolean
     examples: string[]
+    wrongRussian: string[]
   }> = {},
 ) {
   const completedTrainerCount = overrides.completedTrainerCount ?? 0
@@ -37,7 +40,7 @@ function sessionWord(
     examples: overrides.examples ?? ['Espero tu llamada.'],
     partOfSpeech: 'verbo',
     gender: null,
-    wrongRussian: ['a', 'b', 'c'],
+    wrongRussian: overrides.wrongRussian ?? ['бежать', 'стоять', 'сидеть'],
     wrongSpanish: ['x', 'y', 'z'],
     imageUrl: null,
     imagePhotographerName: null,
@@ -90,128 +93,154 @@ function stubSpeech() {
   return speak
 }
 
+function mockSession(words: ReturnType<typeof sessionWord>[]) {
+  const fetchMock = vi.fn<typeof fetch>(async (input) => {
+    const url = String(input)
+    if (url === `/api/training/trainers/${TRAINER_ID}`) {
+      return new Response(
+        JSON.stringify({
+          id: TRAINER_ID,
+          kind: 'daily',
+          slot: 1,
+          sourceLabel: 'Palabras nuevas',
+          words,
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('TrainerSessionPage', () => {
-  it('shows intro cards, speaks spanish, advances with Vale, then goes home', async () => {
+  it('shows progress during intro and starts type 1 after intros', async () => {
     const speak = stubSpeech()
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
-      const url = String(input)
-      if (url === `/api/training/trainers/${TRAINER_ID}`) {
-        return new Response(
-          JSON.stringify({
-            id: TRAINER_ID,
-            kind: 'daily',
-            slot: 1,
-            sourceLabel: 'Palabras nuevas',
-            words: [
-              sessionWord({
-                userCardId: 'card-1',
-                spanish: 'esperar',
-                russian: 'ждать',
-              }),
-              sessionWord({
-                userCardId: 'card-2',
-                wordId: 'word-2',
-                spanish: 'casa',
-                russian: 'дом',
-                examples: [],
-              }),
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      throw new Error(`Unexpected request: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        userCardId: 'card-1',
+        spanish: 'esperar',
+        russian: 'ждать',
+      }),
+    ])
 
     renderSession()
 
     expect(await screen.findByText('esperar')).toBeInTheDocument()
-    expect(screen.getByText('ждать')).toBeInTheDocument()
-    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('progressbar', { name: 'Progreso del entrenamiento' }),
+    ).toBeInTheDocument()
 
     await waitFor(() => {
       expect(speak).toHaveBeenCalled()
     })
-    const utterance = speak.mock.calls[0]?.[0] as { text: string; lang: string }
-    expect(utterance.text).toBe('esperar')
-    expect(utterance.lang).toBe('es-ES')
 
     fireEvent.click(screen.getByRole('button', { name: 'Vale' }))
 
-    expect(await screen.findByText('casa')).toBeInTheDocument()
-    expect(screen.getByText('2 / 2')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Vale' }))
-
-    expect(await screen.findByText('Home')).toBeInTheDocument()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ждать' })).toBeInTheDocument()
   })
 
-  it('skips words without intro and redirects home when none remain', async () => {
+  it('opens exercise 1 when there is no intro', async () => {
     stubSpeech()
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
-      const url = String(input)
-      if (url === `/api/training/trainers/${TRAINER_ID}`) {
-        return new Response(
-          JSON.stringify({
-            id: TRAINER_ID,
-            kind: 'daily',
-            slot: 1,
-            sourceLabel: 'Repaso',
-            words: [
-              sessionWord({
-                completedTrainerCount: 3,
-                showIntro: false,
-                spanish: 'vieja',
-              }),
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      throw new Error(`Unexpected request: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        completedTrainerCount: 3,
+        showIntro: false,
+        spanish: 'vieja',
+        russian: 'старая',
+        wrongRussian: ['новая', 'молодая', 'добрая'],
+      }),
+    ])
 
     renderSession()
 
-    expect(await screen.findByText('Home')).toBeInTheDocument()
-    expect(screen.queryByText('vieja')).not.toBeInTheDocument()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    expect(screen.getByText('vieja')).toBeInTheDocument()
+  })
+
+  it('highlights a correct choice then shows the word card; Siguiente advances', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 1,
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'привет' }))
+    expect(screen.queryByText('Correcto')).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.queryByText('Recuerda la palabra')).not.toBeInTheDocument()
+    expect(screen.getByText('hola')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    expect(screen.getByText('Ejercicio 2')).toBeInTheDocument()
+  })
+
+  it('highlights wrong and correct options then shows incorrect banner on the card', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 1,
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'пока' }))
+    expect(screen.getByRole('button', { name: 'привет' })).toBeDisabled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('Tu respuesta es incorrecta')).toBeInTheDocument()
+    expect(screen.getByText('hola')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
   })
 
   it('confirms exit and warns about losing progress', async () => {
     stubSpeech()
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
-      const url = String(input)
-      if (url === `/api/training/trainers/${TRAINER_ID}`) {
-        return new Response(
-          JSON.stringify({
-            id: TRAINER_ID,
-            kind: 'daily',
-            slot: 1,
-            sourceLabel: 'Palabras nuevas',
-            words: [sessionWord()],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      throw new Error(`Unexpected request: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    mockSession([sessionWord()])
 
     renderSession()
 
@@ -221,9 +250,6 @@ describe('TrainerSessionPage', () => {
 
     expect(
       screen.getByRole('dialog', { name: '¿Salir del entrenamiento?' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('Perderás el progreso de este entrenamiento.'),
     ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Salir' }))

@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { SpeakButton } from '@/components/speak-button'
 import { ApiError } from '../../shared/api/auth'
 import { getTrainerSession } from '../../shared/api/training'
+import { playFeedbackSound } from '../../shared/feedback-sound'
 import { speakSpanish } from '../../shared/speech'
+import { AnswerResultScreen } from './AnswerResultScreen'
+import { Exercise1Screen } from './Exercise1Screen'
+import { ExerciseStubScreen } from './ExerciseStubScreen'
+import { buildSessionQueue } from './session-queue'
+import { WordDetailCard } from './WordDetailCard'
 
 const TRAINER_SESSION_QUERY_KEY = (id: string) =>
   ['training', 'session', id] as const
@@ -15,7 +19,11 @@ const TRAINER_SESSION_QUERY_KEY = (id: string) =>
 export function TrainerSessionPage() {
   const { trainerId = '' } = useParams()
   const navigate = useNavigate()
-  const [introIndex, setIntroIndex] = useState(0)
+  const [stepIndex, setStepIndex] = useState(0)
+  const [stepAnswered, setStepAnswered] = useState(false)
+  const [answerResult, setAnswerResult] = useState<{
+    correct: boolean
+  } | null>(null)
   const [exitOpen, setExitOpen] = useState(false)
 
   const sessionQuery = useQuery({
@@ -24,29 +32,48 @@ export function TrainerSessionPage() {
     enabled: Boolean(trainerId),
   })
 
-  const introWords = useMemo(
-    () => sessionQuery.data?.words.filter((word) => word.showIntro) ?? [],
+  const queue = useMemo(
+    () =>
+      sessionQuery.data ? buildSessionQueue(sessionQuery.data.words) : [],
     [sessionQuery.data],
   )
-  const currentWord = introWords[introIndex] ?? null
+
+  const currentStep = queue[stepIndex] ?? null
+
+  useEffect(() => {
+    if (currentStep?.kind !== 'intro') {
+      return
+    }
+    speakSpanish(currentStep.word.spanish)
+  }, [currentStep])
 
   useEffect(() => {
     if (!sessionQuery.isSuccess) {
       return
     }
-
-    if (introWords.length === 0) {
+    if (queue.length === 0) {
       void navigate('/', { replace: true })
     }
-  }, [sessionQuery.isSuccess, introWords.length, navigate])
+  }, [sessionQuery.isSuccess, queue.length, navigate])
 
-  useEffect(() => {
-    if (!currentWord) {
+  const handleContinue = useCallback(() => {
+    playFeedbackSound('tap')
+    if (stepIndex >= queue.length - 1) {
+      void navigate('/', { replace: true })
       return
     }
+    setAnswerResult(null)
+    setStepAnswered(false)
+    setStepIndex((value) => value + 1)
+  }, [navigate, queue.length, stepIndex])
 
-    speakSpanish(currentWord.spanish)
-  }, [currentWord])
+  const handleRevealResult = useCallback(
+    (result: { correct: boolean }) => {
+      setStepAnswered(true)
+      setAnswerResult(result)
+    },
+    [],
+  )
 
   if (sessionQuery.isPending) {
     return (
@@ -58,7 +85,8 @@ export function TrainerSessionPage() {
 
   if (sessionQuery.isError) {
     const notFound =
-      sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404
+      sessionQuery.error instanceof ApiError &&
+      sessionQuery.error.status === 404
 
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 py-6 sm:px-8">
@@ -78,17 +106,24 @@ export function TrainerSessionPage() {
     )
   }
 
-  if (!currentWord) {
+  if (!currentStep) {
     return null
   }
 
-  const handleVale = () => {
-    if (introIndex >= introWords.length - 1) {
-      void navigate('/', { replace: true })
-      return
-    }
-    setIntroIndex((value) => value + 1)
-  }
+  const progress =
+    queue.length === 0
+      ? 0
+      : Math.min(1, (stepIndex + (stepAnswered ? 1 : 0)) / queue.length)
+
+  const showExercise1 =
+    currentStep.kind === 'exercise' &&
+    currentStep.type === 1 &&
+    answerResult === null
+
+  const showAnswerResult =
+    currentStep.kind === 'exercise' &&
+    currentStep.type === 1 &&
+    answerResult !== null
 
   return (
     <main className="mx-auto flex h-dvh max-w-lg flex-col bg-orange-50/40">
@@ -101,30 +136,72 @@ export function TrainerSessionPage() {
         >
           <X className="size-5" aria-hidden />
         </button>
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-orange-900/70">
-          {sessionQuery.data.sourceLabel}
-        </p>
-        <p
-          className="shrink-0 text-sm font-semibold text-orange-950 tabular-nums"
-          aria-live="polite"
+        <div
+          className="mx-1 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-orange-100"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress * 100)}
+          aria-label="Progreso del entrenamiento"
         >
-          {introIndex + 1} / {introWords.length}
-        </p>
+          <div
+            className="h-full rounded-full bg-orange-600 transition-[width]"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-8">
-        <IntroWordCard word={currentWord} />
-      </div>
+      {currentStep.kind === 'intro' ? (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-8">
+            <WordDetailCard word={currentStep.word} />
+          </div>
+          <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+            <Button
+              type="button"
+              className="h-11 w-full bg-orange-700 text-base hover:bg-orange-800"
+              onClick={() => {
+                setStepAnswered(true)
+                handleContinue()
+              }}
+            >
+              Vale
+            </Button>
+          </div>
+        </>
+      ) : null}
 
-      <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
-        <Button
-          type="button"
-          className="h-11 w-full bg-orange-700 text-base hover:bg-orange-800"
-          onClick={handleVale}
-        >
-          Vale
-        </Button>
-      </div>
+      {showExercise1 ? (
+        <Exercise1Screen
+          key={currentStep.id}
+          word={currentStep.word}
+          onRevealResult={handleRevealResult}
+          onAnsweredChange={setStepAnswered}
+        />
+      ) : null}
+
+      {showAnswerResult && answerResult ? (
+        <AnswerResultScreen
+          key={`result:${currentStep.id}`}
+          word={currentStep.word}
+          correct={answerResult.correct}
+          onDone={handleContinue}
+        />
+      ) : null}
+
+      {currentStep.kind === 'exercise' &&
+      currentStep.type !== 1 &&
+      answerResult === null ? (
+        <ExerciseStubScreen
+          key={currentStep.id}
+          type={currentStep.type}
+          spanish={currentStep.word.spanish}
+          onContinue={() => {
+            setStepAnswered(true)
+            handleContinue()
+          }}
+        />
+      ) : null}
 
       {exitOpen ? (
         <ExitConfirmModal
@@ -137,117 +214,6 @@ export function TrainerSessionPage() {
       ) : null}
     </main>
   )
-}
-
-function IntroWordCard({ word }: { word: TrainerSessionWord }) {
-  const meta = grammarMeta(word)
-  const photographerName = word.imagePhotographerName
-  const photographerUrl = word.imagePhotographerUrl
-
-  return (
-    <article className="space-y-5">
-      <div className="overflow-hidden rounded-2xl">
-        {word.imageUrl ? (
-          <div className="relative">
-            <img
-              src={word.imageUrl}
-              alt=""
-              className="h-52 w-full object-cover sm:h-64"
-            />
-            {photographerName && photographerUrl ? (
-              <p className="absolute right-2 bottom-2 max-w-[70%] truncate rounded bg-black/40 px-1.5 py-0.5 text-[10px] leading-tight text-white/85">
-                <a
-                  href={photographerUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:underline"
-                >
-                  {photographerName}
-                </a>
-                {word.imagePageUrl ? (
-                  <>
-                    {' · '}
-                    <a
-                      href={word.imagePageUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:underline"
-                    >
-                      Unsplash
-                    </a>
-                  </>
-                ) : null}
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <div
-            className="flex h-40 items-center justify-center bg-orange-100/80 text-sm text-orange-900/50"
-            aria-hidden
-          >
-            Sin imagen
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 bg-orange-700 px-4 py-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {word.spanish}
-            </p>
-            <p className="mt-0.5 text-base text-white/85 sm:text-lg">
-              {word.russian}
-            </p>
-          </div>
-          <SpeakButton
-            text={word.spanish}
-            size="lg"
-            variant="onAccent"
-            className="shrink-0"
-          />
-        </div>
-      </div>
-
-      {meta || word.definitionEs ? (
-        <div className="space-y-2">
-          {meta ? (
-            <p className="text-sm font-medium text-orange-900/70">{meta}</p>
-          ) : null}
-          {word.definitionEs ? (
-            <p className="text-orange-950">{word.definitionEs}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div>
-        <p className="text-sm font-medium text-orange-900/70">Ejemplos</p>
-        {word.examples.length > 0 ? (
-          <ul className="mt-1 space-y-2">
-            {word.examples.map((example) => (
-              <li key={example} className="flex items-start gap-2">
-                <SpeakButton text={example} size="xs" />
-                <p className="text-orange-950 leading-6">{example}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
-        )}
-      </div>
-    </article>
-  )
-}
-
-function grammarMeta(word: TrainerSessionWord): string | null {
-  const parts: string[] = []
-  if (word.partOfSpeech) {
-    parts.push(word.partOfSpeech)
-  }
-  if (word.gender === 'masculine') {
-    parts.push('masculino')
-  } else if (word.gender === 'feminine') {
-    parts.push('femenino')
-  }
-  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 function ExitConfirmModal({
