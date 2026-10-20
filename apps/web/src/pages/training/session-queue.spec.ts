@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
-import { buildSessionQueue, chunkGroups, GROUP_SIZE } from './session-queue'
+import {
+  buildSessionQueue,
+  chunkGroups,
+  GROUP_SIZE,
+  typesForWord,
+} from './session-queue'
 
 function word(
   overrides: Partial<TrainerSessionWord> &
@@ -35,7 +40,7 @@ function blockSignature(
   let current: string | null = null
 
   for (const step of queue) {
-    // ids: intro:g0:cardId | ex1:g0:cardId
+    // ids: intro:g0:cardId | ex1:g0:r0:cardId
     const groupPart = step.id.split(':')[1]!
     const key =
       step.kind === 'intro' ? `intro:${groupPart}` : `ex${step.type}:${groupPart}`
@@ -59,6 +64,20 @@ describe('chunkGroups', () => {
       [1, 2, 3, 4, 5],
       [6, 7, 8, 9, 10],
       [11, 12],
+    ])
+  })
+})
+
+describe('typesForWord', () => {
+  it('includes type 2 only when completedTrainerCount is at most 2', () => {
+    expect(typesForWord(word({ userCardId: '1', spanish: 'a', russian: 'а', completedTrainerCount: 0 }))).toEqual([
+      1, 2, 3, 4, 5,
+    ])
+    expect(typesForWord(word({ userCardId: '2', spanish: 'b', russian: 'б', completedTrainerCount: 2 }))).toEqual([
+      1, 2, 3, 4, 5,
+    ])
+    expect(typesForWord(word({ userCardId: '3', spanish: 'c', russian: 'в', completedTrainerCount: 3 }))).toEqual([
+      1, 3, 4, 5,
     ])
   })
 })
@@ -90,7 +109,6 @@ describe('buildSessionQueue', () => {
     ]
 
     const queue = buildSessionQueue(words)
-    // One group of 3: intros for uno+tres, then types 1–5 for all three words.
     expect(queue.filter((step) => step.kind === 'intro')).toEqual([
       expect.objectContaining({
         kind: 'intro',
@@ -111,7 +129,7 @@ describe('buildSessionQueue', () => {
     expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(15)
   })
 
-  it('follows bootstrap + round-robin for three groups', () => {
+  it('follows bootstrap + round-robin for three groups when all get type 2', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
 
     const words = Array.from({ length: 12 }, (_, i) =>
@@ -143,8 +161,80 @@ describe('buildSessionQueue', () => {
       'ex5:g2',
     ])
 
-    // 5+5+2 words × 5 types
     expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(60)
+  })
+
+  it('mixes type 2 and type 3 in the same group round for mixed eligibility', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    const words = [
+      word({
+        userCardId: '1',
+        spanish: 'w1',
+        russian: 'р1',
+        showIntro: false,
+        completedTrainerCount: 0,
+      }),
+      word({
+        userCardId: '2',
+        spanish: 'w2',
+        russian: 'р2',
+        showIntro: false,
+        completedTrainerCount: 1,
+      }),
+      word({
+        userCardId: '3',
+        spanish: 'w3',
+        russian: 'р3',
+        showIntro: false,
+        completedTrainerCount: 3,
+      }),
+      word({
+        userCardId: '4',
+        spanish: 'w4',
+        russian: 'р4',
+        showIntro: false,
+        completedTrainerCount: 5,
+      }),
+      word({
+        userCardId: '5',
+        spanish: 'w5',
+        russian: 'р5',
+        showIntro: false,
+        completedTrainerCount: 2,
+      }),
+    ]
+
+    const queue = buildSessionQueue(words)
+    const exercises = queue.filter((step) => step.kind === 'exercise')
+
+    // round 0: five type-1; round 1: mix 2 and 3
+    const round2 = exercises.slice(5, 10)
+    expect(round2.map((step) => step.type).sort()).toEqual([2, 2, 2, 3, 3])
+    expect(
+      round2
+        .filter((step) => step.type === 2)
+        .map((step) => step.word.spanish)
+        .sort(),
+    ).toEqual(['w1', 'w2', 'w5'])
+    expect(
+      round2
+        .filter((step) => step.type === 3)
+        .map((step) => step.word.spanish)
+        .sort(),
+    ).toEqual(['w3', 'w4'])
+
+    // ineligible never get type 2
+    expect(
+      exercises.filter(
+        (step) =>
+          step.type === 2 &&
+          (step.word.spanish === 'w3' || step.word.spanish === 'w4'),
+      ),
+    ).toHaveLength(0)
+
+    // 3 eligible × 5 + 2 ineligible × 4
+    expect(exercises).toHaveLength(3 * 5 + 2 * 4)
   })
 
   it('bootstraps a single group as intro then types 1–5', () => {

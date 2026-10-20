@@ -8,10 +8,13 @@ import { WordDetailCard } from './WordDetailCard'
 export function AnswerResultScreen({
   word,
   correct,
+  showIncorrectBanner = true,
   onDone,
 }: {
   word: TrainerSessionWord
   correct: boolean
+  /** Self-assessment (type 2) shows the same card without this banner. */
+  showIncorrectBanner?: boolean
   onDone: () => void
 }) {
   useEffect(() => {
@@ -24,7 +27,7 @@ export function AnswerResultScreen({
         <WordDetailCard word={word} />
       </div>
 
-      {!correct ? (
+      {!correct && showIncorrectBanner ? (
         <div className="shrink-0 px-5 sm:px-8">
           <div
             className="flex items-center gap-3 rounded-2xl bg-orange-950 px-4 py-3 text-white"

@@ -9,6 +9,7 @@ import { playFeedbackSound } from '../../shared/feedback-sound'
 import { speakSpanish } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
 import { Exercise1Screen } from './Exercise1Screen'
+import { Exercise2Screen } from './Exercise2Screen'
 import { ExerciseStubScreen } from './ExerciseStubScreen'
 import { buildSessionQueue } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
@@ -23,6 +24,10 @@ export function TrainerSessionPage() {
   const [stepAnswered, setStepAnswered] = useState(false)
   const [answerResult, setAnswerResult] = useState<{
     correct: boolean
+    /** False for exercise 2 — self-assessment never affects progress. */
+    countsTowardProgress: boolean
+    /** False for exercise 2 — never append a retry to the queue. */
+    enqueueRetry: boolean
   } | null>(null)
   const [exitOpen, setExitOpen] = useState(false)
 
@@ -69,10 +74,17 @@ export function TrainerSessionPage() {
 
   const handleRevealResult = useCallback(
     (result: { correct: boolean }) => {
+      const isSelfAssessment =
+        currentStep?.kind === 'exercise' && currentStep.type === 2
       setStepAnswered(true)
-      setAnswerResult(result)
+      setAnswerResult({
+        correct: result.correct,
+        // Type 2: no progress impact, no end-of-queue retry (product §10.2).
+        countsTowardProgress: !isSelfAssessment,
+        enqueueRetry: !isSelfAssessment && !result.correct,
+      })
     },
-    [],
+    [currentStep],
   )
 
   if (sessionQuery.isPending) {
@@ -120,9 +132,14 @@ export function TrainerSessionPage() {
     currentStep.type === 1 &&
     answerResult === null
 
+  const showExercise2 =
+    currentStep.kind === 'exercise' &&
+    currentStep.type === 2 &&
+    answerResult === null
+
   const showAnswerResult =
     currentStep.kind === 'exercise' &&
-    currentStep.type === 1 &&
+    (currentStep.type === 1 || currentStep.type === 2) &&
     answerResult !== null
 
   return (
@@ -180,17 +197,28 @@ export function TrainerSessionPage() {
         />
       ) : null}
 
+      {showExercise2 ? (
+        <Exercise2Screen
+          key={currentStep.id}
+          word={currentStep.word}
+          onRevealResult={handleRevealResult}
+          onAnsweredChange={setStepAnswered}
+        />
+      ) : null}
+
       {showAnswerResult && answerResult ? (
         <AnswerResultScreen
           key={`result:${currentStep.id}`}
           word={currentStep.word}
           correct={answerResult.correct}
+          showIncorrectBanner={currentStep.type !== 2}
           onDone={handleContinue}
         />
       ) : null}
 
       {currentStep.kind === 'exercise' &&
       currentStep.type !== 1 &&
+      currentStep.type !== 2 &&
       answerResult === null ? (
         <ExerciseStubScreen
           key={currentStep.id}

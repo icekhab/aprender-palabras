@@ -205,7 +205,90 @@ describe('TrainerSessionPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    expect(screen.getByText('Ejercicio 2')).toBeInTheDocument()
+    expect(
+      screen.getByText('Escucha y recuerda la palabra'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Recuerdo' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'No recuerdo' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('hola')).not.toBeInTheDocument()
+  })
+
+  it('self-assessment remember shows the result card', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 1,
+        spanish: 'casa',
+        russian: 'дом',
+        wrongRussian: ['улица', 'окно', 'дверь'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'дом' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    expect(
+      screen.getByText('Escucha y recuerda la palabra'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recuerdo' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('casa')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('self-assessment forgot shows the card without incorrect banner', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 1,
+        spanish: 'mesa',
+        russian: 'стол',
+        wrongRussian: ['стул', 'окно', 'дверь'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'стол' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'No recuerdo' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('mesa')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
   })
 
   it('highlights wrong and correct options then shows incorrect banner on the card', async () => {
