@@ -12,7 +12,7 @@ import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
 import { Exercise4Screen } from './Exercise4Screen'
-import { ExerciseStubScreen } from './ExerciseStubScreen'
+import { Exercise5Screen } from './Exercise5Screen'
 import { buildSessionQueue } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
 
@@ -151,13 +151,13 @@ export function TrainerSessionPage() {
     currentStep.type === 4 &&
     answerResult === null
 
-  const showAnswerResult =
+  const showExercise5 =
     currentStep.kind === 'exercise' &&
-    (currentStep.type === 1 ||
-      currentStep.type === 2 ||
-      currentStep.type === 3 ||
-      currentStep.type === 4) &&
-    answerResult !== null
+    currentStep.type === 5 &&
+    answerResult === null
+
+  const showAnswerResult =
+    currentStep.kind === 'exercise' && answerResult !== null
 
   return (
     <main className="mx-auto flex h-dvh max-w-lg flex-col bg-orange-50/40">
@@ -241,6 +241,15 @@ export function TrainerSessionPage() {
         />
       ) : null}
 
+      {showExercise5 ? (
+        <Exercise5Screen
+          key={currentStep.id}
+          word={currentStep.word}
+          onRevealResult={handleRevealResult}
+          onAnsweredChange={setStepAnswered}
+        />
+      ) : null}
+
       {showAnswerResult && answerResult ? (
         <AnswerResultScreen
           key={`result:${currentStep.id}`}
@@ -249,23 +258,6 @@ export function TrainerSessionPage() {
           accentWarning={answerResult.accentWarning}
           showIncorrectBanner={currentStep.type !== 2}
           onDone={handleContinue}
-        />
-      ) : null}
-
-      {currentStep.kind === 'exercise' &&
-      currentStep.type !== 1 &&
-      currentStep.type !== 2 &&
-      currentStep.type !== 3 &&
-      currentStep.type !== 4 &&
-      answerResult === null ? (
-        <ExerciseStubScreen
-          key={currentStep.id}
-          type={currentStep.type}
-          spanish={currentStep.word.spanish}
-          onContinue={() => {
-            setStepAnswered(true)
-            handleContinue()
-          }}
         />
       ) : null}
 

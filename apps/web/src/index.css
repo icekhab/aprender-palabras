@@ -68,7 +68,8 @@ button,
 input,
 textarea,
 select {
-  font: inherit;
+  /* Family only — full `font: inherit` overrides Tailwind text-* on inputs. */
+  font-family: inherit;
 }
 
 @theme inline {

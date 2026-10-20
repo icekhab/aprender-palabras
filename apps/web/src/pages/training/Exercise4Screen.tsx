@@ -13,10 +13,7 @@ export function Exercise4Screen({
   onAnsweredChange,
 }: {
   word: TrainerSessionWord
-  onRevealResult: (result: {
-    correct: boolean
-    accentWarning?: string
-  }) => void
+  onRevealResult: (result: { correct: boolean; accentWarning?: string }) => void
   onAnsweredChange?: (answered: boolean) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -63,7 +60,8 @@ export function Exercise4Screen({
     playFeedbackSound(result.correct ? 'correct' : 'incorrect')
   }
 
-  let inputTone = 'border-orange-200 focus:border-orange-500 focus:ring-orange-200'
+  let inputTone =
+    'border-orange-200 focus:border-orange-500 focus:ring-orange-200'
 
   if (outcome) {
     inputTone = outcome.correct
@@ -108,7 +106,7 @@ export function Exercise4Screen({
               submit()
             }
           }}
-          className={`w-full max-w-sm border-0 border-b-2 bg-transparent px-1 py-3 text-center text-2xl font-semibold text-orange-950 outline-none placeholder:font-normal placeholder:text-orange-900/35 focus:ring-0 disabled:cursor-default ${inputTone}`}
+          className={`w-full max-w-sm border-0 border-b-2 bg-transparent px-1 py-3 text-center text-2xl font-semibold text-orange-950 outline-none placeholder:text-2xl placeholder:font-normal placeholder:text-orange-900/35 focus:ring-0 disabled:cursor-default ${inputTone}`}
         />
 
         <p className="text-center text-sm text-orange-900/50">

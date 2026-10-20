@@ -25,6 +25,7 @@ function sessionWord(
     examples: string[]
     wrongRussian: string[]
     wrongSpanish: string[]
+    imageUrl: string | null
   }> = {},
 ) {
   const completedTrainerCount = overrides.completedTrainerCount ?? 0
@@ -43,7 +44,7 @@ function sessionWord(
     gender: null,
     wrongRussian: overrides.wrongRussian ?? ['бежать', 'стоять', 'сидеть'],
     wrongSpanish: overrides.wrongSpanish ?? ['x', 'y', 'z'],
-    imageUrl: null,
+    imageUrl: overrides.imageUrl ?? null,
     imagePhotographerName: null,
     imagePhotographerUrl: null,
     imagePageUrl: null,
@@ -362,6 +363,57 @@ describe('TrainerSessionPage', () => {
       screen.queryByText('Tu respuesta es incorrecta'),
     ).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+  })
+
+  it('opens exercise 5 russian prompt typing without answer audio', async () => {
+    stubSpeech()
+    // random=0 → chain [1,4,5,3] when type 2 is skipped
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'lección',
+        russian: 'лекция',
+        wrongRussian: ['урок', 'книга', 'школа'],
+        wrongSpanish: ['clase', 'libro', 'escuela'],
+        imageUrl: 'https://example.com/lesson.jpg',
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'лекция' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    // type 4
+    const audioInput = screen.getByRole('textbox', { name: 'Escribe la palabra' })
+    fireEvent.change(audioInput, { target: { value: 'lección' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    // type 5
+    expect(screen.getByText('лекция')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Escuchar')).not.toBeInTheDocument()
+    const input = screen.getByRole('textbox', { name: 'Escribe la palabra' })
+    expect(input).toHaveFocus()
+
+    fireEvent.change(input, { target: { value: 'leccion' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('Ortografía correcta: lección')).toBeInTheDocument()
   })
 
   it('opens exercise 4 audio typing with autofocus and accepts a typed answer', async () => {
