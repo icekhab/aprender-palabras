@@ -4,8 +4,8 @@ import type { ExerciseType } from './session-queue'
 const TYPE_LABELS: Record<ExerciseType, string> = {
   1: 'Español → ruso',
   2: 'Audio → autoevaluación',
-  3: 'Audio → escritura',
-  4: 'Ruso → español (opción)',
+  3: 'Ruso → español (opción)',
+  4: 'Audio → escritura',
   5: 'Ruso → español (escritura)',
 }
 

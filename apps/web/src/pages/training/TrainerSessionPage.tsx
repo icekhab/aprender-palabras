@@ -11,6 +11,7 @@ import { AnswerResultScreen } from './AnswerResultScreen'
 import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
+import { Exercise4Screen } from './Exercise4Screen'
 import { ExerciseStubScreen } from './ExerciseStubScreen'
 import { buildSessionQueue } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
@@ -25,6 +26,7 @@ export function TrainerSessionPage() {
   const [stepAnswered, setStepAnswered] = useState(false)
   const [answerResult, setAnswerResult] = useState<{
     correct: boolean
+    accentWarning?: string
     /** False for exercise 2 — self-assessment never affects progress. */
     countsTowardProgress: boolean
     /** False for exercise 2 — never append a retry to the queue. */
@@ -74,12 +76,13 @@ export function TrainerSessionPage() {
   }, [navigate, queue.length, stepIndex])
 
   const handleRevealResult = useCallback(
-    (result: { correct: boolean }) => {
+    (result: { correct: boolean; accentWarning?: string }) => {
       const isSelfAssessment =
         currentStep?.kind === 'exercise' && currentStep.type === 2
       setStepAnswered(true)
       setAnswerResult({
         correct: result.correct,
+        accentWarning: result.accentWarning,
         // Type 2: no progress impact, no end-of-queue retry (product §10.2).
         countsTowardProgress: !isSelfAssessment,
         enqueueRetry: !isSelfAssessment && !result.correct,
@@ -143,11 +146,17 @@ export function TrainerSessionPage() {
     currentStep.type === 3 &&
     answerResult === null
 
+  const showExercise4 =
+    currentStep.kind === 'exercise' &&
+    currentStep.type === 4 &&
+    answerResult === null
+
   const showAnswerResult =
     currentStep.kind === 'exercise' &&
     (currentStep.type === 1 ||
       currentStep.type === 2 ||
-      currentStep.type === 3) &&
+      currentStep.type === 3 ||
+      currentStep.type === 4) &&
     answerResult !== null
 
   return (
@@ -223,11 +232,21 @@ export function TrainerSessionPage() {
         />
       ) : null}
 
+      {showExercise4 ? (
+        <Exercise4Screen
+          key={currentStep.id}
+          word={currentStep.word}
+          onRevealResult={handleRevealResult}
+          onAnsweredChange={setStepAnswered}
+        />
+      ) : null}
+
       {showAnswerResult && answerResult ? (
         <AnswerResultScreen
           key={`result:${currentStep.id}`}
           word={currentStep.word}
           correct={answerResult.correct}
+          accentWarning={answerResult.accentWarning}
           showIncorrectBanner={currentStep.type !== 2}
           onDone={handleContinue}
         />
@@ -237,6 +256,7 @@ export function TrainerSessionPage() {
       currentStep.type !== 1 &&
       currentStep.type !== 2 &&
       currentStep.type !== 3 &&
+      currentStep.type !== 4 &&
       answerResult === null ? (
         <ExerciseStubScreen
           key={currentStep.id}

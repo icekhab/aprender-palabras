@@ -364,6 +364,51 @@ describe('TrainerSessionPage', () => {
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
   })
 
+  it('opens exercise 4 audio typing with autofocus and accepts a typed answer', async () => {
+    stubSpeech()
+    // random=0 → chain [1,4,5,3] when type 2 is skipped
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'café',
+        russian: 'кофе',
+        wrongRussian: ['чай', 'вода', 'сок'],
+        wrongSpanish: ['te', 'agua', 'jugo'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'кофе' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    const input = screen.getByRole('textbox', { name: 'Escribe la palabra' })
+    expect(input).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Comprobar' })).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: 'cafe' } })
+    expect(screen.getByRole('button', { name: 'Comprobar' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('café')).toBeInTheDocument()
+    expect(screen.getByText('Ortografía correcta: café')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
+  })
+
   it('confirms exit and warns about losing progress', async () => {
     stubSpeech()
     mockSession([sessionWord()])

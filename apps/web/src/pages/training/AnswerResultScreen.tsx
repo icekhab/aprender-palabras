@@ -1,4 +1,4 @@
-import { Frown } from 'lucide-react'
+import { Frown, Info } from 'lucide-react'
 import { useEffect } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { Button } from '@/components/ui/button'
@@ -8,11 +8,14 @@ import { WordDetailCard } from './WordDetailCard'
 export function AnswerResultScreen({
   word,
   correct,
+  accentWarning,
   showIncorrectBanner = true,
   onDone,
 }: {
   word: TrainerSessionWord
   correct: boolean
+  /** Canonical spelling when the answer matched without required accents. */
+  accentWarning?: string
   /** Self-assessment (type 2) shows the same card without this banner. */
   showIncorrectBanner?: boolean
   onDone: () => void
@@ -26,6 +29,22 @@ export function AnswerResultScreen({
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-8">
         <WordDetailCard word={word} />
       </div>
+
+      {correct && accentWarning ? (
+        <div className="shrink-0 px-5 sm:px-8">
+          <div
+            className="flex items-center gap-3 rounded-2xl bg-orange-100 px-4 py-3 text-orange-950"
+            role="status"
+          >
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-orange-200">
+              <Info className="size-5" aria-hidden />
+            </span>
+            <p className="text-sm font-medium">
+              Ortografía correcta: {accentWarning}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {!correct && showIncorrectBanner ? (
         <div className="shrink-0 px-5 sm:px-8">
