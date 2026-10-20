@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import {
   buildSessionQueue,
-  chunkGroups,
-  GROUP_SIZE,
+  INITIAL_UNLOCK,
   typesForWord,
 } from './session-queue'
 
@@ -32,40 +31,8 @@ function word(
   }
 }
 
-/** With Math.random ≈ 1, shuffleInPlace is identity — group membership is stable. */
-function blockSignature(
-  queue: ReturnType<typeof buildSessionQueue>,
-): string[] {
-  const signatures: string[] = []
-  let current: string | null = null
-
-  for (const step of queue) {
-    // ids: intro:g0:cardId | ex1:g0:r0:cardId
-    const groupPart = step.id.split(':')[1]!
-    const key =
-      step.kind === 'intro' ? `intro:${groupPart}` : `ex${step.type}:${groupPart}`
-    if (key !== current) {
-      signatures.push(key)
-      current = key
-    }
-  }
-
-  return signatures
-}
-
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-describe('chunkGroups', () => {
-  it('splits into groups of at most five with a small tail', () => {
-    const items = Array.from({ length: 12 }, (_, i) => i + 1)
-    expect(chunkGroups(items, GROUP_SIZE)).toEqual([
-      [1, 2, 3, 4, 5],
-      [6, 7, 8, 9, 10],
-      [11, 12],
-    ])
-  })
 })
 
 describe('typesForWord', () => {
@@ -79,16 +46,6 @@ describe('typesForWord', () => {
           spanish: 'a',
           russian: 'а',
           completedTrainerCount: 0,
-        }),
-      ),
-    ).toEqual([1, 2, 3, 4, 5])
-    expect(
-      typesForWord(
-        word({
-          userCardId: '2',
-          spanish: 'b',
-          russian: 'б',
-          completedTrainerCount: 2,
         }),
       ),
     ).toEqual([1, 2, 3, 4, 5])
@@ -117,67 +74,11 @@ describe('typesForWord', () => {
         }),
       ),
     ).toEqual([1, 2, 4, 5, 3])
-    expect(
-      typesForWord(
-        word({
-          userCardId: '2',
-          spanish: 'b',
-          russian: 'б',
-          completedTrainerCount: 3,
-        }),
-      ),
-    ).toEqual([1, 4, 5, 3])
   })
 })
 
 describe('buildSessionQueue', () => {
-  it('places each group intro just before that group’s first exercise', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999)
-
-    const words = [
-      word({
-        userCardId: '1',
-        spanish: 'uno',
-        russian: 'один',
-        showIntro: true,
-      }),
-      word({
-        userCardId: '2',
-        spanish: 'dos',
-        russian: 'два',
-        showIntro: false,
-        completedTrainerCount: 2,
-      }),
-      word({
-        userCardId: '3',
-        spanish: 'tres',
-        russian: 'три',
-        showIntro: true,
-      }),
-    ]
-
-    const queue = buildSessionQueue(words)
-    expect(queue.filter((step) => step.kind === 'intro')).toEqual([
-      expect.objectContaining({
-        kind: 'intro',
-        word: expect.objectContaining({ spanish: 'uno' }),
-      }),
-      expect.objectContaining({
-        kind: 'intro',
-        word: expect.objectContaining({ spanish: 'tres' }),
-      }),
-    ])
-
-    const firstExerciseIndex = queue.findIndex((step) => step.kind === 'exercise')
-    expect(firstExerciseIndex).toBe(2)
-    expect(queue[firstExerciseIndex]).toEqual(
-      expect.objectContaining({ kind: 'exercise', type: 1 }),
-    )
-
-    expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(15)
-  })
-
-  it('follows bootstrap + round-robin for three groups when all get type 2', () => {
+  it('starts with an atomic unlock of the first four words: intros → 1 → 2', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
 
     const words = Array.from({ length: 12 }, (_, i) =>
@@ -185,125 +86,87 @@ describe('buildSessionQueue', () => {
         userCardId: String(i + 1),
         spanish: `w${i + 1}`,
         russian: `р${i + 1}`,
-        showIntro: false,
-        completedTrainerCount: 1,
+        showIntro: true,
+        completedTrainerCount: 0,
       }),
     )
 
     const queue = buildSessionQueue(words)
-    expect(blockSignature(queue)).toEqual([
-      'ex1:g0',
-      'ex2:g0',
-      'ex1:g1',
-      'ex3:g0',
-      'ex1:g2',
-      'ex2:g1',
-      'ex4:g0',
-      'ex2:g2',
-      'ex3:g1',
-      'ex5:g0',
-      'ex3:g2',
-      'ex4:g1',
-      'ex4:g2',
-      'ex5:g1',
-      'ex5:g2',
-    ])
+    const firstIds = words.slice(0, INITIAL_UNLOCK).map((item) => item.userCardId)
 
-    expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(60)
+    // First 4 intros, then 4× type1, then 4× type2 — no later types or other words yet
+    const head = queue.slice(0, 4 + 4 + 4)
+    expect(head.every((step) => firstIds.includes(step.word.userCardId))).toBe(
+      true,
+    )
+    expect(head.slice(0, 4).every((step) => step.kind === 'intro')).toBe(true)
+    expect(
+      head.slice(4, 8).every(
+        (step) => step.kind === 'exercise' && step.type === 1,
+      ),
+    ).toBe(true)
+    expect(
+      head.slice(8, 12).every(
+        (step) => step.kind === 'exercise' && step.type === 2,
+      ),
+    ).toBe(true)
+
+    // Full session still covers every word’s chain
+    expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(
+      12 * 5,
+    )
   })
 
-  it('mixes type 2 and type 3 in the same group round for mixed eligibility', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+  it('injects a batch as all intros then all type 1 before anything else for those words', () => {
+    // random=0 → inject ASAP; inject size 2; tail shuffle [4,5,3]
+    vi.spyOn(Math, 'random').mockReturnValue(0)
 
-    const words = [
+    const words = Array.from({ length: 7 }, (_, i) =>
       word({
-        userCardId: '1',
-        spanish: 'w1',
-        russian: 'р1',
-        showIntro: false,
+        userCardId: String(i + 1),
+        spanish: `w${i + 1}`,
+        russian: `р${i + 1}`,
+        showIntro: true,
         completedTrainerCount: 0,
       }),
-      word({
-        userCardId: '2',
-        spanish: 'w2',
-        russian: 'р2',
-        showIntro: false,
-        completedTrainerCount: 1,
-      }),
-      word({
-        userCardId: '3',
-        spanish: 'w3',
-        russian: 'р3',
-        showIntro: false,
-        completedTrainerCount: 3,
-      }),
-      word({
-        userCardId: '4',
-        spanish: 'w4',
-        russian: 'р4',
-        showIntro: false,
-        completedTrainerCount: 5,
-      }),
-      word({
-        userCardId: '5',
-        spanish: 'w5',
-        russian: 'р5',
-        showIntro: false,
-        completedTrainerCount: 2,
-      }),
-    ]
+    )
 
     const queue = buildSessionQueue(words)
-    const exercises = queue.filter((step) => step.kind === 'exercise')
 
-    // round 0: five type-1; round 1: mix 2 and 3
-    const round2 = exercises.slice(5, 10)
-    expect(round2.map((step) => step.type).sort()).toEqual([2, 2, 2, 3, 3])
-    expect(
-      round2
-        .filter((step) => step.type === 2)
-        .map((step) => step.word.spanish)
-        .sort(),
-    ).toEqual(['w1', 'w2', 'w5'])
-    expect(
-      round2
-        .filter((step) => step.type === 3)
-        .map((step) => step.word.spanish)
-        .sort(),
-    ).toEqual(['w3', 'w4'])
+    // After initial 4 intros + 4×t1 + 4×t2, next is inject of 2
+    const afterBoot = queue.slice(4 + 4 + 4)
+    let i = 0
+    while (afterBoot[i]?.kind === 'intro') {
+      i += 1
+    }
+    const introBlock = afterBoot.slice(0, i)
+    const batchIds = new Set(introBlock.map((step) => step.word.userCardId))
+    expect(introBlock.length).toBe(2)
+    expect(batchIds.size).toBe(2)
 
-    // ineligible never get type 2
+    const type1Block = []
+    while (
+      i < afterBoot.length &&
+      afterBoot[i]?.kind === 'exercise' &&
+      afterBoot[i]!.type === 1 &&
+      batchIds.has(afterBoot[i]!.word.userCardId)
+    ) {
+      type1Block.push(afterBoot[i]!)
+      i += 1
+    }
+
+    expect(type1Block).toHaveLength(2)
     expect(
-      exercises.filter(
+      afterBoot.slice(0, i).some(
         (step) =>
-          step.type === 2 &&
-          (step.word.spanish === 'w3' || step.word.spanish === 'w4'),
+          step.kind === 'exercise' &&
+          step.type !== 1 &&
+          batchIds.has(step.word.userCardId),
       ),
-    ).toHaveLength(0)
-
-    // 3 eligible × 5 + 2 ineligible × 4
-    expect(exercises).toHaveLength(3 * 5 + 2 * 4)
+    ).toBe(false)
   })
 
-  it('bootstraps a single group as intro then types 1–5', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999)
-
-    const words = [
-      word({ userCardId: '1', spanish: 'a', russian: 'а', showIntro: true }),
-      word({ userCardId: '2', spanish: 'b', russian: 'б', showIntro: false }),
-    ]
-
-    expect(blockSignature(buildSessionQueue(words))).toEqual([
-      'intro:g0',
-      'ex1:g0',
-      'ex2:g0',
-      'ex3:g0',
-      'ex4:g0',
-      'ex5:g0',
-    ])
-  })
-
-  it('skips intros when no word needs them', () => {
+  it('skips type 2 in the initial block for ineligible words', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
 
     const words = [
@@ -312,19 +175,44 @@ describe('buildSessionQueue', () => {
         spanish: 'a',
         russian: 'а',
         showIntro: false,
-        completedTrainerCount: 2,
+        completedTrainerCount: 3,
+      }),
+      word({
+        userCardId: '2',
+        spanish: 'b',
+        russian: 'б',
+        showIntro: false,
+        completedTrainerCount: 3,
+      }),
+      word({
+        userCardId: '3',
+        spanish: 'c',
+        russian: 'в',
+        showIntro: false,
+        completedTrainerCount: 3,
+      }),
+      word({
+        userCardId: '4',
+        spanish: 'd',
+        russian: 'г',
+        showIntro: false,
+        completedTrainerCount: 3,
       }),
     ]
 
     const queue = buildSessionQueue(words)
-    expect(queue.every((step) => step.kind === 'exercise')).toBe(true)
-    expect(queue[0]).toEqual(
-      expect.objectContaining({ kind: 'exercise', type: 1 }),
+    const head = queue.slice(0, 4)
+    expect(
+      head.every((step) => step.kind === 'exercise' && step.type === 1),
+    ).toBe(true)
+    expect(queue.some((step) => step.kind === 'exercise' && step.type === 2)).toBe(
+      false,
     )
+    expect(queue.filter((step) => step.kind === 'exercise')).toHaveLength(16)
   })
 
-  it('keeps a stable per-word 3/4/5 permutation across rounds', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+  it('handles a single word session', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
 
     const queue = buildSessionQueue([
       word({
@@ -336,13 +224,10 @@ describe('buildSessionQueue', () => {
       }),
     ])
 
-    const types = queue
-      .filter((step) => step.kind === 'exercise')
-      .map((step) => step.type)
-
-    expect(types).toEqual([1, 2, 4, 5, 3])
-    expect(types.filter((type) => type === 3)).toHaveLength(1)
-    expect(types.filter((type) => type === 4)).toHaveLength(1)
-    expect(types.filter((type) => type === 5)).toHaveLength(1)
+    expect(
+      queue.map((step) =>
+        step.kind === 'intro' ? 'intro' : `ex${step.type}`,
+      ),
+    ).toEqual(['ex1', 'ex2', 'ex3', 'ex4', 'ex5'])
   })
 })

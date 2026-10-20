@@ -1,7 +1,12 @@
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { shuffleInPlace } from './exercise1'
 
-export const GROUP_SIZE = 5
+/** How many words to unlock at session start (intros → type 1 → type 2). */
+export const INITIAL_UNLOCK = 4
+export const INJECT_BATCH_MIN = 2
+export const INJECT_BATCH_MAX = 3
+/** Chance to inject a new batch when both pending exercises and waiting words exist. */
+export const INJECT_PROBABILITY = 0.35
 
 export type ExerciseType = 1 | 2 | 3 | 4 | 5
 
@@ -18,13 +23,11 @@ export type SessionStep =
       word: TrainerSessionWord
     }
 
-/** Shuffle once, then split into fixed-size chunks (last chunk may be smaller). */
-export function chunkGroups<T>(items: T[], size: number = GROUP_SIZE): T[][] {
-  const groups: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    groups.push(items.slice(i, i + size))
-  }
-  return groups
+type WordState = {
+  word: TrainerSessionWord
+  chain: ExerciseType[]
+  /** Next index in `chain` to emit. */
+  nextIndex: number
 }
 
 /**
@@ -39,68 +42,91 @@ export function typesForWord(word: TrainerSessionWord): ExerciseType[] {
     : [1, ...later]
 }
 
-function maxRoundsForGroup(
-  group: TrainerSessionWord[],
-  chains: Map<string, ExerciseType[]>,
-): number {
-  let max = 0
-  for (const word of group) {
-    max = Math.max(max, chains.get(word.userCardId)!.length)
+function pickInjectSize(waitingCount: number): number {
+  if (waitingCount <= 0) {
+    return 0
   }
-  return max
+  if (waitingCount < INJECT_BATCH_MIN) {
+    return waitingCount
+  }
+  const span = INJECT_BATCH_MAX - INJECT_BATCH_MIN + 1
+  const preferred =
+    Math.floor(Math.random() * span) + INJECT_BATCH_MIN
+  return Math.min(preferred, waitingCount)
 }
 
-function emitIntro(
+function emitIntros(
   steps: SessionStep[],
-  group: TrainerSessionWord[],
-  groupIndex: number,
+  words: TrainerSessionWord[],
+  batchId: number,
 ): void {
-  const introWords = shuffleInPlace(group.filter((word) => word.showIntro))
+  const introWords = shuffleInPlace(words.filter((word) => word.showIntro))
   for (const word of introWords) {
     steps.push({
       kind: 'intro',
-      id: `intro:g${groupIndex}:${word.userCardId}`,
+      id: `intro:b${batchId}:${word.userCardId}`,
       word,
     })
   }
 }
 
-/** Emit the N-th personal exercise for each word still in the chain (mixed types OK). */
-function emitRound(
+/** Emit the current chain step for each state whose next type equals `type`, then advance. */
+function emitTypeBlock(
   steps: SessionStep[],
-  group: TrainerSessionWord[],
-  groupIndex: number,
-  roundIndex: number,
-  chains: Map<string, ExerciseType[]>,
+  states: WordState[],
+  type: ExerciseType,
+  batchId: number,
 ): void {
-  const roundSteps: SessionStep[] = []
-  for (const word of group) {
-    const type = chains.get(word.userCardId)![roundIndex]
-    if (type === undefined) {
-      continue
-    }
-    roundSteps.push({
+  const ready = states.filter(
+    (state) => state.chain[state.nextIndex] === type,
+  )
+  shuffleInPlace(ready)
+  for (const state of ready) {
+    steps.push({
       kind: 'exercise',
-      id: `ex${type}:g${groupIndex}:r${roundIndex}:${word.userCardId}`,
+      id: `ex${type}:b${batchId}:${state.word.userCardId}`,
       type,
-      word,
+      word: state.word,
     })
+    state.nextIndex += 1
   }
-  shuffleInPlace(roundSteps)
-  steps.push(...roundSteps)
+}
+
+function createStates(words: TrainerSessionWord[]): WordState[] {
+  return words.map((word) => ({
+    word,
+    chain: typesForWord(word),
+    nextIndex: 0,
+  }))
 }
 
 /**
- * Build the flat session queue:
- * 1. Shuffle words → chunk into groups of ≤5.
- * 2. Per word: fix personal chain (1, optional 2, shuffled 3/4/5).
- * 3. Per group: intro (if needed) just before that group's first round.
- * 4. Bootstrap: G0 gets intro + rounds 0–1; each later group starts with intro + round 0,
- *    with one G0 advance between introductions (not after the last).
- * 5. Then round-robin remaining rounds among groups in order G1, G0, G2, G3, …
+ * Atomic unlock block: all intros (shuffled) → all type 1 (shuffled)
+ * → optional all type 2 for eligible (shuffled). Nothing else interleaved.
+ */
+function unlockBatch(
+  steps: SessionStep[],
+  batchWords: TrainerSessionWord[],
+  batchId: number,
+  includeType2: boolean,
+): WordState[] {
+  const states = createStates(batchWords)
+  emitIntros(steps, batchWords, batchId)
+  emitTypeBlock(steps, states, 1, batchId)
+  if (includeType2) {
+    emitTypeBlock(steps, states, 2, batchId)
+  }
+  return states
+}
+
+/**
+ * Drip-feed session queue:
+ * 1. Shuffle words; unlock first 4 with intros → type1 → type2 (atomic).
+ * 2. Loop: either inject 2–3 waiting words (intros → type1 atomic) or emit one
+ *    random next exercise among unlocked words.
+ * 3. Type 2+ for injected words come later via the random pending picks.
  *
- * Each round emits the N-th type from each word's personal chain (may mix types).
- * Error retries (when enqueued by the session UI) always append to the end — never regroup.
+ * Error retries (when enqueued by the session UI) always append to the end.
  */
 export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
   if (words.length === 0) {
@@ -108,50 +134,47 @@ export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
   }
 
   const shuffled = shuffleInPlace([...words])
-  const chains = new Map<string, ExerciseType[]>()
-  for (const word of shuffled) {
-    chains.set(word.userCardId, typesForWord(word))
-  }
-
-  const groups = chunkGroups(shuffled, GROUP_SIZE)
-  const n = groups.length
   const steps: SessionStep[] = []
-  const nextRound: number[] = Array.from({ length: n }, () => 0)
-  const maxRounds = groups.map((group) => maxRoundsForGroup(group, chains))
+  let batchId = 0
 
-  const group0 = groups[0]!
-  emitIntro(steps, group0, 0)
-  emitRound(steps, group0, 0, 0, chains)
-  emitRound(steps, group0, 0, 1, chains)
-  nextRound[0] = 2
+  const initial = shuffled.slice(0, INITIAL_UNLOCK)
+  const waiting = shuffled.slice(INITIAL_UNLOCK)
+  const unlocked: WordState[] = unlockBatch(steps, initial, batchId, true)
+  batchId += 1
 
-  for (let g = 1; g < n; g += 1) {
-    const group = groups[g]!
-    emitIntro(steps, group, g)
-    emitRound(steps, group, g, 0, chains)
-    nextRound[g] = 1
+  let guard = 0
+  while (guard < 10_000) {
+    guard += 1
 
-    if (g < n - 1 && nextRound[0]! < maxRounds[0]!) {
-      emitRound(steps, group0, 0, nextRound[0]!, chains)
-      nextRound[0]! += 1
-    }
-  }
+    const pending = unlocked.filter(
+      (state) => state.nextIndex < state.chain.length,
+    )
 
-  const rrOrder =
-    n === 1 ? [0] : [1, 0, ...Array.from({ length: n - 2 }, (_, i) => i + 2)]
-
-  while (nextRound.some((round, g) => round < maxRounds[g]!)) {
-    let progressed = false
-    for (const g of rrOrder) {
-      if (nextRound[g]! < maxRounds[g]!) {
-        emitRound(steps, groups[g]!, g, nextRound[g]!, chains)
-        nextRound[g]! += 1
-        progressed = true
-      }
-    }
-    if (!progressed) {
+    if (pending.length === 0 && waiting.length === 0) {
       break
     }
+
+    const shouldInject =
+      waiting.length > 0 &&
+      (pending.length === 0 || Math.random() < INJECT_PROBABILITY)
+
+    if (shouldInject) {
+      const size = pickInjectSize(waiting.length)
+      const batchWords = waiting.splice(0, size)
+      unlocked.push(...unlockBatch(steps, batchWords, batchId, false))
+      batchId += 1
+      continue
+    }
+
+    const pick = pending[Math.floor(Math.random() * pending.length)]!
+    const type = pick.chain[pick.nextIndex]!
+    steps.push({
+      kind: 'exercise',
+      id: `ex${type}:b${batchId}:r${pick.nextIndex}:${pick.word.userCardId}`,
+      type,
+      word: pick.word,
+    })
+    pick.nextIndex += 1
   }
 
   return steps
