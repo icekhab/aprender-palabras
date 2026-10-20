@@ -69,16 +69,64 @@ describe('chunkGroups', () => {
 })
 
 describe('typesForWord', () => {
-  it('includes type 2 only when completedTrainerCount is at most 2', () => {
-    expect(typesForWord(word({ userCardId: '1', spanish: 'a', russian: 'а', completedTrainerCount: 0 }))).toEqual([
-      1, 2, 3, 4, 5,
-    ])
-    expect(typesForWord(word({ userCardId: '2', spanish: 'b', russian: 'б', completedTrainerCount: 2 }))).toEqual([
-      1, 2, 3, 4, 5,
-    ])
-    expect(typesForWord(word({ userCardId: '3', spanish: 'c', russian: 'в', completedTrainerCount: 3 }))).toEqual([
-      1, 3, 4, 5,
-    ])
+  it('keeps prefix 1/2 and includes each of 3/4/5 once (identity shuffle)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '1',
+          spanish: 'a',
+          russian: 'а',
+          completedTrainerCount: 0,
+        }),
+      ),
+    ).toEqual([1, 2, 3, 4, 5])
+    expect(
+      typesForWord(
+        word({
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 2,
+        }),
+      ),
+    ).toEqual([1, 2, 3, 4, 5])
+    expect(
+      typesForWord(
+        word({
+          userCardId: '3',
+          spanish: 'c',
+          russian: 'в',
+          completedTrainerCount: 3,
+        }),
+      ),
+    ).toEqual([1, 3, 4, 5])
+  })
+
+  it('shuffles the 3/4/5 tail when random is not identity', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '1',
+          spanish: 'a',
+          russian: 'а',
+          completedTrainerCount: 0,
+        }),
+      ),
+    ).toEqual([1, 2, 4, 5, 3])
+    expect(
+      typesForWord(
+        word({
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 3,
+        }),
+      ),
+    ).toEqual([1, 4, 5, 3])
   })
 })
 
@@ -273,5 +321,28 @@ describe('buildSessionQueue', () => {
     expect(queue[0]).toEqual(
       expect.objectContaining({ kind: 'exercise', type: 1 }),
     )
+  })
+
+  it('keeps a stable per-word 3/4/5 permutation across rounds', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+
+    const queue = buildSessionQueue([
+      word({
+        userCardId: '1',
+        spanish: 'a',
+        russian: 'а',
+        showIntro: false,
+        completedTrainerCount: 1,
+      }),
+    ])
+
+    const types = queue
+      .filter((step) => step.kind === 'exercise')
+      .map((step) => step.type)
+
+    expect(types).toEqual([1, 2, 4, 5, 3])
+    expect(types.filter((type) => type === 3)).toHaveLength(1)
+    expect(types.filter((type) => type === 4)).toHaveLength(1)
+    expect(types.filter((type) => type === 5)).toHaveLength(1)
   })
 })

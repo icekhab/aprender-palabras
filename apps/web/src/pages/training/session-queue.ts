@@ -27,17 +27,25 @@ export function chunkGroups<T>(items: T[], size: number = GROUP_SIZE): T[][] {
   return groups
 }
 
-/** Personal exercise-type chain for a card (type 2 only if trained ≤2 times). */
+/**
+ * Personal exercise-type chain for a card:
+ * prefix 1 (+ 2 if trained ≤2 times), then a random permutation of 3/4/5.
+ * Call once per word and reuse — shuffle is not stable across calls.
+ */
 export function typesForWord(word: TrainerSessionWord): ExerciseType[] {
+  const later = shuffleInPlace([3, 4, 5] as ExerciseType[])
   return word.completedTrainerCount <= 2
-    ? [1, 2, 3, 4, 5]
-    : [1, 3, 4, 5]
+    ? [1, 2, ...later]
+    : [1, ...later]
 }
 
-function maxRoundsForGroup(group: TrainerSessionWord[]): number {
+function maxRoundsForGroup(
+  group: TrainerSessionWord[],
+  chains: Map<string, ExerciseType[]>,
+): number {
   let max = 0
   for (const word of group) {
-    max = Math.max(max, typesForWord(word).length)
+    max = Math.max(max, chains.get(word.userCardId)!.length)
   }
   return max
 }
@@ -63,10 +71,11 @@ function emitRound(
   group: TrainerSessionWord[],
   groupIndex: number,
   roundIndex: number,
+  chains: Map<string, ExerciseType[]>,
 ): void {
   const roundSteps: SessionStep[] = []
   for (const word of group) {
-    const type = typesForWord(word)[roundIndex]
+    const type = chains.get(word.userCardId)![roundIndex]
     if (type === undefined) {
       continue
     }
@@ -84,10 +93,11 @@ function emitRound(
 /**
  * Build the flat session queue:
  * 1. Shuffle words → chunk into groups of ≤5.
- * 2. Per group: intro (if needed) just before that group's first round.
- * 3. Bootstrap: G0 gets intro + rounds 0–1; each later group starts with intro + round 0,
+ * 2. Per word: fix personal chain (1, optional 2, shuffled 3/4/5).
+ * 3. Per group: intro (if needed) just before that group's first round.
+ * 4. Bootstrap: G0 gets intro + rounds 0–1; each later group starts with intro + round 0,
  *    with one G0 advance between introductions (not after the last).
- * 4. Then round-robin remaining rounds among groups in order G1, G0, G2, G3, …
+ * 5. Then round-robin remaining rounds among groups in order G1, G0, G2, G3, …
  *
  * Each round emits the N-th type from each word's personal chain (may mix types).
  * Error retries (when enqueued by the session UI) always append to the end — never regroup.
@@ -97,26 +107,32 @@ export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
     return []
   }
 
-  const groups = chunkGroups(shuffleInPlace([...words]), GROUP_SIZE)
+  const shuffled = shuffleInPlace([...words])
+  const chains = new Map<string, ExerciseType[]>()
+  for (const word of shuffled) {
+    chains.set(word.userCardId, typesForWord(word))
+  }
+
+  const groups = chunkGroups(shuffled, GROUP_SIZE)
   const n = groups.length
   const steps: SessionStep[] = []
   const nextRound: number[] = Array.from({ length: n }, () => 0)
-  const maxRounds = groups.map((group) => maxRoundsForGroup(group))
+  const maxRounds = groups.map((group) => maxRoundsForGroup(group, chains))
 
   const group0 = groups[0]!
   emitIntro(steps, group0, 0)
-  emitRound(steps, group0, 0, 0)
-  emitRound(steps, group0, 0, 1)
+  emitRound(steps, group0, 0, 0, chains)
+  emitRound(steps, group0, 0, 1, chains)
   nextRound[0] = 2
 
   for (let g = 1; g < n; g += 1) {
     const group = groups[g]!
     emitIntro(steps, group, g)
-    emitRound(steps, group, g, 0)
+    emitRound(steps, group, g, 0, chains)
     nextRound[g] = 1
 
     if (g < n - 1 && nextRound[0]! < maxRounds[0]!) {
-      emitRound(steps, group0, 0, nextRound[0]!)
+      emitRound(steps, group0, 0, nextRound[0]!, chains)
       nextRound[0]! += 1
     }
   }
@@ -128,7 +144,7 @@ export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
     let progressed = false
     for (const g of rrOrder) {
       if (nextRound[g]! < maxRounds[g]!) {
-        emitRound(steps, groups[g]!, g, nextRound[g]!)
+        emitRound(steps, groups[g]!, g, nextRound[g]!, chains)
         nextRound[g]! += 1
         progressed = true
       }

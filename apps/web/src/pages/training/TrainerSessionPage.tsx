@@ -10,6 +10,7 @@ import { speakSpanish } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
 import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
+import { Exercise3Screen } from './Exercise3Screen'
 import { ExerciseStubScreen } from './ExerciseStubScreen'
 import { buildSessionQueue } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
@@ -137,9 +138,16 @@ export function TrainerSessionPage() {
     currentStep.type === 2 &&
     answerResult === null
 
+  const showExercise3 =
+    currentStep.kind === 'exercise' &&
+    currentStep.type === 3 &&
+    answerResult === null
+
   const showAnswerResult =
     currentStep.kind === 'exercise' &&
-    (currentStep.type === 1 || currentStep.type === 2) &&
+    (currentStep.type === 1 ||
+      currentStep.type === 2 ||
+      currentStep.type === 3) &&
     answerResult !== null
 
   return (
@@ -206,6 +214,15 @@ export function TrainerSessionPage() {
         />
       ) : null}
 
+      {showExercise3 ? (
+        <Exercise3Screen
+          key={currentStep.id}
+          word={currentStep.word}
+          onRevealResult={handleRevealResult}
+          onAnsweredChange={setStepAnswered}
+        />
+      ) : null}
+
       {showAnswerResult && answerResult ? (
         <AnswerResultScreen
           key={`result:${currentStep.id}`}
@@ -219,6 +236,7 @@ export function TrainerSessionPage() {
       {currentStep.kind === 'exercise' &&
       currentStep.type !== 1 &&
       currentStep.type !== 2 &&
+      currentStep.type !== 3 &&
       answerResult === null ? (
         <ExerciseStubScreen
           key={currentStep.id}

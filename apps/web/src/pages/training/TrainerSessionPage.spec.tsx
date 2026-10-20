@@ -24,6 +24,7 @@ function sessionWord(
     showIntro: boolean
     examples: string[]
     wrongRussian: string[]
+    wrongSpanish: string[]
   }> = {},
 ) {
   const completedTrainerCount = overrides.completedTrainerCount ?? 0
@@ -41,7 +42,7 @@ function sessionWord(
     partOfSpeech: 'verbo',
     gender: null,
     wrongRussian: overrides.wrongRussian ?? ['бежать', 'стоять', 'сидеть'],
-    wrongSpanish: ['x', 'y', 'z'],
+    wrongSpanish: overrides.wrongSpanish ?? ['x', 'y', 'z'],
     imageUrl: null,
     imagePhotographerName: null,
     imagePhotographerUrl: null,
@@ -318,6 +319,48 @@ describe('TrainerSessionPage', () => {
 
     expect(screen.getByText('Tu respuesta es incorrecta')).toBeInTheDocument()
     expect(screen.getByText('hola')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+  })
+
+  it('opens exercise 3 as russian prompt with spanish choices after type 1 when type 2 is skipped', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'libro',
+        russian: 'книга',
+        wrongRussian: ['тетрадь', 'ручка', 'стол'],
+        wrongSpanish: ['cuaderno', 'bolígrafo', 'mesa'],
+      }),
+    ])
+
+    renderSession()
+
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'книга' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    expect(screen.getByText('Elige la traducción')).toBeInTheDocument()
+    expect(screen.getByText('книга')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'libro' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Escuchar')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'libro' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(screen.getByText('libro')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
   })
 
