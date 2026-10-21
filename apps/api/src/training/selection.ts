@@ -1,4 +1,4 @@
-export const MAX_TRAINER_WORDS = 15
+export const MAX_TRAINER_WORDS = 12
 export const MIN_TRAINER_WORDS = 1
 
 export interface SelectionCard {

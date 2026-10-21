@@ -119,7 +119,7 @@ describe('buildDailyTrainers with current lesson', () => {
     const a = trainers.find((item) => item.slot === 1)?.userCardIds ?? []
     const b = trainers.find((item) => item.slot === 2)?.userCardIds ?? []
     expect(a).toHaveLength(MAX_TRAINER_WORDS)
-    expect(b).toHaveLength(5)
+    expect(b).toHaveLength(20 - MAX_TRAINER_WORDS)
     expect(a.some((id) => b.includes(id))).toBe(false)
   })
 
