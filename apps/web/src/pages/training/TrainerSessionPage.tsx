@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AuthUser } from '@aprender-palabras/contracts'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -12,10 +11,7 @@ import {
 import { playFeedbackSound } from '../../shared/feedback-sound'
 import { speakSpanish } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
-import {
-  CompletionScreen,
-  displayNameFromLogin,
-} from './CompletionScreen'
+import { CompletionScreen } from './CompletionScreen'
 import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
@@ -33,7 +29,6 @@ import { WordDetailCard } from './WordDetailCard'
 const TRAINER_SESSION_QUERY_KEY = (id: string) =>
   ['training', 'session', id] as const
 const TRAINING_TODAY_QUERY_KEY = ['training', 'today'] as const
-const AUTH_QUERY_KEY = ['auth', 'me'] as const
 
 type CompletionSummary = {
   wordCount: number
@@ -47,7 +42,6 @@ export function TrainerSessionPage() {
   const { trainerId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [stepIndex, setStepIndex] = useState(0)
   const [queue, setQueue] = useState<SessionStep[]>([])
   const [queueReady, setQueueReady] = useState(false)
@@ -284,7 +278,6 @@ export function TrainerSessionPage() {
   if (completion) {
     return (
       <CompletionScreen
-        userName={displayNameFromLogin(user?.login ?? '')}
         wordCount={completion.wordCount}
         dailyTotal={completion.dailyTotal}
         dailyCompleted={completion.dailyCompleted}

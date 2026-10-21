@@ -21,8 +21,8 @@ const wordContentSchema = z.object({
   examples: z.array(z.string()).max(3),
   partOfSpeech: z.string().nullable(),
   gender: z.enum(['masculine', 'feminine']).nullable(),
-  wrongRussian: z.array(z.string()).length(3),
-  wrongSpanish: z.array(z.string()).length(3),
+  wrongRussian: z.array(z.string()).length(10),
+  wrongSpanish: z.array(z.string()).length(10),
   unsplashQuery: z.string(),
 })
 
@@ -126,8 +126,8 @@ Rules:
 - examples: 2 or 3 short natural Spanish example sentences using this meaning.
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
 - gender: masculine or feminine only for nouns when known; otherwise null.
-- wrongRussian: exactly 3 plausible but incorrect Russian distractors for multiple choice. Must not match the primary translation or additionalTranslations.
-- wrongSpanish: exactly 3 plausible but incorrect Spanish distractors. Must not match the Spanish expression.
+- wrongRussian: exactly 10 plausible but incorrect Russian distractors for multiple choice. Must not match the primary translation or additionalTranslations. All 10 must be distinct.
+- wrongSpanish: exactly 10 plausible but incorrect Spanish distractors. Must not match the Spanish expression. All 10 must be distinct.
 - unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.`
 
     try {
@@ -167,8 +167,8 @@ function sanitizeWordContent(
 ): GeneratedWordContent {
   const additionalTranslations = uniqueNonEmpty(content.additionalTranslations)
   const examples = uniqueNonEmpty(content.examples).slice(0, 3)
-  const wrongRussian = uniqueNonEmpty(content.wrongRussian).slice(0, 3)
-  const wrongSpanish = uniqueNonEmpty(content.wrongSpanish).slice(0, 3)
+  const wrongRussian = uniqueNonEmpty(content.wrongRussian).slice(0, 10)
+  const wrongSpanish = uniqueNonEmpty(content.wrongSpanish).slice(0, 10)
   const definitionEs = normalizeOptionalText(content.definitionEs)
   const partOfSpeech = normalizeOptionalText(content.partOfSpeech)
   const unsplashQuery =
@@ -180,8 +180,8 @@ function sanitizeWordContent(
     examples,
     partOfSpeech,
     gender: content.gender,
-    wrongRussian: wrongRussian.length === 3 ? wrongRussian : [],
-    wrongSpanish: wrongSpanish.length === 3 ? wrongSpanish : [],
+    wrongRussian: wrongRussian.length >= 3 ? wrongRussian : [],
+    wrongSpanish: wrongSpanish.length >= 3 ? wrongSpanish : [],
     unsplashQuery,
   }
 }

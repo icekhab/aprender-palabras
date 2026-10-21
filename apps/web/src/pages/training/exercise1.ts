@@ -17,11 +17,23 @@ export function shuffleInPlace<T>(items: T[]): T[] {
   return items
 }
 
+/** Picks up to `count` distinct items at random (order randomized). */
+export function pickRandomItems<T>(items: readonly T[], count: number): T[] {
+  if (count <= 0 || items.length === 0) {
+    return []
+  }
+
+  return shuffleInPlace([...items]).slice(0, Math.min(count, items.length))
+}
+
 export function buildExercise1Step(word: TrainerSessionWord): Exercise1Step {
   return {
     userCardId: word.userCardId,
     spanish: word.spanish,
     correctRussian: word.russian,
-    options: shuffleInPlace([word.russian, ...word.wrongRussian.slice(0, 3)]),
+    options: shuffleInPlace([
+      word.russian,
+      ...pickRandomItems(word.wrongRussian, 3),
+    ]),
   }
 }

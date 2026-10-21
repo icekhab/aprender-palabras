@@ -649,7 +649,7 @@ describe('TrainerSessionPage', () => {
     await act(async () => {
       await Promise.resolve()
     })
-    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
+    expect(screen.getByText(/¡Bien hecho!|¡Día completado!/)).toBeInTheDocument()
   })
 
   it('does not retry exercise 2 after No recuerdo', async () => {
@@ -703,7 +703,7 @@ describe('TrainerSessionPage', () => {
     await act(async () => {
       await Promise.resolve()
     })
-    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
+    expect(screen.getByText(/¡Bien hecho!|¡Día completado!/)).toBeInTheDocument()
     expect(
       screen.queryByText('Escucha y recuerda la palabra'),
     ).not.toBeInTheDocument()
@@ -864,7 +864,7 @@ describe('TrainerSessionPage', () => {
     renderSession()
     await finishSingleWordSession()
 
-    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
+    expect(screen.getByText(/¡Bien hecho!|¡Día completado!/)).toBeInTheDocument()
     expect(screen.getByText(/1 palabra/)).toBeInTheDocument()
     expect(
       screen.getByRole('listitem', { name: 'Entrenamiento 1 completado' }),
@@ -905,7 +905,7 @@ describe('TrainerSessionPage', () => {
     await finishSingleWordSession()
 
     expect(
-      screen.getByText('¡Has terminado el entrenamiento diario! 🎉'),
+      screen.getByText('Has terminado el entrenamiento diario.'),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Continuar' }),
@@ -978,7 +978,7 @@ describe('TrainerSessionPage', () => {
       await Promise.resolve()
     })
     expect(
-      screen.getByText('¡Has terminado el entrenamiento diario! 🎉'),
+      screen.getByText('Has terminado el entrenamiento diario.'),
     ).toBeInTheDocument()
   })
 

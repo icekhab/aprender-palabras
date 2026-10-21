@@ -5,13 +5,22 @@ import {
 } from './lesson-readiness.js'
 
 describe('lesson readiness', () => {
-  it('requires three distractors in each direction', () => {
+  it('requires at least three distractors in each direction', () => {
     expect(
       isWordReadyForTrainer({
         spanish: 'hola',
         russian: 'привет',
         wrongRussian: ['a', 'b', 'c'],
         wrongSpanish: ['x', 'y', 'z'],
+      }),
+    ).toBe(true)
+
+    expect(
+      isWordReadyForTrainer({
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+        wrongSpanish: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
       }),
     ).toBe(true)
 

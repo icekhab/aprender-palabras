@@ -14,11 +14,11 @@ export function getMissingTrainerFields(word: {
     missing.push('russian')
   }
 
-  if (word.wrongRussian.length !== 3) {
+  if (word.wrongRussian.length < 3) {
     missing.push('wrongRussian')
   }
 
-  if (word.wrongSpanish.length !== 3) {
+  if (word.wrongSpanish.length < 3) {
     missing.push('wrongSpanish')
   }
 
