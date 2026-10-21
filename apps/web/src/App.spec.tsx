@@ -828,7 +828,7 @@ describe('App', () => {
       russian: 'ждать',
       additionalTranslations: ['ожидать'],
       definitionEs: 'Tener esperanza de algo.',
-      examples: ['Espero tu llamada.'],
+      examples: ['Espero tu llamada.', 'Espero noticias.'],
       partOfSpeech: 'verbo',
       gender: null,
       wrongRussian: ['бежать', 'читать', 'писать'],
@@ -897,7 +897,10 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { name: 'Añadir palabra' }),
     ).toBeInTheDocument()
-    expect(await screen.findByText('Tener esperanza de algo.')).toBeInTheDocument()
+    expect(
+      await screen.findByDisplayValue('Tener esperanza de algo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Español')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
 
@@ -1029,17 +1032,17 @@ describe('App', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('speaks the Spanish word from the add-word page', async () => {
+  it('does not show a speak button on the add-word form', async () => {
     const draft = {
       spanish: 'esperar',
       russian: 'ждать',
       additionalTranslations: [],
-      definitionEs: null,
-      examples: ['Espero tu llamada.'],
-      partOfSpeech: null,
+      definitionEs: 'Definición.',
+      examples: ['Uno.', 'Dos.'],
+      partOfSpeech: 'verbo',
       gender: null,
-      wrongRussian: [],
-      wrongSpanish: [],
+      wrongRussian: ['a', 'b', 'c'],
+      wrongSpanish: ['x', 'y', 'z'],
       imageUrl: null,
       imagePhotographerName: null,
       imagePhotographerUrl: null,
@@ -1047,32 +1050,6 @@ describe('App', () => {
       imageProvider: null,
       imageDownloadLocation: null,
     }
-
-    const speak = vi.fn<(utterance: SpeechSynthesisUtterance) => void>()
-    const cancel = vi.fn<() => void>()
-    vi.stubGlobal('speechSynthesis', {
-      speak,
-      cancel,
-      getVoices: () => [
-        {
-          lang: 'es-ES',
-          name: 'Spanish',
-          default: false,
-          localService: true,
-          voiceURI: 'es',
-        },
-      ],
-    })
-    class MockUtterance {
-      text: string
-      lang = ''
-      voice: SpeechSynthesisVoice | null = null
-
-      constructor(text: string) {
-        this.text = text
-      }
-    }
-    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
 
     vi.stubGlobal(
       'fetch',
@@ -1093,16 +1070,10 @@ describe('App', () => {
 
     renderApp('/words/new?spanish=esperar&russian=%D0%B6%D0%B4%D0%B0%D1%82%D1%8C')
 
-    const listenButtons = await screen.findAllByRole('button', {
-      name: 'Escuchar',
-    })
-    fireEvent.click(listenButtons[0]!)
-
-    expect(cancel).toHaveBeenCalled()
-    expect(speak).toHaveBeenCalled()
-    const utterance = speak.mock.calls[0]?.[0] as { text: string; lang: string }
-    expect(utterance.text).toBe('esperar')
-    expect(utterance.lang).toBe('es-ES')
+    expect(await screen.findByLabelText('Español')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Escuchar' }),
+    ).not.toBeInTheDocument()
   })
 
   it('redirects an unauthenticated user to the login page', async () => {

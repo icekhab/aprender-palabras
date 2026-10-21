@@ -14,38 +14,24 @@ import {
   type LoginInput,
   type SuggestionItem,
   type SuggestionsResponse,
-  type WordDraft,
 } from '@aprender-palabras/contracts'
 import { BookOpen, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import {
-  Navigate,
-  Route,
-  Routes,
-  useNavigate,
-  useSearchParams,
-} from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { SpeakButton } from '@/components/speak-button'
 import { ProgressDot } from '@/components/progress-dot'
-import { WordCardFields } from '@/components/word-card-fields'
 import { WordRow } from '@/components/word-row'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
 import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
+import { AddWordPage } from './pages/words/AddWordPage'
 import { WordCardEditPage } from './pages/words/WordCardEditPage'
 import { WordCardPage } from './pages/words/WordCardPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
-import { addNewWordToLesson } from './shared/api/lessons'
 import { getSuggestions } from './shared/api/suggestions'
 import { getTodayTraining } from './shared/api/training'
-import {
-  addExistingWord,
-  createWord,
-  listDictionaryWords,
-  previewWord,
-} from './shared/api/words'
+import { addExistingWord, listDictionaryWords } from './shared/api/words'
 import {
   getPreferredSpanishVoiceURI,
   getSpanishVoices,
@@ -1101,148 +1087,6 @@ function SuggestionProgressIcon({
   )
 }
 
-function AddWordPage() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
-  const spanish = searchParams.get('spanish')?.trim() ?? ''
-  const russian = searchParams.get('russian')?.trim() ?? ''
-  const lessonId = searchParams.get('lessonId')?.trim() || null
-  const hasPair = spanish.length > 0 && russian.length > 0
-  const cancelPath = lessonId ? `/lecciones/${lessonId}` : '/'
-
-  const previewQuery = useQuery({
-    queryKey: ['words', 'preview', spanish, russian],
-    queryFn: ({ signal }) => previewWord({ spanish, russian }, signal),
-    enabled: hasPair,
-    retry: false,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (draft: WordDraft) => {
-      if (lessonId) {
-        return addNewWordToLesson(lessonId, draft)
-      }
-
-      return createWord(draft)
-    },
-    onSuccess: async () => {
-      if (lessonId) {
-        await queryClient.invalidateQueries({
-          queryKey: ['lessons', 'detail', lessonId],
-        })
-        await queryClient.invalidateQueries({ queryKey: ['lessons', 'list'] })
-        navigate(`/lecciones/${lessonId}`, { replace: true })
-        return
-      }
-
-      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
-      navigate('/', { replace: true })
-    },
-  })
-
-  if (!hasPair) {
-    return <Navigate replace to={cancelPath} />
-  }
-
-  return (
-    <main className="min-h-svh bg-orange-50 text-orange-950">
-      <header className="border-b border-orange-100 bg-white/90">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
-          <div>
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight">
-              {lessonId ? 'Añadir a la lección' : 'Añadir palabra'}
-            </h1>
-          </div>
-          <Button variant="outline" onClick={() => navigate(cancelPath)}>
-            Cancelar
-          </Button>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
-        {previewQuery.isPending && (
-          <p className="text-sm text-orange-900/70" role="status">
-            Generando la tarjeta…
-          </p>
-        )}
-
-        {previewQuery.isError && (
-          <div role="alert">
-            <p className="text-sm text-red-700">
-              No se pudo generar la tarjeta. Puedes reintentarlo.
-            </p>
-            <Button
-              className="mt-4"
-              onClick={() => void previewQuery.refetch()}
-            >
-              Reintentar
-            </Button>
-          </div>
-        )}
-
-        {previewQuery.isSuccess && (
-          <WordDraftView
-            draft={previewQuery.data}
-            isSaving={createMutation.isPending}
-            saveError={createMutation.error}
-            onConfirm={() => createMutation.mutate(previewQuery.data)}
-            onCancel={() => navigate(cancelPath)}
-          />
-        )}
-      </div>
-    </main>
-  )
-}
-
-function WordDraftView({
-  draft,
-  isSaving,
-  saveError,
-  onConfirm,
-  onCancel,
-}: {
-  draft: WordDraft
-  isSaving: boolean
-  saveError: unknown
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="space-y-6">
-      <WordCardFields draft={draft} />
-
-      {isConflict(saveError) ? (
-        <p role="alert" className="text-sm text-red-700">
-          Esta palabra ya existe en la base de datos.
-        </p>
-      ) : null}
-
-      {saveError && !isConflict(saveError) ? (
-        <p role="alert" className="text-sm text-red-700">
-          No se pudo guardar la palabra. Inténtalo de nuevo.
-        </p>
-      ) : null}
-
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Button
-          className="bg-orange-700 hover:bg-orange-800"
-          disabled={isSaving}
-          onClick={onConfirm}
-        >
-          {isSaving ? 'Guardando…' : 'Confirmar'}
-        </Button>
-        <Button variant="outline" disabled={isSaving} onClick={onCancel}>
-          Cancelar
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 function suggestionKey(item: SuggestionItem): string {
   return `${item.spanish}|${item.russian}`
 }
@@ -1261,10 +1105,6 @@ function isUnauthorized(error: unknown): boolean {
 
 function isServiceUnavailable(error: unknown): boolean {
   return error instanceof ApiError && error.status === 503
-}
-
-function isConflict(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 409
 }
 
 function FullPageStatus({

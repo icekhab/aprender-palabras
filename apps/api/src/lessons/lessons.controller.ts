@@ -19,13 +19,14 @@ import {
   removeLessonWordSchema,
   renameLessonSchema,
   setCurrentLessonSchema,
-  wordDraftSchema,
+  updateWordCardSchema,
   type LessonDetail,
   type LessonListResponse,
   type LessonWordItem,
   type SetCurrentLessonPreview,
   type TrainingReadiness,
   type Word,
+  type WordDraft,
 } from '@aprender-palabras/contracts'
 import type { AuthenticatedRequest } from '../auth/auth.types.js'
 import { LessonsService } from './lessons.service.js'
@@ -165,16 +166,17 @@ export class LessonsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
   ): Promise<Word> {
-    const result = wordDraftSchema.safeParse(body)
+    const result = updateWordCardSchema.safeParse(body)
     if (!result.success) {
       throw new BadRequestException('Invalid word draft')
     }
 
-    return this.lessonsService.addNewWord(
-      request.authUser.id,
-      id,
-      result.data,
-    )
+    const draft: WordDraft = {
+      ...result.data,
+      additionalTranslations: [],
+    }
+
+    return this.lessonsService.addNewWord(request.authUser.id, id, draft)
   }
 
   @Delete(':id/words/:wordId')

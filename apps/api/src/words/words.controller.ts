@@ -17,7 +17,6 @@ import {
   dictionaryListQuerySchema,
   regenerateWordImageSchema,
   updateWordCardSchema,
-  wordDraftSchema,
   wordPairSchema,
   type DictionaryListItem,
   type DictionaryListResponse,
@@ -87,12 +86,17 @@ export class WordsController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<Word> {
-    const result = wordDraftSchema.safeParse(body)
+    const result = updateWordCardSchema.safeParse(body)
     if (!result.success) {
       throw new BadRequestException('Invalid word draft')
     }
 
-    return this.wordsService.create(request.authUser.id, result.data)
+    const draft: WordDraft = {
+      ...result.data,
+      additionalTranslations: [],
+    }
+
+    return this.wordsService.create(request.authUser.id, draft)
   }
 
   @Get(':cardId')
