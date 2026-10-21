@@ -22,6 +22,7 @@ function sessionWord(
     russian: string
     completedTrainerCount: number
     showIntro: boolean
+    progress: number
     examples: string[]
     wrongRussian: string[]
     wrongSpanish: string[]
@@ -34,7 +35,7 @@ function sessionWord(
     wordId: overrides.wordId ?? 'word-1',
     completedTrainerCount,
     showIntro: overrides.showIntro ?? completedTrainerCount === 0,
-    progress: 0,
+    progress: overrides.progress ?? 0,
     spanish: overrides.spanish ?? 'esperar',
     russian: overrides.russian ?? 'ждать',
     additionalTranslations: [],
@@ -103,10 +104,23 @@ function progressNow() {
   )
 }
 
-function mockSession(words: ReturnType<typeof sessionWord>[]) {
-  const fetchMock = vi.fn<typeof fetch>(async (input) => {
+function mockSession(
+  words: ReturnType<typeof sessionWord>[],
+  options: {
+    completeStatus?: number
+    completeOnceThenOk?: boolean
+    dailyTotal?: number
+    dailyCompleted?: number
+    nextTrainerId?: string | null
+  } = {},
+) {
+  let completeCalls = 0
+  const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input)
-    if (url === `/api/training/trainers/${TRAINER_ID}`) {
+    if (
+      url === `/api/training/trainers/${TRAINER_ID}` &&
+      (!init?.method || init.method === 'GET')
+    ) {
       return new Response(
         JSON.stringify({
           id: TRAINER_ID,
@@ -121,9 +135,63 @@ function mockSession(words: ReturnType<typeof sessionWord>[]) {
         },
       )
     }
+    if (
+      url === `/api/training/trainers/${TRAINER_ID}/complete` &&
+      init?.method === 'POST'
+    ) {
+      completeCalls += 1
+      const failFirst =
+        options.completeOnceThenOk && completeCalls === 1
+      const status = failFirst
+        ? 500
+        : (options.completeStatus ?? 200)
+      if (status !== 200) {
+        return new Response(null, { status })
+      }
+      const body = JSON.parse(String(init.body)) as {
+        cards: Array<{ userCardId: string; errorCount: number }>
+      }
+      return new Response(
+        JSON.stringify({
+          cards: body.cards.map((card) => {
+            const word = words.find((item) => item.userCardId === card.userCardId)
+            const oldProgress = word?.progress ?? 0
+            const delta =
+              card.errorCount <= 0
+                ? 50
+                : card.errorCount === 1
+                  ? 30
+                  : card.errorCount === 2
+                    ? 10
+                    : -10
+            return {
+              userCardId: card.userCardId,
+              spanish: word?.spanish ?? '?',
+              russian: word?.russian ?? '?',
+              errorCount: card.errorCount,
+              oldProgress,
+              delta,
+              newProgress: Math.min(100, Math.max(0, oldProgress + delta)),
+            }
+          }),
+          wordCount: body.cards.length,
+          dailyTotal: options.dailyTotal ?? 6,
+          dailyCompleted: options.dailyCompleted ?? 1,
+          nextTrainerId:
+            options.nextTrainerId === undefined
+              ? 'next-trainer-id'
+              : options.nextTrainerId,
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    }
     throw new Error(`Unexpected request: ${url}`)
   })
   vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 afterEach(() => {
@@ -578,7 +646,10 @@ describe('TrainerSessionPage', () => {
     expect(screen.getByText('Recuerda la palabra')).toBeInTheDocument()
     await wrongType1AndContinue()
 
-    expect(screen.getByText('Home')).toBeInTheDocument()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
   })
 
   it('does not retry exercise 2 after No recuerdo', async () => {
@@ -629,7 +700,10 @@ describe('TrainerSessionPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
     }
 
-    expect(screen.getByText('Home')).toBeInTheDocument()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
     expect(
       screen.queryByText('Escucha y recuerda la palabra'),
     ).not.toBeInTheDocument()
@@ -730,6 +804,182 @@ describe('TrainerSessionPage', () => {
 
     expect(screen.getByText('Elige la traducción')).toBeInTheDocument()
     expect(progressNow()).toBeGreaterThan(before)
+  })
+
+  async function finishSingleWordSession() {
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: 'привет' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'hola' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    for (let i = 0; i < 2; i += 1) {
+      fireEvent.change(
+        screen.getByRole('textbox', { name: 'Escribe la palabra' }),
+        { target: { value: 'hola' } },
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    }
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+  }
+
+  it('shows celebrate screen and Continuar opens the next trainer', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession(
+      [
+        sessionWord({
+          showIntro: false,
+          completedTrainerCount: 3,
+          progress: 40,
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+          wrongSpanish: ['adios', 'gracias', 'favor'],
+        }),
+      ],
+      {
+        dailyTotal: 6,
+        dailyCompleted: 1,
+        nextTrainerId: '0199f98d-83c0-7bde-a537-b74cf7e9ea99',
+      },
+    )
+
+    renderSession()
+    await finishSingleWordSession()
+
+    expect(screen.getByText(/sigue así/)).toBeInTheDocument()
+    expect(screen.getByText(/1 palabra/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('listitem', { name: 'Entrenamiento 1 completado' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('¡Has terminado el entrenamiento diario! 🎉'),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    // Next trainer fetch is not mocked → error or loading; route should change.
+    // MemoryRouter keeps us on /entrenamiento/:id — assert Continuar left celebrate.
+    expect(screen.queryByText(/sigue así/)).not.toBeInTheDocument()
+  })
+
+  it('shows daily finished message even when an extra trainer is already queued', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession(
+      [
+        sessionWord({
+          showIntro: false,
+          completedTrainerCount: 3,
+          progress: 40,
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+          wrongSpanish: ['adios', 'gracias', 'favor'],
+        }),
+      ],
+      {
+        nextTrainerId: 'extra-trainer-id',
+        dailyTotal: 6,
+        dailyCompleted: 6,
+      },
+    )
+
+    renderSession()
+    await finishSingleWordSession()
+
+    expect(
+      screen.getByText('¡Has terminado el entrenamiento diario! 🎉'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Continuar' }),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Terminar' }))
+    expect(screen.getByText('Home')).toBeInTheDocument()
+  })
+
+  it('closes completion with X without a confirm dialog', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession(
+      [
+        sessionWord({
+          showIntro: false,
+          completedTrainerCount: 3,
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+          wrongSpanish: ['adios', 'gracias', 'favor'],
+        }),
+      ],
+      { nextTrainerId: null, dailyTotal: 1, dailyCompleted: 1 },
+    )
+
+    renderSession()
+    await finishSingleWordSession()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.getByText('Home')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: '¿Salir del entrenamiento?' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('retries saving progress when complete fails', async () => {
+    stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession(
+      [
+        sessionWord({
+          showIntro: false,
+          completedTrainerCount: 3,
+          progress: 40,
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+          wrongSpanish: ['adios', 'gracias', 'favor'],
+        }),
+      ],
+      {
+        completeOnceThenOk: true,
+        nextTrainerId: 'extra-id',
+        dailyTotal: 1,
+        dailyCompleted: 1,
+      },
+    )
+
+    renderSession()
+    await finishSingleWordSession()
+
+    expect(
+      screen.getByText(
+        'No se pudo guardar el progreso. Inténtalo de nuevo.',
+      ),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(
+      screen.getByText('¡Has terminado el entrenamiento diario! 🎉'),
+    ).toBeInTheDocument()
   })
 
   it('confirms exit and warns about losing progress', async () => {

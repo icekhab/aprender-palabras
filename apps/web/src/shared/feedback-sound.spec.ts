@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { playFeedbackSound } from './feedback-sound'
+import { playFeedbackSound, stopFeedbackSound } from './feedback-sound'
 
 afterEach(() => {
+  stopFeedbackSound()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -55,5 +56,39 @@ describe('playFeedbackSound', () => {
 
     expect(lastSrc).toBe('/sounds/tap.mp3')
     expect(play).toHaveBeenCalledOnce()
+  })
+
+  it('plays the win sound file', () => {
+    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    let lastSrc = ''
+    class MockAudio {
+      play = play
+      constructor(src: string) {
+        lastSrc = src
+      }
+    }
+    vi.stubGlobal('Audio', MockAudio)
+
+    playFeedbackSound('win')
+
+    expect(lastSrc).toBe('/sounds/win.mp3')
+    expect(play).toHaveBeenCalledOnce()
+  })
+
+  it('stops the current sound', () => {
+    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const pause = vi.fn<() => void>()
+    class MockAudio {
+      play = play
+      pause = pause
+      currentTime = 3
+      constructor(_src: string) {}
+    }
+    vi.stubGlobal('Audio', MockAudio)
+
+    playFeedbackSound('win')
+    stopFeedbackSound()
+
+    expect(pause).toHaveBeenCalledOnce()
   })
 })

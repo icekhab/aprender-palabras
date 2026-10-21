@@ -1,13 +1,21 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { AuthUser } from '@aprender-palabras/contracts'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '../../shared/api/auth'
-import { getTrainerSession } from '../../shared/api/training'
+import {
+  completeTrainerSession,
+  getTrainerSession,
+} from '../../shared/api/training'
 import { playFeedbackSound } from '../../shared/feedback-sound'
 import { speakSpanish } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
+import {
+  CompletionScreen,
+  displayNameFromLogin,
+} from './CompletionScreen'
 import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
@@ -24,10 +32,22 @@ import { WordDetailCard } from './WordDetailCard'
 
 const TRAINER_SESSION_QUERY_KEY = (id: string) =>
   ['training', 'session', id] as const
+const TRAINING_TODAY_QUERY_KEY = ['training', 'today'] as const
+const AUTH_QUERY_KEY = ['auth', 'me'] as const
+
+type CompletionSummary = {
+  wordCount: number
+  dailyTotal: number
+  dailyCompleted: number
+  nextTrainerId: string | null
+  error: string | null
+}
 
 export function TrainerSessionPage() {
   const { trainerId = '' } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [stepIndex, setStepIndex] = useState(0)
   const [queue, setQueue] = useState<SessionStep[]>([])
   const [queueReady, setQueueReady] = useState(false)
@@ -36,8 +56,8 @@ export function TrainerSessionPage() {
   const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>(
     {},
   )
-  // Counts are accumulated for the future completion screen / progress API.
-  const [, setErrorCounts] = useState<Record<string, number>>({})
+  /** Wrong attempts for types 1/3/4/5 per card — sent on complete. */
+  const [errorCounts, setErrorCounts] = useState<Record<string, number>>({})
   const [answerResult, setAnswerResult] = useState<{
     correct: boolean
     accentWarning?: string
@@ -47,6 +67,8 @@ export function TrainerSessionPage() {
     enqueueRetry: boolean
   } | null>(null)
   const [exitOpen, setExitOpen] = useState(false)
+  const [completion, setCompletion] = useState<CompletionSummary | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const sessionQuery = useQuery({
     queryKey: TRAINER_SESSION_QUERY_KEY(trainerId),
@@ -65,6 +87,8 @@ export function TrainerSessionPage() {
     setAnswerResult(null)
     setAttemptCounts({})
     setErrorCounts({})
+    setCompletion(null)
+    setSaving(false)
   }, [sessionQuery.data])
 
   const currentStep = queue[stepIndex] ?? null
@@ -105,6 +129,52 @@ export function TrainerSessionPage() {
     return (attemptCounts[key] ?? 0) >= MAX_ATTEMPTS_PER_EXERCISE
   }, [answerResult, attemptCounts, currentStep])
 
+  const submitCompletion = useCallback(async () => {
+    if (!sessionQuery.data) {
+      return
+    }
+    setSaving(true)
+    setCompletion((prev) =>
+      prev
+        ? { ...prev, error: null }
+        : {
+            wordCount: 0,
+            dailyTotal: 0,
+            dailyCompleted: 0,
+            nextTrainerId: null,
+            error: null,
+          },
+    )
+    try {
+      const result = await completeTrainerSession(trainerId, {
+        cards: sessionQuery.data.words.map((word) => ({
+          userCardId: word.userCardId,
+          errorCount: errorCounts[word.userCardId] ?? 0,
+        })),
+      })
+      setCompletion({
+        wordCount: result.wordCount,
+        dailyTotal: result.dailyTotal,
+        dailyCompleted: result.dailyCompleted,
+        nextTrainerId: result.nextTrainerId,
+        error: null,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: TRAINING_TODAY_QUERY_KEY,
+      })
+    } catch {
+      setCompletion((prev) => ({
+        wordCount: prev?.wordCount ?? 0,
+        dailyTotal: prev?.dailyTotal ?? 0,
+        dailyCompleted: prev?.dailyCompleted ?? 0,
+        nextTrainerId: prev?.nextTrainerId ?? null,
+        error: 'No se pudo guardar el progreso. Inténtalo de nuevo.',
+      }))
+    } finally {
+      setSaving(false)
+    }
+  }, [errorCounts, queryClient, sessionQuery.data, trainerId])
+
   const handleContinue = useCallback(() => {
     playFeedbackSound('tap')
 
@@ -126,7 +196,14 @@ export function TrainerSessionPage() {
     }
 
     if (stepIndex >= nextQueue.length - 1) {
-      void navigate('/', { replace: true })
+      setCompletion({
+        wordCount: 0,
+        dailyTotal: 0,
+        dailyCompleted: 0,
+        nextTrainerId: null,
+        error: null,
+      })
+      void submitCompletion()
       return
     }
     setAnswerResult(null)
@@ -136,9 +213,9 @@ export function TrainerSessionPage() {
     attemptCounts,
     currentStep,
     isCurrentStepResolved,
-    navigate,
     queue,
     stepIndex,
+    submitCompletion,
   ])
 
   const handleRevealResult = useCallback(
@@ -201,6 +278,34 @@ export function TrainerSessionPage() {
           Volver al inicio
         </Button>
       </main>
+    )
+  }
+
+  if (completion) {
+    return (
+      <CompletionScreen
+        userName={displayNameFromLogin(user?.login ?? '')}
+        wordCount={completion.wordCount}
+        dailyTotal={completion.dailyTotal}
+        dailyCompleted={completion.dailyCompleted}
+        nextTrainerId={completion.nextTrainerId}
+        saving={saving}
+        error={completion.error}
+        onRetry={() => {
+          void submitCompletion()
+        }}
+        onContinue={() => {
+          if (!completion.nextTrainerId) {
+            return
+          }
+          void navigate(`/entrenamiento/${completion.nextTrainerId}`, {
+            replace: true,
+          })
+        }}
+        onHome={() => {
+          void navigate('/', { replace: true })
+        }}
+      />
     )
   }
 

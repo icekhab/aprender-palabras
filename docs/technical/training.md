@@ -17,8 +17,9 @@
 - клик по карточке открывает `/entrenamiento/:trainerId` (этап знакомства);
 - вводные карточки только для слов с `completedTrainerCount = 0`.
 
-Пока не реализовано: проверочные упражнения, API завершения
-(при completion нужно обновлять `lastCompletedTrainerAt`, прогресс карточек).
+Проверочные упражнения и `POST /training/trainers/:id/complete` реализованы:
+completion атомарно обновляет прогресс карточек, агрегаты и
+`User.lastCompletedTrainerAt`.
 
 ## Якорь времени
 
@@ -109,3 +110,56 @@ Get-or-create набора на текущий день Madrid.
 
 `404`, если тренажёр не найден, принадлежит другому пользователю или уже `completed`.
 `showIntro` = `completedTrainerCount === 0`.
+
+### `POST /training/trainers/:id/complete`
+
+Сохраняет результат завершённого запуска. Тело:
+
+```json
+{
+  "cards": [
+    { "userCardId": "card-uuid", "errorCount": 1 }
+  ]
+}
+```
+
+`cards` должно содержать ровно все карточки тренажёра (без дублей).
+`errorCount` — число неправильных попыток упражнений 1/3/4/5 по карточке
+в этом запуске (упражнение 2 не учитывается).
+
+В одной транзакции:
+
+- `UserCard.progress` по формуле 0/1/2/3+ → +50/+30/+10/−10 (clamp 0–100);
+- `lastTrainedAt`, `completedTrainerCount++`, `showCount++`;
+- `DailyTrainer.status = completed`;
+- `User.lastCompletedTrainerAt = now`.
+
+Ответ `200`:
+
+```json
+{
+  "cards": [
+    {
+      "userCardId": "card-uuid",
+      "spanish": "esperar",
+      "russian": "ждать",
+      "errorCount": 1,
+      "oldProgress": 40,
+      "delta": 30,
+      "newProgress": 70
+    }
+  ],
+  "wordCount": 1,
+  "dailyTotal": 6,
+  "dailyCompleted": 2,
+  "nextTrainerId": "next-trainer-uuid"
+}
+```
+
+`nextTrainerId` — следующий `not_started` (daily или extra); `null`, если на день
+больше нечего запускать. После завершения всех daily при необходимости
+создаётся extra (как в `GET /today`).
+
+`400` — невалидное тело или набор карточек не совпадает с тренажёром.
+`404` — тренажёр не найден / чужой.
+`409` — тренажёр уже `completed`.

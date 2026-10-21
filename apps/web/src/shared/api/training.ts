@@ -1,4 +1,6 @@
 import type {
+  CompleteTrainerRequest,
+  CompleteTrainerResponse,
   DailyTrainingTodayResponse,
   TrainerSessionResponse,
 } from '@aprender-palabras/contracts'
@@ -41,4 +43,25 @@ export async function getTrainerSession(
   }
 
   return response.json() as Promise<TrainerSessionResponse>
+}
+
+export async function completeTrainerSession(
+  trainerId: string,
+  body: CompleteTrainerRequest,
+): Promise<CompleteTrainerResponse> {
+  const response = await fetch(`/api/training/trainers/${trainerId}/complete`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new ApiError(`API returned ${response.status}`, response.status)
+  }
+
+  return response.json() as Promise<CompleteTrainerResponse>
 }

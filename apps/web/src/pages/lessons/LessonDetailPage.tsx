@@ -4,9 +4,10 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type { LessonWordItem, SuggestionItem } from '@aprender-palabras/contracts'
-import { Check, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ProgressDot } from '@/components/progress-dot'
 import { Button } from '@/components/ui/button'
 import { WordRow } from '@/components/word-row'
 import { ApiError } from '../../shared/api/auth'
@@ -569,16 +570,7 @@ function LessonSuggestionProgressIcon({
           : `${wordLabel}, progreso ${progress}%`
       }
     >
-      {mastered ? (
-        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
-          <Check className="size-3 stroke-[3]" aria-hidden />
-        </span>
-      ) : (
-        <span
-          className="block size-5 rounded-full border border-dashed border-orange-300"
-          aria-hidden
-        />
-      )}
+      <ProgressDot progress={progress} />
     </span>
   )
 }

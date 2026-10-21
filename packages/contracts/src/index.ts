@@ -272,3 +272,34 @@ export interface TrainerSessionResponse {
   sourceLabel: string
   words: TrainerSessionWord[]
 }
+
+export interface CompleteTrainerCardInput {
+  userCardId: string
+  errorCount: number
+}
+
+export interface CompleteTrainerRequest {
+  cards: CompleteTrainerCardInput[]
+}
+
+export interface CompleteTrainerCardResult {
+  userCardId: string
+  spanish: string
+  russian: string
+  errorCount: number
+  oldProgress: number
+  delta: number
+  newProgress: number
+}
+
+export interface CompleteTrainerResponse {
+  cards: CompleteTrainerCardResult[]
+  /** Words practiced in this trainer. */
+  wordCount: number
+  /** Daily (non-extra) trainers in the day. */
+  dailyTotal: number
+  /** Daily trainers with status completed after this save. */
+  dailyCompleted: number
+  /** Next open trainer for Continuar, or null when the day has none left. */
+  nextTrainerId: string | null
+}

@@ -15,7 +15,7 @@ import {
   type SuggestionsResponse,
   type WordDraft,
 } from '@aprender-palabras/contracts'
-import { BookOpen, Check, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
+import { BookOpen, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
@@ -27,6 +27,7 @@ import {
 } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { SpeakButton } from '@/components/speak-button'
+import { ProgressDot } from '@/components/progress-dot'
 import { WordRow } from '@/components/word-row'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
@@ -1017,16 +1018,7 @@ function SuggestionProgressIcon({
           : `${wordLabel}, progreso ${progress}%`
       }
     >
-      {mastered ? (
-        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
-          <Check className="size-3 stroke-[3]" aria-hidden />
-        </span>
-      ) : (
-        <span
-          className="block size-5 rounded-full border border-dashed border-orange-300"
-          aria-hidden
-        />
-      )}
+      <ProgressDot progress={progress} />
     </span>
   )
 }

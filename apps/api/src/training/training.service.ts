@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import type {
+  CompleteTrainerCardInput,
+  CompleteTrainerResponse,
   DailyTrainingTodayResponse,
   DailyTrainerItem,
   TrainerSessionResponse,
@@ -8,6 +15,7 @@ import type {
 import { Prisma } from '../generated/prisma/client.js'
 import { isWordReadyForTrainer } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
+import { applyProgressChange } from './progress.js'
 import {
   buildDailyTrainers,
   buildExtraTrainer,
@@ -43,6 +51,142 @@ export class TrainingService {
       slot: trainer.slot,
       sourceLabel: trainer.sourceLabel,
       words: trainer.words.map((item) => toSessionWord(item)),
+    }
+  }
+
+  async completeTrainer(
+    userId: string,
+    trainerId: string,
+    cards: CompleteTrainerCardInput[],
+  ): Promise<CompleteTrainerResponse> {
+    const trainer = await this.prisma.dailyTrainer.findFirst({
+      where: {
+        id: trainerId,
+        day: { userId },
+      },
+      include: {
+        ...sessionTrainerInclude,
+        day: { select: { id: true } },
+      },
+    })
+
+    if (!trainer) {
+      throw new NotFoundException('Trainer not found')
+    }
+
+    if (trainer.status === 'completed') {
+      throw new ConflictException('Trainer already completed')
+    }
+
+    const expectedIds = new Set(
+      trainer.words.map((item) => item.userCard.id),
+    )
+    if (cards.length !== expectedIds.size) {
+      throw new BadRequestException('Card results must match trainer words')
+    }
+
+    const errorByCard = new Map<string, number>()
+    for (const card of cards) {
+      if (!expectedIds.has(card.userCardId)) {
+        throw new BadRequestException('Unknown card in results')
+      }
+      if (errorByCard.has(card.userCardId)) {
+        throw new BadRequestException('Duplicate card in results')
+      }
+      if (
+        !Number.isInteger(card.errorCount) ||
+        card.errorCount < 0 ||
+        card.errorCount > 1000
+      ) {
+        throw new BadRequestException('Invalid error count')
+      }
+      errorByCard.set(card.userCardId, card.errorCount)
+    }
+
+    const now = new Date()
+    const results = trainer.words.map((item) => {
+      const errorCount = errorByCard.get(item.userCard.id) ?? 0
+      const oldProgress = item.userCard.progress
+      const { delta, newProgress } = applyProgressChange(
+        oldProgress,
+        errorCount,
+      )
+      return {
+        userCardId: item.userCard.id,
+        spanish: item.userCard.word.spanish,
+        russian: item.userCard.word.russian,
+        errorCount,
+        oldProgress,
+        delta,
+        newProgress,
+      }
+    })
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const result of results) {
+        await tx.userCard.update({
+          where: { id: result.userCardId },
+          data: {
+            progress: result.newProgress,
+            lastTrainedAt: now,
+            completedTrainerCount: { increment: 1 },
+            showCount: { increment: 1 },
+          },
+        })
+      }
+
+      await tx.dailyTrainer.update({
+        where: { id: trainerId },
+        data: { status: 'completed' },
+      })
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { lastCompletedTrainerAt: now },
+      })
+    })
+
+    const dayId = trainer.day.id
+    let dayTrainers = await this.prisma.dailyTrainer.findMany({
+      where: { dayId },
+      select: { id: true, kind: true, status: true, slot: true },
+      orderBy: [{ kind: 'asc' }, { slot: 'asc' }],
+    })
+
+    const dailyTrainers = dayTrainers.filter((item) => item.kind === 'daily')
+    const allDailyCompleted =
+      dailyTrainers.length > 0 &&
+      dailyTrainers.every((item) => item.status === 'completed')
+    const openExtra = dayTrainers.find(
+      (item) => item.kind === 'extra' && item.status === 'not_started',
+    )
+
+    if (allDailyCompleted && !openExtra) {
+      await this.ensureExtraTrainer(userId, dayId)
+      dayTrainers = await this.prisma.dailyTrainer.findMany({
+        where: { dayId },
+        select: { id: true, kind: true, status: true, slot: true },
+        orderBy: [{ kind: 'asc' }, { slot: 'asc' }],
+      })
+    }
+
+    const dailyAfter = dayTrainers.filter((item) => item.kind === 'daily')
+    const nextTrainer = dayTrainers
+      .filter((item) => item.status === 'not_started')
+      .sort((a, b) => {
+        if (a.kind !== b.kind) {
+          return a.kind === 'daily' ? -1 : 1
+        }
+        return a.slot - b.slot
+      })[0]
+
+    return {
+      cards: results,
+      wordCount: results.length,
+      dailyTotal: dailyAfter.length,
+      dailyCompleted: dailyAfter.filter((item) => item.status === 'completed')
+        .length,
+      nextTrainerId: nextTrainer?.id ?? null,
     }
   }
 

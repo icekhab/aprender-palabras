@@ -1,9 +1,29 @@
-import { NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TrainingService } from './training.service.js'
 
 function createPrismaMock() {
+  const tx = {
+    userCard: {
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    dailyTrainer: {
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    user: {
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+  }
+
   return {
+    $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+      callback(tx),
+    ),
+    _tx: tx,
     dailyTrainingDay: {
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
       findUniqueOrThrow: vi.fn<(args: unknown) => Promise<unknown>>(),
@@ -11,21 +31,59 @@ function createPrismaMock() {
     },
     dailyTrainer: {
       findFirst: vi.fn<(args: unknown) => Promise<unknown>>(),
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
       count: vi.fn<(args: unknown) => Promise<number>>(),
       create: vi.fn<(args: unknown) => Promise<unknown>>(),
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     dailyTrainerWord: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
     },
     user: {
       findUniqueOrThrow: vi.fn<(args: unknown) => Promise<unknown>>(),
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     userCard: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
       count: vi.fn<(args: unknown) => Promise<number>>(),
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     lesson: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
+  }
+}
+
+function sessionWord(
+  overrides: {
+    id?: string
+    progress?: number
+    spanish?: string
+    russian?: string
+  } = {},
+) {
+  return {
+    userCard: {
+      id: overrides.id ?? 'card-1',
+      wordId: 'word-1',
+      progress: overrides.progress ?? 40,
+      completedTrainerCount: 1,
+      word: {
+        spanish: overrides.spanish ?? 'hola',
+        russian: overrides.russian ?? 'привет',
+        additionalTranslations: [],
+        definitionEs: null,
+        examples: [],
+        partOfSpeech: null,
+        gender: null,
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        imageUrl: null,
+        imagePhotographerName: null,
+        imagePhotographerUrl: null,
+        imagePageUrl: null,
+        imageProvider: null,
+      },
     },
   }
 }
@@ -209,5 +267,165 @@ describe('TrainingService.getTrainerSession', () => {
     await expect(
       service.getTrainerSession('user-1', 'missing'),
     ).rejects.toBeInstanceOf(NotFoundException)
+  })
+})
+
+describe('TrainingService.completeTrainer', () => {
+  const prisma = createPrismaMock()
+  let service: TrainingService
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof prisma._tx) => Promise<unknown>) =>
+        callback(prisma._tx),
+    )
+    service = new TrainingService(prisma as never)
+  })
+
+  it('updates progress, marks trainer completed, and returns deltas', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'not_started',
+      day: { id: 'day-1' },
+      words: [
+        sessionWord({ id: 'card-1', progress: 40, spanish: 'hola' }),
+        sessionWord({
+          id: 'card-2',
+          progress: 95,
+          spanish: 'casa',
+          russian: 'дом',
+        }),
+      ],
+    })
+    prisma.dailyTrainer.findMany.mockResolvedValue([
+      {
+        id: 'trainer-1',
+        kind: 'daily',
+        status: 'completed',
+        slot: 1,
+      },
+      {
+        id: 'trainer-2',
+        kind: 'daily',
+        status: 'not_started',
+        slot: 2,
+      },
+    ])
+
+    const result = await service.completeTrainer('user-1', 'trainer-1', [
+      { userCardId: 'card-1', errorCount: 0 },
+      { userCardId: 'card-2', errorCount: 2 },
+    ])
+
+    expect(result.cards).toEqual([
+      {
+        userCardId: 'card-1',
+        spanish: 'hola',
+        russian: 'привет',
+        errorCount: 0,
+        oldProgress: 40,
+        delta: 50,
+        newProgress: 90,
+      },
+      {
+        userCardId: 'card-2',
+        spanish: 'casa',
+        russian: 'дом',
+        errorCount: 2,
+        oldProgress: 95,
+        delta: 10,
+        newProgress: 100,
+      },
+    ])
+    expect(result).toMatchObject({
+      wordCount: 2,
+      dailyTotal: 2,
+      dailyCompleted: 1,
+      nextTrainerId: 'trainer-2',
+    })
+
+    expect(prisma._tx.userCard.update).toHaveBeenCalledTimes(2)
+    expect(prisma._tx.userCard.update).toHaveBeenCalledWith({
+      where: { id: 'card-1' },
+      data: {
+        progress: 90,
+        lastTrainedAt: expect.any(Date),
+        completedTrainerCount: { increment: 1 },
+        showCount: { increment: 1 },
+      },
+    })
+    expect(prisma._tx.dailyTrainer.update).toHaveBeenCalledWith({
+      where: { id: 'trainer-1' },
+      data: { status: 'completed' },
+    })
+    expect(prisma._tx.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { lastCompletedTrainerAt: expect.any(Date) },
+    })
+  })
+
+  it('returns null nextTrainerId when the day has no open trainers', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'not_started',
+      day: { id: 'day-1' },
+      words: [sessionWord({ id: 'card-1', progress: 0 })],
+    })
+    prisma.dailyTrainer.findMany.mockResolvedValue([
+      {
+        id: 'trainer-1',
+        kind: 'daily',
+        status: 'completed',
+        slot: 1,
+      },
+    ])
+    prisma.dailyTrainerWord.findMany.mockResolvedValue([])
+    prisma.userCard.findMany.mockResolvedValue([])
+    prisma.dailyTrainer.count.mockResolvedValue(0)
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      currentLessonId: null,
+      lastCompletedTrainerAt: null,
+      currentLesson: null,
+    })
+    prisma.lesson.findMany.mockResolvedValue([])
+
+    const result = await service.completeTrainer('user-1', 'trainer-1', [
+      { userCardId: 'card-1', errorCount: 0 },
+    ])
+
+    expect(result.nextTrainerId).toBeNull()
+    expect(result.dailyTotal).toBe(1)
+    expect(result.dailyCompleted).toBe(1)
+  })
+
+  it('rejects already completed trainers', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'completed',
+      words: [sessionWord()],
+    })
+
+    await expect(
+      service.completeTrainer('user-1', 'trainer-1', [
+        { userCardId: 'card-1', errorCount: 0 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects incomplete card payloads', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'not_started',
+      words: [sessionWord({ id: 'card-1' }), sessionWord({ id: 'card-2' })],
+    })
+
+    await expect(
+      service.completeTrainer('user-1', 'trainer-1', [
+        { userCardId: 'card-1', errorCount: 0 },
+      ]),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 })
