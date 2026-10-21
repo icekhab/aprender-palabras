@@ -70,6 +70,21 @@ function sortByPriority(
   return [...cards].sort((a, b) => compareByPriority(a, b, random))
 }
 
+/** Shuffle, then stable-sort by progress ascending (ties keep random order). */
+function sortByProgressThenRandom(
+  cards: SelectionCard[],
+  random: RandomFn,
+): SelectionCard[] {
+  const shuffled = [...cards]
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1))
+    const current = shuffled[index]!
+    shuffled[index] = shuffled[swapIndex]!
+    shuffled[swapIndex] = current
+  }
+  return shuffled.sort((a, b) => a.progress - b.progress)
+}
+
 function isStarted(card: SelectionCard): boolean {
   return card.completedTrainerCount > 0
 }
@@ -92,10 +107,6 @@ function isRecent14(card: SelectionCard, anchor: Date): boolean {
 
 function isAgeLessThan28(card: SelectionCard, anchor: Date): boolean {
   return ageMs(card, anchor) < 28 * MS_PER_DAY
-}
-
-function isAgeAtLeast28(card: SelectionCard, anchor: Date): boolean {
-  return ageMs(card, anchor) >= 28 * MS_PER_DAY
 }
 
 function trainedAtLeast28BeforeAnchor(
@@ -148,6 +159,20 @@ function pickFromPool(
   max = MAX_TRAINER_WORDS,
 ): SelectionCard[] {
   const unused = sortByPriority(
+    pool.filter((card) => !usedToday.has(card.userCardId)),
+    random,
+  )
+  return unused.slice(0, max)
+}
+
+/** Progress ascending only; equal progress stays randomly ordered. */
+function pickByProgressThenRandom(
+  pool: SelectionCard[],
+  usedToday: Set<string>,
+  random: RandomFn,
+  max = MAX_TRAINER_WORDS,
+): SelectionCard[] {
+  const unused = sortByProgressThenRandom(
     pool.filter((card) => !usedToday.has(card.userCardId)),
     random,
   )
@@ -265,34 +290,15 @@ export function buildDailyTrainers(input: {
     commit(
       4,
       'Repaso lejano',
-      pickFromPool(
-        started.filter((card) => isAgeAtLeast28(card, anchor)),
+      pickByProgressThenRandom(
+        started.filter((card) => trainedAtLeast28BeforeAnchor(card, anchor)),
         usedToday,
         random,
       ),
     )
 
-    const studiedOld = started.filter((card) =>
-      trainedAtLeast28BeforeAnchor(card, anchor),
-    )
-    if (studiedOld.length > 0) {
-      const unused = studiedOld.filter(
-        (card) => !usedToday.has(card.userCardId),
-      )
-      commit(
-        5,
-        'Palabras ya estudiadas',
-        weightedSampleWithoutReplacement(
-          unused,
-          MAX_TRAINER_WORDS,
-          (_card, rank, total) => total - rank + 1,
-          random,
-        ),
-      )
-    }
-
     commit(
-      6,
+      5,
       'Palabras nuevas',
       sortNewestFirst(
         unstarted.filter((card) => !usedToday.has(card.userCardId)),
@@ -319,12 +325,6 @@ export function buildDailyTrainers(input: {
   const ageLess28Started = started.filter((card) =>
     isAgeLessThan28(card, anchor),
   )
-  const ageAtLeast28Started = started.filter((card) =>
-    isAgeAtLeast28(card, anchor),
-  )
-  const studiedOld = started.filter((card) =>
-    trainedAtLeast28BeforeAnchor(card, anchor),
-  )
 
   const pool12 = uniqueById([...l0Started, ...manualRecent14Started])
   for (const slot of [1, 2] as const) {
@@ -337,25 +337,15 @@ export function buildDailyTrainers(input: {
   commit(
     4,
     'Repaso lejano',
-    pickFromPool(ageAtLeast28Started, usedToday, random),
+    pickByProgressThenRandom(
+      started.filter((card) => trainedAtLeast28BeforeAnchor(card, anchor)),
+      usedToday,
+      random,
+    ),
   )
 
-  if (studiedOld.length > 0) {
-    const unused = studiedOld.filter((card) => !usedToday.has(card.userCardId))
-    commit(
-      5,
-      'Palabras ya estudiadas',
-      weightedSampleWithoutReplacement(
-        unused,
-        MAX_TRAINER_WORDS,
-        (_card, rank, total) => total - rank + 1,
-        random,
-      ),
-    )
-  }
-
   commit(
-    6,
+    5,
     'Nuevas y próxima lección',
     sortNewestFirst(
       unstarted.filter((card) => !usedToday.has(card.userCardId)),

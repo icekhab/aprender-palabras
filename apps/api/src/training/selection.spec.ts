@@ -59,7 +59,7 @@ describe('buildDailyTrainers with current lesson', () => {
   const now = new Date('2026-10-19T12:00:00.000Z')
   const anchor = now
 
-  it('puts unstarted only in slot 6, including current-lesson words', () => {
+  it('puts unstarted only in slot 5, including current-lesson words', () => {
     const cards = [
       card({
         userCardId: 'l0-new',
@@ -88,11 +88,11 @@ describe('buildDailyTrainers with current lesson', () => {
     })
 
     const slot1 = trainers.find((item) => item.slot === 1)
-    const slot6 = trainers.find((item) => item.slot === 6)
+    const slot5 = trainers.find((item) => item.slot === 5)
     expect(slot1?.sourceLabel).toBe('Lección actual')
     expect(slot1?.userCardIds).toEqual(['l0-old'])
     expect(slot1?.userCardIds).not.toContain('l0-new')
-    expect(slot6?.userCardIds).toContain('l0-new')
+    expect(slot5?.userCardIds).toContain('l0-new')
   })
 
   it('does not repeat words across the two Lección actual slots', () => {
@@ -153,32 +153,7 @@ describe('buildDailyTrainers with current lesson', () => {
     ).toBe(false)
   })
 
-  it('skips Repaso lejano when no started card is age >= 28 from anchor', () => {
-    const cards = [
-      card({
-        userCardId: 'young-started',
-        completedTrainerCount: 1,
-        lastTrainedAt: new Date('2026-10-10T12:00:00.000Z'),
-        addedAt: new Date('2026-10-01T12:00:00.000Z'),
-        lessonPositions: [2],
-        source: 'lesson',
-      }),
-    ]
-
-    const trainers = buildDailyTrainers({
-      cards,
-      currentLessonPosition: 2,
-      anchor,
-      now,
-      random: () => 0.2,
-    })
-
-    expect(trainers.some((item) => item.sourceLabel === 'Repaso lejano')).toBe(
-      false,
-    )
-  })
-
-  it('skips Palabras ya estudiadas when last training is recent vs anchor', () => {
+  it('skips Repaso lejano when last training is more recent than 28 days vs anchor', () => {
     const cards = [
       card({
         userCardId: 'recently-trained',
@@ -198,9 +173,46 @@ describe('buildDailyTrainers with current lesson', () => {
       random: () => 0.2,
     })
 
-    expect(
-      trainers.some((item) => item.sourceLabel === 'Palabras ya estudiadas'),
-    ).toBe(false)
+    expect(trainers.some((item) => item.sourceLabel === 'Repaso lejano')).toBe(
+      false,
+    )
+  })
+
+  it('puts long-untrained started cards in Repaso lejano by progress then random', () => {
+    const cards = [
+      card({
+        userCardId: 'high',
+        completedTrainerCount: 2,
+        lastTrainedAt: new Date('2026-08-01T12:00:00.000Z'),
+        progress: 80,
+        // Age ≥ 28 and not in L0/L1–L4 for current position 10
+        addedAt: new Date('2026-07-01T12:00:00.000Z'),
+        lessonPositions: [1],
+        source: 'lesson',
+      }),
+      card({
+        userCardId: 'low',
+        completedTrainerCount: 2,
+        lastTrainedAt: new Date('2026-08-01T12:00:00.000Z'),
+        progress: 10,
+        addedAt: new Date('2026-07-01T12:00:00.000Z'),
+        lessonPositions: [1],
+        source: 'lesson',
+      }),
+    ]
+
+    const trainers = buildDailyTrainers({
+      cards,
+      currentLessonPosition: 10,
+      anchor,
+      now,
+      random: () => 0.2,
+    })
+
+    const repaso = trainers.find((item) => item.sourceLabel === 'Repaso lejano')
+    expect(repaso?.slot).toBe(4)
+    expect(repaso?.userCardIds[0]).toBe('low')
+    expect(repaso?.userCardIds).toEqual(['low', 'high'])
   })
 
   it('keeps age windows relative to frozen anchor after a long absence', () => {

@@ -4,11 +4,13 @@
 
 На текущем этапе:
 
-- при первом запросе в календарный день `Europe/Madrid` формируется до шести
+- при первом запросе в календарный день `Europe/Madrid` формируется до пяти
   ежедневных тренажёров;
 - размер подборки: минимум 1, максимум 15 карточек;
-- **Unstarted** (`completedTrainerCount = 0`) попадают **только** в слот 6;
-  слоты 1–5 содержат только **Started**;
+- **Unstarted** (`completedTrainerCount = 0`) попадают **только** в слот 5;
+  слоты 1–4 содержат только **Started**;
+- слот 4 (**Repaso lejano**): Started с `anchor − lastTrainedAt ≥ 28 суток`,
+  приоритет только по прогрессу (иначе random);
 - окна Recent-14 / Age 28 и «давно учили» считаются от якоря
   `User.lastCompletedTrainerAt` (если `null` — от текущего момента);
 - состав сохраняется и повторно отдаётся без перестановки;
@@ -150,7 +152,7 @@ Get-or-create набора на текущий день Madrid.
     }
   ],
   "wordCount": 1,
-  "dailyTotal": 6,
+  "dailyTotal": 5,
   "dailyCompleted": 2,
   "nextTrainerId": "next-trainer-uuid"
 }
