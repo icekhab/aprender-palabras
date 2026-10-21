@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -297,6 +298,9 @@ function HomePage() {
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [dictionaryFilterInput, setDictionaryFilterInput] = useState('')
+  const [debouncedDictionaryFilter, setDebouncedDictionaryFilter] =
+    useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const logoutMutation = useLogoutMutation()
 
@@ -311,6 +315,17 @@ function HomePage() {
     }
   }, [searchInput])
 
+  useEffect(() => {
+    const trimmed = dictionaryFilterInput.trim()
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedDictionaryFilter(trimmed)
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [dictionaryFilterInput])
+
   const suggestionsQuery = useQuery({
     queryKey: ['suggestions', debouncedQuery],
     queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
@@ -322,15 +337,22 @@ function HomePage() {
     searchFocused && debouncedQuery.length >= MIN_QUERY_LENGTH
 
   const dictionaryQuery = useInfiniteQuery({
-    queryKey: DICTIONARY_QUERY_KEY,
+    queryKey: [...DICTIONARY_QUERY_KEY, debouncedDictionaryFilter],
     queryFn: ({ pageParam, signal }) =>
       listDictionaryWords(
-        { limit: DICTIONARY_PAGE_SIZE, offset: pageParam },
+        {
+          limit: DICTIONARY_PAGE_SIZE,
+          offset: pageParam,
+          ...(debouncedDictionaryFilter
+            ? { q: debouncedDictionaryFilter }
+            : {}),
+        },
         signal,
       ),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _pages, lastPageParam) =>
       lastPage.hasMore ? lastPageParam + DICTIONARY_PAGE_SIZE : undefined,
+    placeholderData: keepPreviousData,
   })
 
   const trainingQuery = useQuery({
@@ -492,14 +514,28 @@ function HomePage() {
           </div>
         </div>
 
+        <div className="mt-6">
+          <label className="sr-only" htmlFor="dictionary-filter">
+            Buscar en tu diccionario
+          </label>
+          <input
+            id="dictionary-filter"
+            value={dictionaryFilterInput}
+            onChange={(event) => setDictionaryFilterInput(event.target.value)}
+            placeholder="Buscar en tu diccionario…"
+            autoComplete="off"
+            className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200 sm:max-w-md"
+          />
+        </div>
+
         {dictionaryQuery.isPending && (
-          <p className="mt-8 text-sm text-orange-900/70" role="status">
+          <p className="mt-4 text-sm text-orange-900/70" role="status">
             Cargando el diccionario…
           </p>
         )}
 
         {dictionaryQuery.isError && (
-          <div className="mt-8" role="alert">
+          <div className="mt-4" role="alert">
             <p className="text-sm text-red-700">
               No se pudo cargar el diccionario.
             </p>
@@ -512,15 +548,25 @@ function HomePage() {
           </div>
         )}
 
-        {dictionaryQuery.isSuccess && dictionaryItems.length === 0 && (
-          <p className="mt-8 text-sm text-orange-900/70">
-            Aún no hay palabras. Busca una arriba para añadirla.
-          </p>
-        )}
+        {dictionaryQuery.isSuccess &&
+          dictionaryItems.length === 0 &&
+          debouncedDictionaryFilter.length > 0 && (
+            <p className="mt-4 text-sm text-orange-900/70">
+              No hay coincidencias.
+            </p>
+          )}
+
+        {dictionaryQuery.isSuccess &&
+          dictionaryItems.length === 0 &&
+          debouncedDictionaryFilter.length === 0 && (
+            <p className="mt-4 text-sm text-orange-900/70">
+              Aún no hay palabras. Busca una arriba para añadirla.
+            </p>
+          )}
 
         {dictionaryQuery.isSuccess && dictionaryItems.length > 0 && (
           <>
-            <ul className="mt-8">
+            <ul className="mt-4">
               {dictionaryItems.map((item) => (
                 <DictionaryWordRow item={item} key={item.id} />
               ))}

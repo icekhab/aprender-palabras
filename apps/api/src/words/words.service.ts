@@ -71,25 +71,40 @@ export class WordsService {
     userId: string,
     query: DictionaryListQuery,
   ): Promise<DictionaryListResponse> {
-    const where = {
+    const dictionaryWhere = {
       userId,
       inDictionary: true,
     }
+    const listWhere = {
+      ...dictionaryWhere,
+      ...(query.q
+        ? {
+            word: {
+              OR: [
+                { spanish: { contains: query.q, mode: 'insensitive' as const } },
+                { russian: { contains: query.q, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
+    }
 
-    const [totalCount, progressAggregate, cards] = await Promise.all([
-      this.prisma.userCard.count({ where }),
-      this.prisma.userCard.aggregate({
-        where,
-        _avg: { progress: true },
-      }),
-      this.prisma.userCard.findMany({
-        where,
-        include: { word: true },
-        orderBy: { addedAt: 'desc' },
-        skip: query.offset,
-        take: query.limit,
-      }),
-    ])
+    const [totalCount, progressAggregate, matchedCount, cards] =
+      await Promise.all([
+        this.prisma.userCard.count({ where: dictionaryWhere }),
+        this.prisma.userCard.aggregate({
+          where: dictionaryWhere,
+          _avg: { progress: true },
+        }),
+        this.prisma.userCard.count({ where: listWhere }),
+        this.prisma.userCard.findMany({
+          where: listWhere,
+          include: { word: true },
+          orderBy: { addedAt: 'desc' },
+          skip: query.offset,
+          take: query.limit,
+        }),
+      ])
 
     const { _avg: averageFields } = progressAggregate
     const averageProgress =
@@ -98,7 +113,7 @@ export class WordsService {
     return {
       totalCount,
       averageProgress,
-      hasMore: query.offset + cards.length < totalCount,
+      hasMore: query.offset + cards.length < matchedCount,
       items: cards.map((card) => ({
         id: card.id,
         wordId: card.wordId,

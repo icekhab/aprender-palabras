@@ -326,6 +326,9 @@ describe('App', () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.getByText('0 palabras añadidas')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Buscar en tu diccionario'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cuenta' })).toHaveTextContent('I')
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', {
@@ -334,6 +337,148 @@ describe('App', () => {
         Accept: 'application/json',
       },
     })
+  })
+
+  it('filters the dictionary list by q after debounce', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url === '/api/words?limit=20&offset=0') {
+        return jsonResponse({
+          totalCount: 2,
+          averageProgress: 25,
+          hasMore: false,
+          items: [
+            {
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'esperar',
+              russian: 'ждать',
+              progress: 50,
+              addedAt: '2026-10-18T12:00:00.000Z',
+            },
+            {
+              id: 'card-2',
+              wordId: 'word-2',
+              spanish: 'hablar',
+              russian: 'говорить',
+              progress: 0,
+              addedAt: '2026-10-17T12:00:00.000Z',
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words?limit=20&offset=0&q=esp') {
+        return jsonResponse({
+          totalCount: 2,
+          averageProgress: 25,
+          hasMore: false,
+          items: [
+            {
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'esperar',
+              russian: 'ждать',
+              progress: 50,
+              addedAt: '2026-10-18T12:00:00.000Z',
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(screen.getByText('hablar')).toBeInTheDocument()
+    expect(screen.getByText('2 palabras añadidas')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Buscar en tu diccionario'), {
+      target: { value: 'esp' },
+    })
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/words?limit=20&offset=0&q=esp',
+        expect.objectContaining({
+          credentials: 'same-origin',
+        }),
+      )
+    })
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(screen.getByText('2 palabras añadidas')).toBeInTheDocument()
+    expect(screen.queryByText('hablar')).not.toBeInTheDocument()
+  })
+
+  it('shows an empty state when the dictionary filter has no matches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url === '/api/words?limit=20&offset=0') {
+        return jsonResponse({
+          totalCount: 1,
+          averageProgress: 0,
+          hasMore: false,
+          items: [
+            {
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'hablar',
+              russian: 'говорить',
+              progress: 0,
+              addedAt: '2026-10-18T12:00:00.000Z',
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words?limit=20&offset=0&q=zzz') {
+        return jsonResponse({
+          totalCount: 0,
+          averageProgress: 0,
+          hasMore: false,
+          items: [],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    expect(await screen.findByText('hablar')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Buscar en tu diccionario'), {
+      target: { value: 'zzz' },
+    })
+
+    expect(await screen.findByText('No hay coincidencias.')).toBeInTheDocument()
+    expect(screen.queryByText('hablar')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Aún no hay palabras. Busca una arriba para añadirla.'),
+    ).not.toBeInTheDocument()
   })
 
   it('opens account menu and navigates to settings', async () => {

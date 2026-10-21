@@ -321,6 +321,59 @@ describe('WordsService', () => {
     })
   })
 
+  it('filters dictionary cards by spanish or russian substring', async () => {
+    const listWhere = {
+      userId: 'user-1',
+      inDictionary: true,
+      word: {
+        OR: [
+          { spanish: { contains: 'Esp', mode: 'insensitive' } },
+          { russian: { contains: 'Esp', mode: 'insensitive' } },
+        ],
+      },
+    }
+    prisma.userCard.count.mockImplementation(
+      async (args: { where: unknown }) => {
+        if (JSON.stringify(args.where) === JSON.stringify(listWhere)) {
+          return 1
+        }
+
+        return 7
+      },
+    )
+    prisma.userCard.aggregate.mockResolvedValue({ _avg: { progress: 60 } })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        id: 'card-1',
+        wordId: 'word-1',
+        progress: 50,
+        addedAt: new Date('2026-10-18T12:00:00.000Z'),
+        word: { spanish: 'esperar', russian: 'ждать' },
+      },
+    ])
+
+    await expect(
+      service.list('user-1', { limit: 20, offset: 0, q: 'Esp' }),
+    ).resolves.toMatchObject({
+      totalCount: 7,
+      averageProgress: 60,
+      hasMore: false,
+      items: [{ spanish: 'esperar', russian: 'ждать' }],
+    })
+
+    expect(prisma.userCard.aggregate).toHaveBeenCalledWith({
+      where: { userId: 'user-1', inDictionary: true },
+      _avg: { progress: true },
+    })
+    expect(prisma.userCard.findMany).toHaveBeenCalledWith({
+      where: listWhere,
+      include: { word: true },
+      orderBy: { addedAt: 'desc' },
+      skip: 0,
+      take: 20,
+    })
+  })
+
   it('throws ConflictException when the user already has the card', async () => {
     const now = new Date('2026-10-18T12:00:00.000Z')
     tx.word.findUnique.mockResolvedValue({

@@ -18,6 +18,10 @@ export async function listDictionaryWords(
     offset: String(query.offset),
   })
 
+  if (query.q) {
+    params.set('q', query.q)
+  }
+
   return request<DictionaryListResponse>(`/api/words?${params}`, {
     method: 'GET',
     signal,
