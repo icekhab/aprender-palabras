@@ -2,7 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -14,6 +18,7 @@ import {
   wordPairSchema,
   type DictionaryListItem,
   type DictionaryListResponse,
+  type UserCardDetail,
   type Word,
   type WordDraft,
 } from '@aprender-palabras/contracts'
@@ -35,6 +40,31 @@ export class WordsController {
     }
 
     return this.wordsService.list(request.authUser.id, result.data)
+  }
+
+  @Get(':cardId')
+  getCard(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<UserCardDetail> {
+    return this.wordsService.getCard(request.authUser.id, cardId)
+  }
+
+  @Post(':cardId/reset-progress')
+  resetProgress(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<UserCardDetail> {
+    return this.wordsService.resetProgress(request.authUser.id, cardId)
+  }
+
+  @Delete(':cardId')
+  @HttpCode(204)
+  deleteCard(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<void> {
+    return this.wordsService.deleteCard(request.authUser.id, cardId)
   }
 
   @Post('preview')

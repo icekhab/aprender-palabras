@@ -437,6 +437,7 @@ export class LessonsService {
 
       return {
         wordId: word.id,
+        userCardId: ensuredCard.id,
         spanish: word.spanish,
         russian: word.russian,
         progress: ensuredCard.progress,
@@ -813,6 +814,7 @@ export class LessonsService {
     Map<
       string,
       {
+        id: string
         progress: number
         inDictionary: boolean
       }
@@ -833,6 +835,7 @@ export class LessonsService {
       cards.map((card) => [
         card.wordId,
         {
+          id: card.id,
           progress: card.progress,
           inDictionary: card.inDictionary,
         },
@@ -918,7 +921,7 @@ export class LessonsService {
         }
       }>
     },
-    cards: Map<string, { progress: number; inDictionary: boolean }>,
+    cards: Map<string, { id: string; progress: number; inDictionary: boolean }>,
     currentPosition: number | null,
     currentLessonId: string | null,
   ): LessonListItem {
@@ -970,7 +973,7 @@ export class LessonsService {
         }
       }>
     },
-    cards: Map<string, { progress: number; inDictionary: boolean }>,
+    cards: Map<string, { id: string; progress: number; inDictionary: boolean }>,
     currentPosition: number | null,
     currentLessonId: string | null,
   ): LessonDetail {
@@ -988,6 +991,7 @@ export class LessonsService {
         const missingFields = getMissingTrainerFields(item.word)
         return {
           wordId: item.wordId,
+          userCardId: card?.id ?? null,
           spanish: item.word.spanish,
           russian: item.word.russian,
           progress: card?.progress ?? 0,

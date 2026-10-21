@@ -29,10 +29,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { SpeakButton } from '@/components/speak-button'
 import { ProgressDot } from '@/components/progress-dot'
+import { WordCardFields } from '@/components/word-card-fields'
 import { WordRow } from '@/components/word-row'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
 import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
+import { WordCardPage } from './pages/words/WordCardPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { addNewWordToLesson } from './shared/api/lessons'
 import { getSuggestions } from './shared/api/suggestions'
@@ -83,6 +85,14 @@ function App() {
         element={
           <ProtectedRoute>
             <AddWordPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/words/:cardId"
+        element={
+          <ProtectedRoute>
+            <WordCardPage />
           </ProtectedRoute>
         }
       />
@@ -687,11 +697,16 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DictionaryWordRow({ item }: { item: DictionaryListItem }) {
+  const navigate = useNavigate()
+
   return (
     <WordRow
       spanish={item.spanish}
       russian={item.russian}
       progress={item.progress}
+      onSelect={() => {
+        void navigate(`/words/${item.id}`)
+      }}
     />
   )
 }
@@ -1188,99 +1203,8 @@ function WordDraftView({
   onCancel: () => void
 }) {
   return (
-    <section className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <SpeakButton text={draft.spanish} size="lg" />
-          <p className="text-3xl font-bold tracking-tight">{draft.spanish}</p>
-        </div>
-        <p className="mt-1 text-lg text-orange-900/80">{draft.russian}</p>
-      </div>
-
-      {draft.imageUrl && (
-        <figure>
-          <img
-            src={draft.imageUrl}
-            alt=""
-            className="max-h-80 w-full rounded-2xl object-cover"
-          />
-          {draft.imagePhotographerName && draft.imagePhotographerUrl && (
-            <figcaption className="mt-2 text-xs text-orange-900/60">
-              Foto de{' '}
-              <a
-                href={draft.imagePhotographerUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                {draft.imagePhotographerName}
-              </a>
-              {draft.imagePageUrl && (
-                <>
-                  {' '}
-                  en{' '}
-                  <a
-                    href={draft.imagePageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Unsplash
-                  </a>
-                </>
-              )}
-            </figcaption>
-          )}
-        </figure>
-      )}
-
-      <ReadOnlyField
-        label="Traducciones adicionales"
-        value={
-          draft.additionalTranslations.length > 0
-            ? draft.additionalTranslations.join(', ')
-            : null
-        }
-      />
-      <ReadOnlyField label="Definición" value={draft.definitionEs} />
-      <div>
-        <p className="text-sm font-medium text-orange-900/70">Ejemplos</p>
-        {draft.examples.length > 0 ? (
-          <ul className="mt-1 space-y-2">
-            {draft.examples.map((example) => (
-              <li key={example} className="flex items-start gap-2">
-                <SpeakButton text={example} className="mt-0.5" />
-                <p className="text-orange-950">{example}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
-        )}
-      </div>
-      <ReadOnlyField label="Categoría gramatical" value={draft.partOfSpeech} />
-      <ReadOnlyField
-        label="Género"
-        value={
-          draft.gender === 'masculine'
-            ? 'masculino'
-            : draft.gender === 'feminine'
-              ? 'femenino'
-              : null
-        }
-      />
-      <ReadOnlyField
-        label="Opciones incorrectas (ruso)"
-        value={
-          draft.wrongRussian.length > 0 ? draft.wrongRussian.join(', ') : null
-        }
-      />
-      <ReadOnlyField
-        label="Opciones incorrectas (español)"
-        value={
-          draft.wrongSpanish.length > 0 ? draft.wrongSpanish.join(', ') : null
-        }
-      />
+    <div className="space-y-6">
+      <WordCardFields draft={draft} />
 
       {isConflict(saveError) ? (
         <p role="alert" className="text-sm text-red-700">
@@ -1306,25 +1230,6 @@ function WordDraftView({
           Cancelar
         </Button>
       </div>
-    </section>
-  )
-}
-
-function ReadOnlyField({
-  label,
-  value,
-}: {
-  label: string
-  value: string | null
-}) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-orange-900/70">{label}</p>
-      {value ? (
-        <p className="mt-1 text-orange-950">{value}</p>
-      ) : (
-        <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
-      )}
     </div>
   )
 }

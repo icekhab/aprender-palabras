@@ -35,6 +35,10 @@ describe('WordsService', () => {
     userCard: {
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
       create: vi.fn<(args: unknown) => Promise<unknown>>(),
+      delete: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    lessonWord: {
+      deleteMany: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
   }
 
@@ -49,8 +53,15 @@ describe('WordsService', () => {
       count: vi.fn<(args: unknown) => Promise<number>>(),
       aggregate: vi.fn<(args: unknown) => Promise<{ _avg: { progress: number | null } }>>(),
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+      findFirst: vi.fn<(args: unknown) => Promise<unknown>>(),
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
       create: vi.fn<(args: unknown) => Promise<unknown>>(),
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
+      delete: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    lessonWord: {
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+      deleteMany: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
   }
 
@@ -318,6 +329,119 @@ describe('WordsService', () => {
           addedAt: addedAt.toISOString(),
         },
       ],
+    })
+  })
+
+  it('returns a user card detail with lessons and readiness', async () => {
+    const addedAt = new Date('2026-10-18T12:00:00.000Z')
+    prisma.userCard.findFirst.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      progress: 60,
+      inDictionary: true,
+      source: 'manual',
+      addedAt,
+      word: {
+        spanish: 'esperar',
+        russian: 'ждать',
+        additionalTranslations: ['ожидать'],
+        definitionEs: 'Tener esperanza.',
+        examples: ['Espero tu llamada.'],
+        partOfSpeech: 'verbo',
+        gender: null,
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        imageUrl: null,
+        imagePhotographerName: null,
+        imagePhotographerUrl: null,
+        imagePageUrl: null,
+        imageProvider: null,
+      },
+    })
+    prisma.lessonWord.findMany.mockResolvedValue([
+      { lesson: { id: 'lesson-1', title: 'Uno' } },
+    ])
+
+    await expect(service.getCard('user-1', 'card-1')).resolves.toMatchObject({
+      id: 'card-1',
+      wordId: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      progress: 60,
+      ready: true,
+      missingFields: [],
+      lessons: [{ id: 'lesson-1', title: 'Uno' }],
+    })
+  })
+
+  it('throws NotFoundException when the card is missing', async () => {
+    prisma.userCard.findFirst.mockResolvedValue(null)
+
+    await expect(service.getCard('user-1', 'card-missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
+  })
+
+  it('resets progress and training counters as if the word was just added', async () => {
+    prisma.userCard.findFirst.mockResolvedValue({ id: 'card-1' })
+    prisma.userCard.update.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      progress: 0,
+      inDictionary: true,
+      source: 'manual',
+      addedAt: new Date('2026-10-18T12:00:00.000Z'),
+      word: {
+        spanish: 'esperar',
+        russian: 'ждать',
+        additionalTranslations: [],
+        definitionEs: null,
+        examples: [],
+        partOfSpeech: null,
+        gender: null,
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        imageUrl: null,
+        imagePhotographerName: null,
+        imagePhotographerUrl: null,
+        imagePageUrl: null,
+        imageProvider: null,
+      },
+    })
+    prisma.lessonWord.findMany.mockResolvedValue([])
+
+    await expect(service.resetProgress('user-1', 'card-1')).resolves.toMatchObject({
+      progress: 0,
+    })
+
+    expect(prisma.userCard.update).toHaveBeenCalledWith({
+      where: { id: 'card-1' },
+      data: {
+        progress: 0,
+        lastTrainedAt: null,
+        completedTrainerCount: 0,
+        showCount: 0,
+      },
+      include: { word: true },
+    })
+  })
+
+  it('deletes the card and lesson links for the user', async () => {
+    prisma.userCard.findFirst.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+    })
+
+    await expect(service.deleteCard('user-1', 'card-1')).resolves.toBeUndefined()
+
+    expect(tx.lessonWord.deleteMany).toHaveBeenCalledWith({
+      where: {
+        wordId: 'word-1',
+        lesson: { userId: 'user-1' },
+      },
+    })
+    expect(tx.userCard.delete).toHaveBeenCalledWith({
+      where: { id: 'card-1' },
     })
   })
 

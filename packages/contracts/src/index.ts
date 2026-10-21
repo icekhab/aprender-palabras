@@ -123,6 +123,39 @@ export interface DictionaryListResponse {
   items: DictionaryListItem[]
 }
 
+export type UserCardSource = 'manual' | 'lesson'
+
+export interface UserCardLessonRef {
+  id: string
+  title: string
+}
+
+export interface UserCardDetail {
+  id: string
+  wordId: string
+  spanish: string
+  russian: string
+  additionalTranslations: string[]
+  definitionEs: string | null
+  examples: string[]
+  partOfSpeech: string | null
+  gender: WordGender | null
+  wrongRussian: string[]
+  wrongSpanish: string[]
+  imageUrl: string | null
+  imagePhotographerName: string | null
+  imagePhotographerUrl: string | null
+  imagePageUrl: string | null
+  imageProvider: 'unsplash' | null
+  progress: number
+  inDictionary: boolean
+  source: UserCardSource
+  addedAt: string
+  ready: boolean
+  missingFields: string[]
+  lessons: UserCardLessonRef[]
+}
+
 export const lessonListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
@@ -187,6 +220,7 @@ export interface LessonListResponse {
 
 export interface LessonWordItem {
   wordId: string
+  userCardId: string | null
   spanish: string
   russian: string
   progress: number

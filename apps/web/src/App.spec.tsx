@@ -481,6 +481,76 @@ describe('App', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('navigates to the word card from a dictionary row', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url === '/api/words?limit=20&offset=0') {
+        return jsonResponse({
+          totalCount: 1,
+          averageProgress: 50,
+          hasMore: false,
+          items: [
+            {
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'esperar',
+              russian: 'ждать',
+              progress: 50,
+              addedAt: '2026-10-18T12:00:00.000Z',
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words/card-1') {
+        return jsonResponse({
+          id: 'card-1',
+          wordId: 'word-1',
+          spanish: 'esperar',
+          russian: 'ждать',
+          additionalTranslations: [],
+          definitionEs: null,
+          examples: [],
+          partOfSpeech: null,
+          gender: null,
+          wrongRussian: ['a', 'b', 'c'],
+          wrongSpanish: ['x', 'y', 'z'],
+          imageUrl: null,
+          imagePhotographerName: null,
+          imagePhotographerUrl: null,
+          imagePageUrl: null,
+          imageProvider: null,
+          progress: 50,
+          inDictionary: true,
+          source: 'manual',
+          addedAt: '2026-10-18T12:00:00.000Z',
+          ready: true,
+          missingFields: [],
+          lessons: [],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
+
+    expect(await screen.findByText('Traducciones adicionales')).toBeInTheDocument()
+    expect(screen.getByText('Definición')).toBeInTheDocument()
+  })
+
   it('opens account menu and navigates to settings', async () => {
     vi.stubGlobal(
       'fetch',

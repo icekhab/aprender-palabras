@@ -288,6 +288,13 @@ export function LessonDetailPage({
                 spanish={item.spanish}
                 russian={item.russian}
                 progress={item.progress}
+                onSelect={
+                  item.userCardId
+                    ? () => {
+                        void navigate(`/words/${item.userCardId}`)
+                      }
+                    : undefined
+                }
                 trailing={
                   <button
                     type="button"

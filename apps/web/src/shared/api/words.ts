@@ -3,6 +3,7 @@ import type {
   DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
+  UserCardDetail,
   Word,
   WordDraft,
   WordPairInput,
@@ -23,6 +24,16 @@ export async function listDictionaryWords(
   }
 
   return request<DictionaryListResponse>(`/api/words?${params}`, {
+    method: 'GET',
+    signal,
+  })
+}
+
+export async function getWordCard(
+  cardId: string,
+  signal?: AbortSignal,
+): Promise<UserCardDetail> {
+  return request<UserCardDetail>(`/api/words/${cardId}`, {
     method: 'GET',
     signal,
   })
@@ -64,6 +75,20 @@ export async function addExistingWord(
   })
 }
 
+export async function resetWordCardProgress(
+  cardId: string,
+): Promise<UserCardDetail> {
+  return request<UserCardDetail>(`/api/words/${cardId}/reset-progress`, {
+    method: 'POST',
+  })
+}
+
+export async function deleteWordCard(cardId: string): Promise<void> {
+  await request<void>(`/api/words/${cardId}`, {
+    method: 'DELETE',
+  })
+}
+
 async function request<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -76,6 +101,10 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
 
   if (!response.ok) {
     throw new ApiError(`API returned ${response.status}`, response.status)
+  }
+
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return response.json() as Promise<T>

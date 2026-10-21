@@ -123,6 +123,7 @@ describe('LessonsService', () => {
       addedAt: new Date('2026-10-18T00:00:00.000Z'),
     })
     tx.userCard.findUniqueOrThrow.mockResolvedValue({
+      id: 'card-1',
       progress: 0,
       inDictionary: false,
     })
@@ -143,6 +144,7 @@ describe('LessonsService', () => {
       },
     })
     expect(result.inDictionary).toBe(false)
+    expect(result.userCardId).toBe('card-1')
     expect(result.ready).toBe(true)
   })
 
@@ -177,6 +179,7 @@ describe('LessonsService', () => {
       addedAt: new Date('2026-10-18T00:00:00.000Z'),
     })
     tx.userCard.findUniqueOrThrow.mockResolvedValue({
+      id: 'card-2',
       progress: 0,
       inDictionary: true,
     })
