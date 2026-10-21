@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -14,10 +15,13 @@ import {
 import {
   addExistingWordSchema,
   dictionaryListQuerySchema,
+  regenerateWordImageSchema,
+  updateWordCardSchema,
   wordDraftSchema,
   wordPairSchema,
   type DictionaryListItem,
   type DictionaryListResponse,
+  type RegeneratedWordImage,
   type UserCardDetail,
   type Word,
   type WordDraft,
@@ -40,31 +44,6 @@ export class WordsController {
     }
 
     return this.wordsService.list(request.authUser.id, result.data)
-  }
-
-  @Get(':cardId')
-  getCard(
-    @Req() request: AuthenticatedRequest,
-    @Param('cardId', ParseUUIDPipe) cardId: string,
-  ): Promise<UserCardDetail> {
-    return this.wordsService.getCard(request.authUser.id, cardId)
-  }
-
-  @Post(':cardId/reset-progress')
-  resetProgress(
-    @Req() request: AuthenticatedRequest,
-    @Param('cardId', ParseUUIDPipe) cardId: string,
-  ): Promise<UserCardDetail> {
-    return this.wordsService.resetProgress(request.authUser.id, cardId)
-  }
-
-  @Delete(':cardId')
-  @HttpCode(204)
-  deleteCard(
-    @Req() request: AuthenticatedRequest,
-    @Param('cardId', ParseUUIDPipe) cardId: string,
-  ): Promise<void> {
-    return this.wordsService.deleteCard(request.authUser.id, cardId)
   }
 
   @Post('preview')
@@ -93,6 +72,16 @@ export class WordsController {
     )
   }
 
+  @Post('image/regenerate')
+  regenerateImage(@Body() body: unknown): Promise<RegeneratedWordImage> {
+    const result = regenerateWordImageSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid image regeneration request')
+    }
+
+    return this.wordsService.regenerateImage(result.data)
+  }
+
   @Post()
   create(
     @Req() request: AuthenticatedRequest,
@@ -104,5 +93,48 @@ export class WordsController {
     }
 
     return this.wordsService.create(request.authUser.id, result.data)
+  }
+
+  @Get(':cardId')
+  getCard(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<UserCardDetail> {
+    return this.wordsService.getCard(request.authUser.id, cardId)
+  }
+
+  @Patch(':cardId')
+  updateCard(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+    @Body() body: unknown,
+  ): Promise<UserCardDetail> {
+    const result = updateWordCardSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid word card update')
+    }
+
+    return this.wordsService.updateCard(
+      request.authUser.id,
+      cardId,
+      result.data,
+    )
+  }
+
+  @Post(':cardId/reset-progress')
+  resetProgress(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<UserCardDetail> {
+    return this.wordsService.resetProgress(request.authUser.id, cardId)
+  }
+
+  @Delete(':cardId')
+  @HttpCode(204)
+  deleteCard(
+    @Req() request: AuthenticatedRequest,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+  ): Promise<void> {
+    return this.wordsService.deleteCard(request.authUser.id, cardId)
   }
 }

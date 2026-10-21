@@ -3,6 +3,9 @@ import type {
   DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
+  RegeneratedWordImage,
+  RegenerateWordImageInput,
+  UpdateWordCardInput,
   UserCardDetail,
   Word,
   WordDraft,
@@ -80,6 +83,33 @@ export async function resetWordCardProgress(
 ): Promise<UserCardDetail> {
   return request<UserCardDetail>(`/api/words/${cardId}/reset-progress`, {
     method: 'POST',
+  })
+}
+
+export async function updateWordCard(
+  cardId: string,
+  input: UpdateWordCardInput,
+): Promise<UserCardDetail> {
+  return request<UserCardDetail>(`/api/words/${cardId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function regenerateWordImage(
+  input: RegenerateWordImageInput,
+  signal?: AbortSignal,
+): Promise<RegeneratedWordImage> {
+  return request<RegeneratedWordImage>('/api/words/image/regenerate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+    signal,
   })
 }
 

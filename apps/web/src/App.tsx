@@ -34,6 +34,7 @@ import { WordRow } from '@/components/word-row'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
 import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
+import { WordCardEditPage } from './pages/words/WordCardEditPage'
 import { WordCardPage } from './pages/words/WordCardPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { addNewWordToLesson } from './shared/api/lessons'
@@ -85,6 +86,14 @@ function App() {
         element={
           <ProtectedRoute>
             <AddWordPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/words/:cardId/edit"
+        element={
+          <ProtectedRoute>
+            <WordCardEditPage />
           </ProtectedRoute>
         }
       />

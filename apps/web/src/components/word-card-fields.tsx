@@ -1,4 +1,5 @@
 import type { WordDraft } from '@aprender-palabras/contracts'
+import { Pencil } from 'lucide-react'
 import { SpeakButton } from '@/components/speak-button'
 import { ProgressRing } from '@/pages/lessons/progress-ring'
 
@@ -22,10 +23,12 @@ export function WordCardFields({
   draft,
   progress,
   onProgressDoubleClick,
+  onEdit,
 }: {
   draft: WordCardFieldsData
   progress?: number
   onProgressDoubleClick?: () => void
+  onEdit?: () => void
 }) {
   return (
     <section className="space-y-6">
@@ -34,9 +37,21 @@ export function WordCardFields({
           <SpeakButton text={draft.spanish} size="lg" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-3xl font-bold tracking-tight leading-tight">
-            {draft.spanish}
-          </p>
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 text-3xl font-bold tracking-tight leading-tight">
+              {draft.spanish}
+            </p>
+            {onEdit ? (
+              <button
+                type="button"
+                aria-label="Editar palabra"
+                className="mt-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-orange-700 hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
+                onClick={onEdit}
+              >
+                <Pencil className="size-4" aria-hidden />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 text-lg text-orange-900/80">{draft.russian}</p>
         </div>
         {progress !== undefined ? (

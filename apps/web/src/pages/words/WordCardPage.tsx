@@ -106,6 +106,7 @@ function WordCardContent({ card }: { card: UserCardDetail }) {
         onProgressDoubleClick={
           actionPending ? undefined : () => setConfirmAction('reset')
         }
+        onEdit={() => navigate(`/words/${card.id}/edit`)}
       />
 
       <div className="border-t border-orange-100 pt-6">

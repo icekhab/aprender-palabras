@@ -48,6 +48,31 @@ export const wordGenderSchema = z.enum(['masculine', 'feminine'])
 
 export type WordGender = z.infer<typeof wordGenderSchema>
 
+export const PART_OF_SPEECH_OPTIONS = [
+  'verbo',
+  'sustantivo',
+  'adjetivo',
+  'adverbio',
+  'preposición',
+  'conjunción',
+  'pronombre',
+  'interjección',
+  'expresión',
+] as const
+
+export const partOfSpeechSchema = z.enum(PART_OF_SPEECH_OPTIONS)
+
+export type PartOfSpeech = z.infer<typeof partOfSpeechSchema>
+
+const imageFieldsSchema = {
+  imageUrl: z.string().trim().url().nullable(),
+  imagePhotographerName: z.string().trim().min(1).max(200).nullable(),
+  imagePhotographerUrl: z.string().trim().url().nullable(),
+  imagePageUrl: z.string().trim().url().nullable(),
+  imageProvider: z.literal('unsplash').nullable(),
+  imageDownloadLocation: z.string().trim().url().nullable(),
+}
+
 export const wordDraftSchema = z.object({
   spanish: z.string().trim().min(1).max(200),
   russian: z.string().trim().min(1).max(200),
@@ -58,15 +83,81 @@ export const wordDraftSchema = z.object({
   gender: wordGenderSchema.nullable(),
   wrongRussian: z.array(z.string().trim().min(1).max(200)).max(10),
   wrongSpanish: z.array(z.string().trim().min(1).max(200)).max(10),
-  imageUrl: z.string().trim().url().nullable(),
-  imagePhotographerName: z.string().trim().min(1).max(200).nullable(),
-  imagePhotographerUrl: z.string().trim().url().nullable(),
-  imagePageUrl: z.string().trim().url().nullable(),
-  imageProvider: z.literal('unsplash').nullable(),
-  imageDownloadLocation: z.string().trim().url().nullable(),
+  ...imageFieldsSchema,
 })
 
 export type WordDraft = z.infer<typeof wordDraftSchema>
+
+export const updateWordCardSchema = z
+  .object({
+    spanish: z.string().trim().min(1).max(200),
+    russian: z.string().trim().min(1).max(200),
+    definitionEs: z.string().trim().min(1).max(2000),
+    examples: z.array(z.string().trim().min(1).max(500)).min(2).max(3),
+    partOfSpeech: partOfSpeechSchema,
+    gender: wordGenderSchema.nullable(),
+    wrongRussian: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
+    wrongSpanish: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
+    ...imageFieldsSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.partOfSpeech === 'sustantivo' && value.gender === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['gender'],
+        message: 'Gender is required for sustantivo',
+      })
+    }
+
+    if (value.partOfSpeech !== 'sustantivo' && value.gender !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['gender'],
+        message: 'Gender is only allowed for sustantivo',
+      })
+    }
+
+    const russianKey = value.russian.trim().toLocaleLowerCase()
+    for (const [index, option] of value.wrongRussian.entries()) {
+      if (option.trim().toLocaleLowerCase() === russianKey) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['wrongRussian', index],
+          message: 'Must not match primary translation',
+        })
+      }
+    }
+
+    const spanishKey = value.spanish.trim().toLocaleLowerCase()
+    for (const [index, option] of value.wrongSpanish.entries()) {
+      if (option.trim().toLocaleLowerCase() === spanishKey) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['wrongSpanish', index],
+          message: 'Must not match Spanish word',
+        })
+      }
+    }
+  })
+
+export type UpdateWordCardInput = z.infer<typeof updateWordCardSchema>
+
+export const regenerateWordImageSchema = z.object({
+  spanish: z.string().trim().min(1).max(200),
+  russian: z.string().trim().min(1).max(200),
+  excludeImageUrl: z.string().trim().url().optional(),
+})
+
+export type RegenerateWordImageInput = z.infer<typeof regenerateWordImageSchema>
+
+export interface RegeneratedWordImage {
+  imageUrl: string
+  imagePhotographerName: string
+  imagePhotographerUrl: string
+  imagePageUrl: string
+  imageProvider: 'unsplash'
+  imageDownloadLocation: string
+}
 
 export interface Word {
   id: string

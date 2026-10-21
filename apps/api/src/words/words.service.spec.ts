@@ -1,6 +1,10 @@
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import {
+  ConflictException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WordDraft } from '@aprender-palabras/contracts'
+import type { UpdateWordCardInput, WordDraft } from '@aprender-palabras/contracts'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { PrismaService } from '../prisma.service.js'
@@ -48,6 +52,7 @@ describe('WordsService', () => {
     >(async (callback) => callback(tx)),
     word: {
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+      update: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     userCard: {
       count: vi.fn<(args: unknown) => Promise<number>>(),
@@ -67,6 +72,9 @@ describe('WordsService', () => {
 
   const openAiService = {
     isConfigured: vi.fn<() => boolean>(),
+    generateUnsplashQuery: vi.fn<
+      (spanish: string, russian: string) => Promise<string>
+    >(),
     generateWordContent: vi.fn<
       (
         spanish: string,
@@ -85,7 +93,8 @@ describe('WordsService', () => {
   }
 
   const unsplashService = {
-    searchImage: vi.fn<(query: string) => Promise<unknown>>(),
+    isConfigured: vi.fn<() => boolean>(),
+    searchImage: vi.fn<(query: string, options?: unknown) => Promise<unknown>>(),
     trackDownload: vi.fn<(downloadLocation: string) => Promise<void>>(),
   }
 
@@ -585,5 +594,156 @@ describe('WordsService', () => {
       service.addExisting('user-1', 'word-1'),
     ).rejects.toBeInstanceOf(ConflictException)
     expect(prisma.userCard.create).not.toHaveBeenCalled()
+  })
+
+  it('updates word fields globally and clears gender when not sustantivo', async () => {
+    const input: UpdateWordCardInput = {
+      spanish: 'esperar',
+      russian: 'ожидать',
+      definitionEs: 'Tener esperanza o aguardar.',
+      examples: ['Espero tu llamada.', 'Espero noticias.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: ['бежать', 'спать', 'есть'],
+      wrongSpanish: ['correr', 'dormir', 'comer'],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      imageDownloadLocation: null,
+    }
+
+    prisma.userCard.findFirst
+      .mockResolvedValueOnce({
+        id: 'card-1',
+        wordId: 'word-1',
+        word: {
+          russian: 'ждать',
+          normalizedSpanish: 'esperar',
+          normalizedRussian: 'ждать',
+          imageUrl: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'card-1',
+        wordId: 'word-1',
+        progress: 40,
+        inDictionary: true,
+        source: 'manual',
+        addedAt: new Date('2026-10-18T12:00:00.000Z'),
+        word: {
+          spanish: 'esperar',
+          russian: 'ожидать',
+          additionalTranslations: [],
+          definitionEs: input.definitionEs,
+          examples: input.examples,
+          partOfSpeech: 'verbo',
+          gender: null,
+          wrongRussian: input.wrongRussian,
+          wrongSpanish: input.wrongSpanish,
+          imageUrl: null,
+          imagePhotographerName: null,
+          imagePhotographerUrl: null,
+          imagePageUrl: null,
+          imageProvider: null,
+        },
+      })
+    prisma.word.findUnique.mockResolvedValue(null)
+    prisma.word.update.mockResolvedValue({})
+    prisma.lessonWord.findMany.mockResolvedValue([])
+
+    await expect(service.updateCard('user-1', 'card-1', input)).resolves.toMatchObject({
+      russian: 'ожидать',
+      partOfSpeech: 'verbo',
+      gender: null,
+      ready: true,
+    })
+
+    expect(prisma.word.update).toHaveBeenCalledWith({
+      where: { id: 'word-1' },
+      data: expect.objectContaining({
+        russian: 'ожидать',
+        normalizedRussian: 'ожидать',
+        gender: null,
+        partOfSpeech: 'verbo',
+      }),
+    })
+  })
+
+  it('throws ConflictException when updated russian pair already exists', async () => {
+    prisma.userCard.findFirst.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      word: {
+        russian: 'ждать',
+        normalizedSpanish: 'esperar',
+        normalizedRussian: 'ждать',
+        imageUrl: null,
+      },
+    })
+    prisma.word.findUnique.mockResolvedValue({ id: 'word-other' })
+
+    await expect(
+      service.updateCard('user-1', 'card-1', {
+        spanish: 'esperar',
+        russian: 'надеться',
+        definitionEs: 'Definición',
+        examples: ['Uno.', 'Dos.'],
+        partOfSpeech: 'verbo',
+        gender: null,
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        imageUrl: null,
+        imagePhotographerName: null,
+        imagePhotographerUrl: null,
+        imagePageUrl: null,
+        imageProvider: null,
+        imageDownloadLocation: null,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.word.update).not.toHaveBeenCalled()
+  })
+
+  it('regenerates an image using AI query and Unsplash', async () => {
+    openAiService.isConfigured.mockReturnValue(true)
+    unsplashService.isConfigured.mockReturnValue(true)
+    openAiService.generateUnsplashQuery.mockResolvedValue('waiting person')
+    unsplashService.searchImage.mockResolvedValue({
+      imageUrl: 'https://images.unsplash.com/new.jpg',
+      imagePhotographerName: 'Ada',
+      imagePhotographerUrl: 'https://unsplash.com/@ada',
+      imagePageUrl: 'https://unsplash.com/photos/new',
+      imageProvider: 'unsplash',
+      imageDownloadLocation: 'https://api.unsplash.com/photos/new/download',
+    })
+
+    await expect(
+      service.regenerateImage({
+        spanish: 'esperar',
+        russian: 'ждать',
+        excludeImageUrl: 'https://images.unsplash.com/old.jpg',
+      }),
+    ).resolves.toMatchObject({
+      imageUrl: 'https://images.unsplash.com/new.jpg',
+      imageProvider: 'unsplash',
+    })
+
+    expect(unsplashService.searchImage).toHaveBeenCalledWith('waiting person', {
+      excludeImageUrl: 'https://images.unsplash.com/old.jpg',
+      perPage: 10,
+    })
+  })
+
+  it('throws when image regeneration services are unavailable', async () => {
+    openAiService.isConfigured.mockReturnValue(false)
+    unsplashService.isConfigured.mockReturnValue(true)
+
+    await expect(
+      service.regenerateImage({
+        spanish: 'esperar',
+        russian: 'ждать',
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException)
   })
 })

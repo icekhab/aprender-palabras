@@ -25,7 +25,10 @@ export class UnsplashService {
     return this.accessKey !== null
   }
 
-  async searchImage(query: string): Promise<UnsplashImage | null> {
+  async searchImage(
+    query: string,
+    options: { excludeImageUrl?: string; perPage?: number } = {},
+  ): Promise<UnsplashImage | null> {
     if (!this.accessKey) {
       return null
     }
@@ -35,9 +38,10 @@ export class UnsplashService {
       return null
     }
 
+    const perPage = Math.min(Math.max(options.perPage ?? 1, 1), 10)
     const params = new URLSearchParams({
       query: trimmedQuery,
-      per_page: '1',
+      per_page: String(perPage),
       orientation: 'landscape',
       content_filter: 'high',
     })
@@ -61,7 +65,16 @@ export class UnsplashService {
       }
 
       const payload = (await response.json()) as UnsplashSearchResponse
-      const photo = payload.results?.[0]
+      const photos = payload.results ?? []
+      const exclude = options.excludeImageUrl ?? null
+      const photo =
+        photos.find(
+          (item) =>
+            item.urls?.regular &&
+            item.user?.name &&
+            (!exclude || item.urls.regular !== exclude),
+        ) ?? photos.find((item) => item.urls?.regular && item.user?.name)
+
       if (!photo?.urls?.regular || !photo.user?.name) {
         return null
       }

@@ -110,6 +110,48 @@ export class OpenAiService {
     }
   }
 
+  async generateUnsplashQuery(
+    spanish: string,
+    russian: string,
+  ): Promise<string> {
+    if (!this.client) {
+      throw new Error('OpenAI is not configured')
+    }
+
+    const unsplashQuerySchema = z.object({
+      unsplashQuery: z.string(),
+    })
+
+    const prompt = `Suggest a short English Unsplash search phrase for a stock photo that visually represents the Spanish expression "${spanish}" with the Russian meaning "${russian}". Return only the search phrase.`
+
+    try {
+      const response = await this.client.responses.parse({
+        model: this.model,
+        input: [
+          {
+            role: 'system',
+            content:
+              'You suggest concise English photo search queries for vocabulary flashcards.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        text: {
+          format: zodTextFormat(unsplashQuerySchema, 'unsplash_query'),
+        },
+      })
+
+      const parsed = response.output_parsed
+      const query = normalizeOptionalText(parsed?.unsplashQuery ?? null)
+      return query ?? 'spanish language'
+    } catch (error) {
+      this.logger.error('OpenAI unsplash query request failed', error)
+      throw error
+    }
+  }
+
   async generateWordContent(
     spanish: string,
     russian: string,

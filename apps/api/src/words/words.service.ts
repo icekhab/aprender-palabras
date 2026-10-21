@@ -1,13 +1,18 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import type {
   DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
+  RegeneratedWordImage,
+  RegenerateWordImageInput,
+  UpdateWordCardInput,
   UserCardDetail,
   Word,
   WordDraft,
@@ -130,6 +135,119 @@ export class WordsService {
         where: { id: card.id },
       })
     })
+  }
+
+  async updateCard(
+    userId: string,
+    cardId: string,
+    input: UpdateWordCardInput,
+  ): Promise<UserCardDetail> {
+    const card = await this.prisma.userCard.findFirst({
+      where: { id: cardId, userId },
+      include: { word: true },
+    })
+
+    if (!card) {
+      throw new NotFoundException('Card not found')
+    }
+
+    if (normalizeWordKey(input.spanish) !== card.word.normalizedSpanish) {
+      throw new BadRequestException('Spanish text cannot be changed')
+    }
+
+    const russian = input.russian.trim()
+    const normalizedRussian = normalizeWordKey(russian)
+    const normalizedSpanish = card.word.normalizedSpanish
+    const gender =
+      input.partOfSpeech === 'sustantivo' ? input.gender : null
+
+    if (normalizedRussian !== normalizeWordKey(card.word.russian)) {
+      const conflict = await this.prisma.word.findUnique({
+        where: {
+          normalizedSpanish_normalizedRussian: {
+            normalizedSpanish,
+            normalizedRussian,
+          },
+        },
+        select: { id: true },
+      })
+
+      if (conflict && conflict.id !== card.wordId) {
+        throw new ConflictException('Word already exists')
+      }
+    }
+
+    try {
+      await this.prisma.word.update({
+        where: { id: card.wordId },
+        data: {
+          russian,
+          normalizedRussian,
+          definitionEs: input.definitionEs,
+          examples: input.examples,
+          partOfSpeech: input.partOfSpeech,
+          gender,
+          wrongRussian: input.wrongRussian,
+          wrongSpanish: input.wrongSpanish,
+          imageUrl: input.imageUrl,
+          imagePhotographerName: input.imagePhotographerName,
+          imagePhotographerUrl: input.imagePhotographerUrl,
+          imagePageUrl: input.imagePageUrl,
+          imageProvider: input.imageProvider,
+        },
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Word already exists')
+      }
+
+      throw error
+    }
+
+    if (
+      input.imageProvider === 'unsplash' &&
+      input.imageDownloadLocation &&
+      input.imageUrl !== card.word.imageUrl
+    ) {
+      void this.unsplashService.trackDownload(input.imageDownloadLocation)
+    }
+
+    return this.getCard(userId, cardId)
+  }
+
+  async regenerateImage(
+    input: RegenerateWordImageInput,
+  ): Promise<RegeneratedWordImage> {
+    if (!this.openAiService.isConfigured() || !this.unsplashService.isConfigured()) {
+      throw new ServiceUnavailableException('Image regeneration unavailable')
+    }
+
+    try {
+      const unsplashQuery = await this.openAiService.generateUnsplashQuery(
+        input.spanish.trim(),
+        input.russian.trim(),
+      )
+      const image = await this.unsplashService.searchImage(unsplashQuery, {
+        excludeImageUrl: input.excludeImageUrl,
+        perPage: 10,
+      })
+
+      if (!image) {
+        throw new ServiceUnavailableException('No image found')
+      }
+
+      return image
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        throw error
+      }
+
+      this.logger.error('Word image regeneration failed', error)
+      throw new ServiceUnavailableException('Image regeneration failed')
+    }
   }
 
   private async toCardDetail(
