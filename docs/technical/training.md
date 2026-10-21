@@ -129,7 +129,7 @@ Get-or-create набора на текущий день Madrid.
 
 В одной транзакции:
 
-- `UserCard.progress` по формуле 0/1/2/3+ → +50/+30/+10/−10 (clamp 0–100);
+- `UserCard.progress` по формуле 0/1/2/3+ → +20/+10/−10/−20 (clamp 0–100);
 - `lastTrainedAt`, `completedTrainerCount++`, `showCount++`;
 - `DailyTrainer.status = completed`;
 - `User.lastCompletedTrainerAt = now`.

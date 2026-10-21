@@ -158,12 +158,12 @@ function mockSession(
             const oldProgress = word?.progress ?? 0
             const delta =
               card.errorCount <= 0
-                ? 50
+                ? 20
                 : card.errorCount === 1
-                  ? 30
+                  ? 10
                   : card.errorCount === 2
-                    ? 10
-                    : -10
+                    ? -10
+                    : -20
             return {
               userCardId: card.userCardId,
               spanish: word?.spanish ?? '?',

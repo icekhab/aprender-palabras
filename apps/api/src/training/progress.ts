@@ -1,15 +1,15 @@
 /** Progress delta for one card after a finished trainer (§3 daily training). */
 export function progressDelta(errorCount: number): number {
   if (errorCount <= 0) {
-    return 50
+    return 20
   }
   if (errorCount === 1) {
-    return 30
-  }
-  if (errorCount === 2) {
     return 10
   }
-  return -10
+  if (errorCount === 2) {
+    return -10
+  }
+  return -20
 }
 
 export function clampProgress(value: number): number {

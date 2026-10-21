@@ -325,8 +325,8 @@ describe('TrainingService.completeTrainer', () => {
         russian: 'привет',
         errorCount: 0,
         oldProgress: 40,
-        delta: 50,
-        newProgress: 90,
+        delta: 20,
+        newProgress: 60,
       },
       {
         userCardId: 'card-2',
@@ -334,8 +334,8 @@ describe('TrainingService.completeTrainer', () => {
         russian: 'дом',
         errorCount: 2,
         oldProgress: 95,
-        delta: 10,
-        newProgress: 100,
+        delta: -10,
+        newProgress: 85,
       },
     ])
     expect(result).toMatchObject({
@@ -349,7 +349,7 @@ describe('TrainingService.completeTrainer', () => {
     expect(prisma._tx.userCard.update).toHaveBeenCalledWith({
       where: { id: 'card-1' },
       data: {
-        progress: 90,
+        progress: 60,
         lastTrainedAt: expect.any(Date),
         completedTrainerCount: { increment: 1 },
         showCount: { increment: 1 },
