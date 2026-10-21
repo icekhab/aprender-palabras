@@ -108,29 +108,6 @@ function WordCardContent({ card }: { card: UserCardDetail }) {
         }
       />
 
-      <div>
-        <p className="text-sm font-medium text-orange-900/70">Lecciones</p>
-        {card.lessons.length > 0 ? (
-          <ul className="mt-1 space-y-1">
-            {card.lessons.map((lesson) => (
-              <li key={lesson.id}>
-                <button
-                  type="button"
-                  className="text-left text-orange-950 hover:text-orange-800"
-                  onClick={() => navigate(`/lecciones/${lesson.id}`)}
-                >
-                  {lesson.title}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-sm text-orange-900/40">
-            No está en ninguna lección.
-          </p>
-        )}
-      </div>
-
       <div className="border-t border-orange-100 pt-6">
         <Button
           className="bg-red-700 hover:bg-red-800"

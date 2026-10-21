@@ -76,8 +76,8 @@ describe('WordCardPage', () => {
     expect(
       screen.getByLabelText('Progreso 60%. Doble clic para reiniciar.'),
     ).toBeInTheDocument()
-    expect(screen.getByText('Uno')).toBeInTheDocument()
     expect(screen.getByText('Espero tu llamada.')).toBeInTheDocument()
+    expect(screen.queryByText('Lecciones')).not.toBeInTheDocument()
     expect(screen.queryByText('Traducciones adicionales')).not.toBeInTheDocument()
     expect(screen.getByText('Definición')).toBeInTheDocument()
   })
