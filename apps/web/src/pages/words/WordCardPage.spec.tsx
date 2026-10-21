@@ -78,7 +78,7 @@ describe('WordCardPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Uno')).toBeInTheDocument()
     expect(screen.getByText('Espero tu llamada.')).toBeInTheDocument()
-    expect(screen.getByText('Traducciones adicionales')).toBeInTheDocument()
+    expect(screen.queryByText('Traducciones adicionales')).not.toBeInTheDocument()
     expect(screen.getByText('Definición')).toBeInTheDocument()
   })
 })

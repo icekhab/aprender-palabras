@@ -547,8 +547,8 @@ describe('App', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
 
-    expect(await screen.findByText('Traducciones adicionales')).toBeInTheDocument()
-    expect(screen.getByText('Definición')).toBeInTheDocument()
+    expect(await screen.findByText('Definición')).toBeInTheDocument()
+    expect(screen.queryByText('Traducciones adicionales')).not.toBeInTheDocument()
   })
 
   it('opens account menu and navigates to settings', async () => {

@@ -6,7 +6,6 @@ export type WordCardFieldsData = Pick<
   WordDraft,
   | 'spanish'
   | 'russian'
-  | 'additionalTranslations'
   | 'definitionEs'
   | 'examples'
   | 'partOfSpeech'
@@ -96,14 +95,6 @@ export function WordCardFields({
         </figure>
       ) : null}
 
-      <ReadOnlyField
-        label="Traducciones adicionales"
-        value={
-          draft.additionalTranslations.length > 0
-            ? draft.additionalTranslations.join(', ')
-            : null
-        }
-      />
       <ReadOnlyField label="Definición" value={draft.definitionEs} />
       <div>
         <p className="text-sm font-medium text-orange-900/70">Ejemplos</p>
