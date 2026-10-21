@@ -554,9 +554,13 @@ function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
       className="-mx-5 mt-5 flex gap-3 overflow-x-auto px-5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
       aria-label="Entrenamientos de hoy"
     >
-      {trainers.map((trainer, index) => {
+      {trainers.map((trainer) => {
+        const isDaily = trainer.kind === 'daily'
+        const colorIndex = isDaily
+          ? Math.max(0, trainer.slot - 1)
+          : 0
         const color =
-          TRAINER_CARD_COLORS[index % TRAINER_CARD_COLORS.length] ??
+          TRAINER_CARD_COLORS[colorIndex % TRAINER_CARD_COLORS.length] ??
           TRAINER_CARD_COLORS[0]
         const wordLabel =
           trainer.wordCount === 1
@@ -573,10 +577,14 @@ function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
                 void navigate(`/entrenamiento/${trainer.id}`)
               }}
             >
-              <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/95 text-sm font-bold text-orange-950">
-                {index + 1}
-              </span>
-              <p className="pr-8 text-sm leading-snug font-semibold">
+              {isDaily ? (
+                <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/95 text-sm font-bold text-orange-950">
+                  {trainer.slot}
+                </span>
+              ) : null}
+              <p
+                className={`text-sm leading-snug font-semibold ${isDaily ? 'pr-8' : ''}`}
+              >
                 {trainer.sourceLabel}
               </p>
               <p className="text-sm font-medium text-white/90">{wordLabel}</p>

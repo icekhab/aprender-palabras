@@ -113,6 +113,89 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the stable daily slot number even when it is the only visible card', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return jsonResponse({
+          date: '2026-10-19',
+          readyCardCount: 3,
+          trainers: [
+            {
+              id: 'trainer-3',
+              kind: 'daily',
+              slot: 3,
+              sourceLabel: 'Recientes',
+              wordCount: 4,
+              words: [],
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const card = await screen.findByRole('button', {
+      name: 'Recientes, 4 palabras',
+    })
+    const badge = card.querySelector('.rounded-full')
+    expect(badge).toHaveTextContent('3')
+  })
+
+  it('does not show a slot number on an extra training card', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return jsonResponse({
+          date: '2026-10-19',
+          readyCardCount: 7,
+          trainers: [
+            {
+              id: 'trainer-extra',
+              kind: 'extra',
+              slot: 0,
+              sourceLabel: 'Entrenamiento extra',
+              wordCount: 7,
+              words: [],
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const card = await screen.findByRole('button', {
+      name: 'Entrenamiento extra, 7 palabras',
+    })
+    expect(card.querySelector('.rounded-full')).toBeNull()
+  })
+
   it('navigates to the trainer session from a daily training card', async () => {
     const trainerId = '0199f98d-83c0-7bde-a537-b74cf7e9ea01'
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
