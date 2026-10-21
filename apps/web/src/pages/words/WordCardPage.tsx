@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserCardDetail } from '@aprender-palabras/contracts'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordCardFields } from '@/components/word-card-fields'
 import { ApiError } from '@/shared/api/auth'
@@ -29,9 +30,7 @@ export function WordCardPage() {
       <header className="border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
+            <BrandLink />
             <h1 className="mt-1 text-xl font-bold tracking-tight">Palabra</h1>
           </div>
           <Button variant="outline" onClick={() => navigate(-1)}>

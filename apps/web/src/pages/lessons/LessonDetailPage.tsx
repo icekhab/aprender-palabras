@@ -8,6 +8,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ProgressDot } from '@/components/progress-dot'
+import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordRow } from '@/components/word-row'
 import { ApiError } from '../../shared/api/auth'
@@ -145,9 +146,7 @@ export function LessonDetailPage({
       <header className="border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div className="min-w-0">
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
+            <BrandLink />
             <div className="mt-1 flex min-w-0 items-center gap-2">
               <h1 className="truncate text-xl font-bold tracking-tight">
                 {lesson.position}. {lesson.title}

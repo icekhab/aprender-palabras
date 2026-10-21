@@ -313,9 +313,9 @@ describe('App', () => {
     renderApp()
 
     expect(
-      await screen.findByText('Aprender Palabras', { selector: 'header p' }),
+      await screen.findByRole('link', { name: 'Palabras' }),
     ).toBeInTheDocument()
-    expect(screen.getByText(user.login)).toBeInTheDocument()
+    expect(screen.queryByText(user.login)).not.toBeInTheDocument()
     expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
     expect(
       await screen.findByRole('heading', { name: 'Diccionario' }),

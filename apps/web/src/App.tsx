@@ -19,6 +19,8 @@ import { BookOpen, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { AppSplash } from '@/components/app-splash'
+import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { ProgressDot } from '@/components/progress-dot'
 import { WordRow } from '@/components/word-row'
@@ -180,7 +182,7 @@ function LoginPage() {
   })
 
   if (currentUser.isPending) {
-    return <FullPageStatus>Comprobando la sesión…</FullPageStatus>
+    return <SessionLoader />
   }
 
   if (currentUser.isSuccess) {
@@ -277,7 +279,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const currentUser = useCurrentUser()
 
   if (currentUser.isPending) {
-    return <FullPageStatus>Comprobando la sesión…</FullPageStatus>
+    return <SessionLoader />
   }
 
   if (currentUser.isError) {
@@ -370,15 +372,16 @@ function HomePage() {
   const averageProgress = dictionaryPages?.[0]?.averageProgress ?? 0
   const dictionaryItems = dictionaryPages?.flatMap((page) => page.items) ?? []
 
+  if (trainingQuery.isPending || dictionaryQuery.isPending) {
+    return <AppSplash />
+  }
+
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
       <header className="border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div>
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
-            <p className="mt-1 text-sm text-orange-900/70">{user?.login}</p>
+            <BrandLink />
           </div>
 
           <div className="flex items-start gap-3">
@@ -470,8 +473,7 @@ function HomePage() {
         ) : null}
       </header>
 
-      {trainingQuery.isPending ||
-      trainingQuery.isError ||
+      {trainingQuery.isError ||
       (trainingQuery.isSuccess && trainingQuery.data.trainers.length > 0) ? (
         <section className="mx-auto max-w-5xl px-5 pt-8 sm:px-8">
           <div className="flex items-end justify-between gap-4">
@@ -479,12 +481,6 @@ function HomePage() {
               Entrenamiento diario
             </h1>
           </div>
-
-          {trainingQuery.isPending && (
-            <p className="mt-4 text-sm text-orange-900/70" role="status">
-              Preparando el entrenamiento…
-            </p>
-          )}
 
           {trainingQuery.isError && (
             <div className="mt-4" role="alert">
@@ -532,12 +528,6 @@ function HomePage() {
             className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200 sm:max-w-md"
           />
         </div>
-
-        {dictionaryQuery.isPending && (
-          <p className="mt-4 text-sm text-orange-900/70" role="status">
-            Cargando el diccionario…
-          </p>
-        )}
 
         {dictionaryQuery.isError && (
           <div className="mt-4" role="alert">
@@ -754,9 +744,7 @@ function SettingsPage() {
       <header className="border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
+            <BrandLink />
             <h1 className="mt-1 text-xl font-bold tracking-tight">Ajustes</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -1105,6 +1093,10 @@ function isUnauthorized(error: unknown): boolean {
 
 function isServiceUnavailable(error: unknown): boolean {
   return error instanceof ApiError && error.status === 503
+}
+
+function SessionLoader() {
+  return <AppSplash />
 }
 
 function FullPageStatus({

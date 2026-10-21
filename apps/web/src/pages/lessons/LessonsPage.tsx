@@ -20,6 +20,7 @@ import {
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
+import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import {
   createLesson,
@@ -119,9 +120,7 @@ export function LessonsPage({
       <header className="border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
-            <p className="text-sm font-bold tracking-[0.12em] text-orange-700 uppercase">
-              Aprender Palabras
-            </p>
+            <BrandLink />
             <h1 className="mt-1 text-xl font-bold tracking-tight">Lecciones</h1>
           </div>
           <div className="flex items-center gap-3">
