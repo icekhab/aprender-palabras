@@ -79,7 +79,7 @@ export function Exercise2Screen({
           ] as const
         ).map((option) => {
           const isSelected = selected === option.id
-          let tone = option.idle
+          let tone: string = option.idle
 
           if (answered) {
             if (isSelected) {

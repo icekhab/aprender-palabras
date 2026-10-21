@@ -10,6 +10,9 @@ export const INJECT_PROBABILITY = 0.35
 
 export type ExerciseType = 1 | 2 | 3 | 4 | 5
 
+/** Max attempts per (card, exercise type) including the first try (§10.1). */
+export const MAX_ATTEMPTS_PER_EXERCISE = 3
+
 export type SessionStep =
   | {
       kind: 'intro'
@@ -22,6 +25,25 @@ export type SessionStep =
       type: ExerciseType
       word: TrainerSessionWord
     }
+
+export type ExerciseSessionStep = Extract<SessionStep, { kind: 'exercise' }>
+
+/** Append-only retry of the same exercise; new id so choice options reshuffle. */
+export function createRetryStep(
+  step: ExerciseSessionStep,
+  afterAttempt: number,
+): ExerciseSessionStep {
+  return {
+    kind: 'exercise',
+    id: `ex${step.type}:retry:${afterAttempt}:${step.word.userCardId}`,
+    type: step.type,
+    word: step.word,
+  }
+}
+
+export function attemptKey(userCardId: string, type: ExerciseType): string {
+  return `${userCardId}:${type}`
+}
 
 type WordState = {
   word: TrainerSessionWord

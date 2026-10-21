@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '../../shared/api/auth'
@@ -13,7 +13,13 @@ import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
 import { Exercise4Screen } from './Exercise4Screen'
 import { Exercise5Screen } from './Exercise5Screen'
-import { buildSessionQueue } from './session-queue'
+import {
+  attemptKey,
+  buildSessionQueue,
+  createRetryStep,
+  MAX_ATTEMPTS_PER_EXERCISE,
+  type SessionStep,
+} from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
 
 const TRAINER_SESSION_QUERY_KEY = (id: string) =>
@@ -23,11 +29,19 @@ export function TrainerSessionPage() {
   const { trainerId = '' } = useParams()
   const navigate = useNavigate()
   const [stepIndex, setStepIndex] = useState(0)
-  const [stepAnswered, setStepAnswered] = useState(false)
+  const [queue, setQueue] = useState<SessionStep[]>([])
+  const [queueReady, setQueueReady] = useState(false)
+  /** Steps closed so far (intro / resolved exercise). Drives the session bar. */
+  const [completedCount, setCompletedCount] = useState(0)
+  const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>(
+    {},
+  )
+  // Counts are accumulated for the future completion screen / progress API.
+  const [, setErrorCounts] = useState<Record<string, number>>({})
   const [answerResult, setAnswerResult] = useState<{
     correct: boolean
     accentWarning?: string
-    /** False for exercise 2 — self-assessment never affects progress. */
+    /** False for exercise 2 — self-assessment never affects card progress. */
     countsTowardProgress: boolean
     /** False for exercise 2 — never append a retry to the queue. */
     enqueueRetry: boolean
@@ -40,11 +54,18 @@ export function TrainerSessionPage() {
     enabled: Boolean(trainerId),
   })
 
-  const queue = useMemo(
-    () =>
-      sessionQuery.data ? buildSessionQueue(sessionQuery.data.words) : [],
-    [sessionQuery.data],
-  )
+  useEffect(() => {
+    if (!sessionQuery.data) {
+      return
+    }
+    setQueue(buildSessionQueue(sessionQuery.data.words))
+    setQueueReady(true)
+    setStepIndex(0)
+    setCompletedCount(0)
+    setAnswerResult(null)
+    setAttemptCounts({})
+    setErrorCounts({})
+  }, [sessionQuery.data])
 
   const currentStep = queue[stepIndex] ?? null
 
@@ -56,36 +77,97 @@ export function TrainerSessionPage() {
   }, [currentStep])
 
   useEffect(() => {
-    if (!sessionQuery.isSuccess) {
+    if (!sessionQuery.isSuccess || !queueReady) {
       return
     }
     if (queue.length === 0) {
       void navigate('/', { replace: true })
     }
-  }, [sessionQuery.isSuccess, queue.length, navigate])
+  }, [sessionQuery.isSuccess, queueReady, queue.length, navigate])
+
+  const isCurrentStepResolved = useCallback((): boolean => {
+    if (!currentStep) {
+      return false
+    }
+    if (currentStep.kind === 'intro') {
+      return true
+    }
+    if (currentStep.type === 2) {
+      return true
+    }
+    if (!answerResult) {
+      return false
+    }
+    if (answerResult.correct) {
+      return true
+    }
+    const key = attemptKey(currentStep.word.userCardId, currentStep.type)
+    return (attemptCounts[key] ?? 0) >= MAX_ATTEMPTS_PER_EXERCISE
+  }, [answerResult, attemptCounts, currentStep])
 
   const handleContinue = useCallback(() => {
     playFeedbackSound('tap')
-    if (stepIndex >= queue.length - 1) {
+
+    if (isCurrentStepResolved()) {
+      setCompletedCount((value) => value + 1)
+    }
+
+    let nextQueue = queue
+    if (
+      answerResult?.enqueueRetry &&
+      currentStep?.kind === 'exercise'
+    ) {
+      const key = attemptKey(currentStep.word.userCardId, currentStep.type)
+      const attempts = attemptCounts[key] ?? 0
+      if (attempts < MAX_ATTEMPTS_PER_EXERCISE) {
+        nextQueue = [...queue, createRetryStep(currentStep, attempts)]
+        setQueue(nextQueue)
+      }
+    }
+
+    if (stepIndex >= nextQueue.length - 1) {
       void navigate('/', { replace: true })
       return
     }
     setAnswerResult(null)
-    setStepAnswered(false)
     setStepIndex((value) => value + 1)
-  }, [navigate, queue.length, stepIndex])
+  }, [
+    answerResult,
+    attemptCounts,
+    currentStep,
+    isCurrentStepResolved,
+    navigate,
+    queue,
+    stepIndex,
+  ])
 
   const handleRevealResult = useCallback(
     (result: { correct: boolean; accentWarning?: string }) => {
       const isSelfAssessment =
         currentStep?.kind === 'exercise' && currentStep.type === 2
-      setStepAnswered(true)
+      const countsTowardProgress = !isSelfAssessment
+      const enqueueRetry = countsTowardProgress && !result.correct
+
+      if (currentStep?.kind === 'exercise') {
+        const key = attemptKey(currentStep.word.userCardId, currentStep.type)
+        setAttemptCounts((prev) => ({
+          ...prev,
+          [key]: (prev[key] ?? 0) + 1,
+        }))
+        if (countsTowardProgress && !result.correct) {
+          const cardId = currentStep.word.userCardId
+          setErrorCounts((prev) => ({
+            ...prev,
+            [cardId]: (prev[cardId] ?? 0) + 1,
+          }))
+        }
+      }
+
       setAnswerResult({
         correct: result.correct,
         accentWarning: result.accentWarning,
-        // Type 2: no progress impact, no end-of-queue retry (product §10.2).
-        countsTowardProgress: !isSelfAssessment,
-        enqueueRetry: !isSelfAssessment && !result.correct,
+        countsTowardProgress,
+        enqueueRetry,
       })
     },
     [currentStep],
@@ -126,10 +208,11 @@ export function TrainerSessionPage() {
     return null
   }
 
+  const remainingMin = Math.max(0, queue.length - stepIndex)
   const progress =
-    queue.length === 0
+    completedCount + remainingMin === 0
       ? 0
-      : Math.min(1, (stepIndex + (stepAnswered ? 1 : 0)) / queue.length)
+      : completedCount / (completedCount + remainingMin)
 
   const showExercise1 =
     currentStep.kind === 'exercise' &&
@@ -194,10 +277,7 @@ export function TrainerSessionPage() {
             <Button
               type="button"
               className="h-11 w-full bg-orange-700 text-base hover:bg-orange-800"
-              onClick={() => {
-                setStepAnswered(true)
-                handleContinue()
-              }}
+              onClick={handleContinue}
             >
               Vale
             </Button>
@@ -210,7 +290,6 @@ export function TrainerSessionPage() {
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
-          onAnsweredChange={setStepAnswered}
         />
       ) : null}
 
@@ -219,7 +298,6 @@ export function TrainerSessionPage() {
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
-          onAnsweredChange={setStepAnswered}
         />
       ) : null}
 
@@ -228,7 +306,6 @@ export function TrainerSessionPage() {
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
-          onAnsweredChange={setStepAnswered}
         />
       ) : null}
 
@@ -237,7 +314,6 @@ export function TrainerSessionPage() {
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
-          onAnsweredChange={setStepAnswered}
         />
       ) : null}
 
@@ -246,7 +322,6 @@ export function TrainerSessionPage() {
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
-          onAnsweredChange={setStepAnswered}
         />
       ) : null}
 

@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import {
   buildSessionQueue,
+  createRetryStep,
   INITIAL_UNLOCK,
   typesForWord,
+  type ExerciseSessionStep,
 } from './session-queue'
 
 function word(
@@ -33,6 +35,23 @@ function word(
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('createRetryStep', () => {
+  it('copies type and word with a unique retry id', () => {
+    const step: ExerciseSessionStep = {
+      kind: 'exercise',
+      id: 'ex1:b0:card-1',
+      type: 1,
+      word: word({ userCardId: 'card-1', spanish: 'hola', russian: 'привет' }),
+    }
+    expect(createRetryStep(step, 1)).toEqual({
+      kind: 'exercise',
+      id: 'ex1:retry:1:card-1',
+      type: 1,
+      word: step.word,
+    })
+  })
 })
 
 describe('typesForWord', () => {
@@ -145,13 +164,16 @@ describe('buildSessionQueue', () => {
     expect(batchIds.size).toBe(2)
 
     const type1Block = []
-    while (
-      i < afterBoot.length &&
-      afterBoot[i]?.kind === 'exercise' &&
-      afterBoot[i]!.type === 1 &&
-      batchIds.has(afterBoot[i]!.word.userCardId)
-    ) {
-      type1Block.push(afterBoot[i]!)
+    while (i < afterBoot.length) {
+      const step = afterBoot[i]
+      if (
+        step?.kind !== 'exercise' ||
+        step.type !== 1 ||
+        !batchIds.has(step.word.userCardId)
+      ) {
+        break
+      }
+      type1Block.push(step)
       i += 1
     }
 
