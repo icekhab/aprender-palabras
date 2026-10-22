@@ -160,6 +160,39 @@ export class OpenAiService {
       throw new Error('OpenAI is not configured')
     }
 
+    const distractorRules = `Distractor rules (apply to both wrongRussian and wrongSpanish; generate exactly 10 each):
+
+1. Unambiguously wrong
+- No distractor may match ANY possible meaning of the Spanish expression "${spanish}" (literal, figurative, colloquial, contextual).
+- Exclude synonyms, alternate translations, and phrases that could be correct in some context.
+- Example: for "una cita" with meaning "цитата", never use встреча / свидание / запись на приём (other valid senses of cita).
+
+2. Plausible, not obvious
+- Distractors must be comparable to the correct answer in length, difficulty, and grammatical structure.
+- Avoid artificial, silly, or trivially easy options next to the correct answer.
+- Do NOT make every distractor maximally similar to the correct answer.
+
+3. Meaning diversity (across the set of 10)
+- Mix close and distant meanings. Target mix: ~30% contextually close but different in meaning; ~40% neutral everyday situations; ~30% completely different domains.
+- Do NOT generate all 10 from one semantic category.
+- Goal: hard enough to prevent guessing by theme alone, but diverse in meaning.
+
+4. Grammatical consistency
+- Match the grammatical type of the source: noun→nouns, verb→verbs, adjective→adjectives, adverb→adverbs, fixed expression→comparable expressions, verb construction→verb constructions.
+- Keep comparable length, word count, and grammatical complexity when possible.
+- Example: if the answer is a verb phrase like "оставить отзыв", use verb phrases (e.g. "варить суп"), never a noun phrase like "сладкое яблоко".
+
+5. Natural language and CEFR-aligned difficulty
+- Use real, common, natural expressions.
+- Match difficulty to the source expression (estimate if unknown from frequency and usage), not a fixed A2–B1 band:
+  A1→mostly A1–A2; A2→mostly A2–B1; B1→mostly B1 (A2–B2 ok); B2→mostly B2 (B1–C1 ok); C1→mostly B2–C1; C2→mostly C1–C2.
+- Do not use rare vocabulary only to raise difficulty.
+
+6. No duplicates
+- All 10 must differ in meaning; avoid synonyms among distractors; no rephrasings of the same idea; never duplicate the correct meaning.
+
+Guiding principle: the learner should pick the right translation by knowing the Spanish word, not by guessing from grammar, length, theme, or an obvious difficulty gap.`
+
     const prompt = `Generate learner card content for the Spanish expression "${spanish}" with the primary Russian meaning "${russian}".
 
 Rules:
@@ -168,22 +201,11 @@ Rules:
 - examples: 2 or 3 short natural Spanish example sentences using this meaning.
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
 - gender: masculine or feminine only for nouns when known; otherwise null.
-- wrongRussian: exactly 10 Russian distractors for multiple choice.
-  - Match the grammatical shape of "${russian}": same part of speech / construction (verb phrase → verb phrases; noun → nouns; adjective → adjectives; fixed expression → similar fixed expressions). Example: if the answer is a verb phrase like "оставить отзыв", distractors must be verb phrases such as "варить суп" or "закрыть окно", never noun phrases like "сладкое яблоко".
-  - Similar length (word count) and register so options look interchangeable in a quiz.
-  - Must NOT match the primary translation or additionalTranslations.
-  - Must NOT be another real sense of the same Spanish expression (e.g. if "${spanish}" means "${russian}", do not use Russian words for other meanings of "${spanish}").
-  - Must NOT be synonyms, near-synonyms, or other real translations of "${spanish}".
-  - Do not put all 10 in one topic: avoid a single theme cluster (e.g. not all food, or all weather). A few items may share a theme; the set as a whole should not feel mono-thematic. Themes need not all be mutually different.
-  - All 10 must be distinct, natural Russian.
-- wrongSpanish: exactly 10 Spanish distractors for multiple choice.
-  - Match the grammatical shape of "${spanish}" the same way (verb phrase → verb phrases, etc.).
-  - Similar length and register.
-  - Must NOT match the Spanish expression "${spanish}".
-  - Must NOT be synonyms, near-synonyms, compounds, or other senses of "${spanish}".
-  - Do not put all 10 in one topic; the set should not feel mono-thematic. Themes need not all be mutually different.
-  - All 10 must be distinct, natural Spanish.
-- unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.`
+- wrongRussian: exactly 10 Russian distractors. Apply the distractor rules below relative to "${russian}" / "${spanish}".
+- wrongSpanish: exactly 10 Spanish distractors. Apply the distractor rules below relative to "${spanish}".
+- unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.
+
+${distractorRules}`
 
     try {
       const response = await this.client.responses.parse({
@@ -192,7 +214,7 @@ Rules:
           {
             role: 'system',
             content:
-              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Distractors must match the target’s grammatical shape and length, never other senses of the same word, and must not all come from one single theme.',
+              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Follow the distractor rules strictly: unambiguously wrong (no other senses), grammatically matched, CEFR-aligned, diverse in meaning, natural, and non-obvious.',
           },
           {
             role: 'user',
