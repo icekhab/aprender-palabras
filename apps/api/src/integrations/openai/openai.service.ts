@@ -168,8 +168,17 @@ Rules:
 - examples: 2 or 3 short natural Spanish example sentences using this meaning.
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
 - gender: masculine or feminine only for nouns when known; otherwise null.
-- wrongRussian: exactly 10 plausible but incorrect Russian distractors for multiple choice. Must not match the primary translation or additionalTranslations. All 10 must be distinct.
-- wrongSpanish: exactly 10 plausible but incorrect Spanish distractors. Must not match the Spanish expression. All 10 must be distinct.
+- wrongRussian: exactly 10 Russian distractors for multiple choice.
+  - Must NOT match the primary translation or additionalTranslations.
+  - Must NOT be another real sense of the same Spanish expression (e.g. if "${spanish}" means "${russian}", do not use Russian words for other meanings of "${spanish}", such as appointment/meeting when the card means quote).
+  - Must NOT be synonyms, near-synonyms, or words from the same topic/theme as "${russian}".
+  - Prefer everyday words from unrelated domains (food, weather, body, travel, numbers, colors, animals, etc.), mixed across domains.
+  - All 10 must be distinct, natural Russian, similar length/register so they look plausible as options.
+- wrongSpanish: exactly 10 Spanish distractors for multiple choice.
+  - Must NOT match the Spanish expression "${spanish}".
+  - Must NOT be synonyms, near-synonyms, compounds, or same-theme variants of "${spanish}" (e.g. avoid cita médica / reunión when the card is cita = quote).
+  - Prefer everyday expressions from unrelated domains, mixed across domains.
+  - All 10 must be distinct, natural Spanish, similar length/register.
 - unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.`
 
     try {
@@ -179,7 +188,7 @@ Rules:
           {
             role: 'system',
             content:
-              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning.',
+              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Distractors must never be other senses of the same word or same-theme lookalikes; mix unrelated everyday domains.',
           },
           {
             role: 'user',
