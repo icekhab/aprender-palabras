@@ -139,7 +139,26 @@ docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 ```
 
+### Альтернатива: всё на Railway
+
+Один проект: **PostgreSQL** + **api** ([`Dockerfile`](./Dockerfile)) + **web**
+([`Dockerfile.web`](./Dockerfile.web) — статика и proxy `/api` → api).
+
+1. Запушьте `main` на GitHub (нужны Docker-файлы в репо).
+2. **Postgres** — Add → Database → PostgreSQL.
+3. Сервис **api** (можно переименовать в `api`):
+   - Builder: Dockerfile, path `Dockerfile`
+   - Variables: `DATABASE_URL` (reference из Postgres), `NODE_ENV=production`,
+     `PORT=3000`, `APP_ORIGIN` (позже = публичный URL web), ключи OpenAI/Unsplash
+   - Публичный домен **не** нужен (достаточно private network)
+4. Сервис **web** (переименовать в `web`):
+   - Builder: Dockerfile, path `Dockerfile.web`
+   - Variable: `API_UPSTREAM=http://api.railway.internal:3000`
+     (имя `api` = имя сервиса API в Railway)
+   - **Generate Domain** — это единственный публичный HTTPS URL
+5. У api выставьте `APP_ORIGIN=https://<web-domain>` и redeploy.
+6. Проверка: `https://<web-domain>/api/health` и вход в приложение.
+
 ### Альтернатива: Vercel + PaaS
 
-Файлы [`vercel.json`](./vercel.json) и [`Dockerfile`](./Dockerfile) остаются
-для схемы «фронт на Vercel, API+Postgres на Railway/Render», если понадобится.
+[`vercel.json`](./vercel.json) — если фронт отдельно на Vercel, а API на Railway/Render.
