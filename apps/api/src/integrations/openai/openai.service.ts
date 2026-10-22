@@ -169,16 +169,20 @@ Rules:
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
 - gender: masculine or feminine only for nouns when known; otherwise null.
 - wrongRussian: exactly 10 Russian distractors for multiple choice.
+  - Match the grammatical shape of "${russian}": same part of speech / construction (verb phrase → verb phrases; noun → nouns; adjective → adjectives; fixed expression → similar fixed expressions). Example: if the answer is a verb phrase like "оставить отзыв", distractors must be verb phrases such as "варить суп" or "закрыть окно", never noun phrases like "сладкое яблоко".
+  - Similar length (word count) and register so options look interchangeable in a quiz.
   - Must NOT match the primary translation or additionalTranslations.
-  - Must NOT be another real sense of the same Spanish expression (e.g. if "${spanish}" means "${russian}", do not use Russian words for other meanings of "${spanish}", such as appointment/meeting when the card means quote).
-  - Must NOT be synonyms, near-synonyms, or words from the same topic/theme as "${russian}".
-  - Prefer everyday words from unrelated domains (food, weather, body, travel, numbers, colors, animals, etc.), mixed across domains.
-  - All 10 must be distinct, natural Russian, similar length/register so they look plausible as options.
+  - Must NOT be another real sense of the same Spanish expression (e.g. if "${spanish}" means "${russian}", do not use Russian words for other meanings of "${spanish}").
+  - Must NOT be synonyms, near-synonyms, or other real translations of "${spanish}".
+  - Do not put all 10 in one topic: avoid a single theme cluster (e.g. not all food, or all weather). A few items may share a theme; the set as a whole should not feel mono-thematic. Themes need not all be mutually different.
+  - All 10 must be distinct, natural Russian.
 - wrongSpanish: exactly 10 Spanish distractors for multiple choice.
+  - Match the grammatical shape of "${spanish}" the same way (verb phrase → verb phrases, etc.).
+  - Similar length and register.
   - Must NOT match the Spanish expression "${spanish}".
-  - Must NOT be synonyms, near-synonyms, compounds, or same-theme variants of "${spanish}" (e.g. avoid cita médica / reunión when the card is cita = quote).
-  - Prefer everyday expressions from unrelated domains, mixed across domains.
-  - All 10 must be distinct, natural Spanish, similar length/register.
+  - Must NOT be synonyms, near-synonyms, compounds, or other senses of "${spanish}".
+  - Do not put all 10 in one topic; the set should not feel mono-thematic. Themes need not all be mutually different.
+  - All 10 must be distinct, natural Spanish.
 - unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.`
 
     try {
@@ -188,7 +192,7 @@ Rules:
           {
             role: 'system',
             content:
-              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Distractors must never be other senses of the same word or same-theme lookalikes; mix unrelated everyday domains.',
+              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Distractors must match the target’s grammatical shape and length, never other senses of the same word, and must not all come from one single theme.',
           },
           {
             role: 'user',
