@@ -7,6 +7,7 @@ async function bootstrap() {
   app.use(cookieParser())
   app.setGlobalPrefix('api')
   app.enableShutdownHooks()
-  await app.listen(process.env.PORT ?? 3000)
+  // Railway private network is IPv6-only; listening on :: accepts it.
+  await app.listen(process.env.PORT ?? 3000, '::')
 }
 await bootstrap()
