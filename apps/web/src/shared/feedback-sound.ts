@@ -1,3 +1,5 @@
+import { unlockPlaybackAudioSession } from './audio-session'
+
 export type FeedbackSoundKind = 'correct' | 'incorrect' | 'tap' | 'win'
 
 const SOUND_URLS: Record<FeedbackSoundKind, string> = {
@@ -44,6 +46,7 @@ function getAudioContext(): AudioContext | null {
 }
 
 async function ensureRunning(context: AudioContext): Promise<void> {
+  unlockPlaybackAudioSession()
   if (context.state === 'suspended') {
     try {
       await context.resume()

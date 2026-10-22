@@ -1,3 +1,5 @@
+import { unlockPlaybackAudioSession } from './audio-session'
+
 type AudioContextConstructor = typeof AudioContext
 
 let audioContext: AudioContext | null = null
@@ -39,6 +41,7 @@ function getAudioContext(): AudioContext | null {
 }
 
 async function ensureRunning(context: AudioContext): Promise<void> {
+  unlockPlaybackAudioSession()
   if (context.state === 'suspended') {
     try {
       await context.resume()
