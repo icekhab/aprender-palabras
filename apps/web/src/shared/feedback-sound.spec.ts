@@ -1,94 +1,141 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { playFeedbackSound, stopFeedbackSound } from './feedback-sound'
+import {
+  playFeedbackSound,
+  resetFeedbackSoundForTests,
+  stopFeedbackSound,
+} from './feedback-sound'
 
 afterEach(() => {
-  stopFeedbackSound()
+  resetFeedbackSoundForTests()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
-describe('playFeedbackSound', () => {
-  it('plays the correct sound file', () => {
-    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    class MockAudio {
-      src: string
-      play = play
-      constructor(src: string) {
-        this.src = src
-      }
+function stubWebAudio(options?: {
+  contextState?: AudioContextState
+  resume?: () => Promise<void>
+  start?: () => void
+  stop?: () => void
+}) {
+  const start = options?.start ?? vi.fn()
+  const stop = options?.stop ?? vi.fn()
+  const resume = options?.resume ?? vi.fn().mockResolvedValue(undefined)
+  const connect = vi.fn()
+  const disconnect = vi.fn()
+  const decodeAudioData = vi
+    .fn()
+    .mockResolvedValue({ duration: 0.1 } as AudioBuffer)
+
+  class MockSource {
+    buffer: AudioBuffer | null = null
+    onended: (() => void) | null = null
+    connect = connect
+    disconnect = disconnect
+    start = start
+    stop = stop
+  }
+
+  class MockAudioContext {
+    state: AudioContextState = options?.contextState ?? 'running'
+    destination = {}
+    resume = resume
+    decodeAudioData = decodeAudioData
+    createBufferSource() {
+      return new MockSource() as unknown as AudioBufferSourceNode
     }
-    vi.stubGlobal('Audio', MockAudio)
+  }
+
+  vi.stubGlobal('AudioContext', MockAudioContext)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    }),
+  )
+
+  return { start, stop, resume, decodeAudioData }
+}
+
+describe('playFeedbackSound', () => {
+  it('plays the correct sound through Web Audio', async () => {
+    const { start, decodeAudioData } = stubWebAudio()
 
     playFeedbackSound('correct')
-
-    expect(play).toHaveBeenCalledOnce()
+    await vi.waitFor(() => {
+      expect(decodeAudioData).toHaveBeenCalledOnce()
+      expect(start).toHaveBeenCalledOnce()
+    })
   })
 
-  it('plays the incorrect sound file', () => {
-    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    let lastSrc = ''
-    class MockAudio {
-      play = play
-      constructor(src: string) {
-        lastSrc = src
-      }
-    }
-    vi.stubGlobal('Audio', MockAudio)
+  it('loads the incorrect sound url', async () => {
+    const { start } = stubWebAudio()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('incorrect')
-
-    expect(lastSrc).toBe('/sounds/incorrect.mp3')
-    expect(play).toHaveBeenCalledOnce()
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/sounds/incorrect.mp3')
+      expect(start).toHaveBeenCalledOnce()
+    })
   })
 
-  it('plays the tap sound file', () => {
-    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    let lastSrc = ''
-    class MockAudio {
-      play = play
-      constructor(src: string) {
-        lastSrc = src
-      }
-    }
-    vi.stubGlobal('Audio', MockAudio)
+  it('loads the tap sound url', async () => {
+    const { start } = stubWebAudio()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('tap')
-
-    expect(lastSrc).toBe('/sounds/tap.mp3')
-    expect(play).toHaveBeenCalledOnce()
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/sounds/tap.mp3')
+      expect(start).toHaveBeenCalledOnce()
+    })
   })
 
-  it('plays the win sound file', () => {
-    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    let lastSrc = ''
-    class MockAudio {
-      play = play
-      constructor(src: string) {
-        lastSrc = src
-      }
-    }
-    vi.stubGlobal('Audio', MockAudio)
+  it('loads the win sound url', async () => {
+    const { start } = stubWebAudio()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('win')
-
-    expect(lastSrc).toBe('/sounds/win.mp3')
-    expect(play).toHaveBeenCalledOnce()
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/sounds/win.mp3')
+      expect(start).toHaveBeenCalledOnce()
+    })
   })
 
-  it('stops the current sound', () => {
-    const play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const pause = vi.fn<() => void>()
-    class MockAudio {
-      play = play
-      pause = pause
-      currentTime = 3
-      constructor(_src: string) {}
-    }
-    vi.stubGlobal('Audio', MockAudio)
+  it('stops the current sound', async () => {
+    const { start, stop } = stubWebAudio()
 
     playFeedbackSound('win')
+    await vi.waitFor(() => {
+      expect(start).toHaveBeenCalledOnce()
+    })
+
     stopFeedbackSound()
+    expect(stop).toHaveBeenCalledOnce()
+  })
 
-    expect(pause).toHaveBeenCalledOnce()
+  it('resumes a suspended audio context', async () => {
+    const resume = vi.fn().mockResolvedValue(undefined)
+    const { start } = stubWebAudio({
+      contextState: 'suspended',
+      resume,
+    })
+
+    playFeedbackSound('correct')
+    await vi.waitFor(() => {
+      expect(resume).toHaveBeenCalled()
+      expect(start).toHaveBeenCalledOnce()
+    })
   })
 })
