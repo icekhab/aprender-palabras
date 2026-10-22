@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @aprender-palabras/web --filter @aprender-palabras/api dev",
     "start": "docker compose up --build",
+    "start:prod": "docker compose --env-file .env.prod -f compose.prod.yaml up -d --build",
     "stop": "docker compose down",
+    "stop:prod": "docker compose --env-file .env.prod -f compose.prod.yaml down",
     "db:migrate": "pnpm --filter @aprender-palabras/api db:migrate",
     "db:studio": "pnpm --filter @aprender-palabras/api db:studio",
     "build": "pnpm -r --if-present build",

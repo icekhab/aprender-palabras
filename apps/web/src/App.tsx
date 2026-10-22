@@ -350,9 +350,7 @@ function HomePage() {
         {
           limit: DICTIONARY_PAGE_SIZE,
           offset: pageParam,
-          ...(debouncedDictionaryFilter
-            ? { q: debouncedDictionaryFilter }
-            : {}),
+          q: debouncedDictionaryFilter || undefined,
         },
         signal,
       ),

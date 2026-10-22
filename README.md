@@ -76,7 +76,70 @@ pnpm build
 pnpm db:migrate
 ```
 
-## Документация
+## Production (VPS)
 
-- [Продуктовые требования](./docs/product/README.md)
-- [Общая техническая документация](./docs/technical/README.md)
+Один VPS: PostgreSQL + NestJS API + статичный frontend за Caddy с HTTPS
+([`compose.prod.yaml`](./compose.prod.yaml)).
+
+Нужны: VPS с Docker, домен (A-запись на IP сервера), ключи OpenAI/Unsplash.
+
+### 1. Сервер
+
+1. Арендуйте VPS (например Hetzner CX22 / аналог ~€4–6/мес), Ubuntu 24.04.
+2. Откройте порты **80** и **443** в firewall.
+3. Установите Docker:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker "$USER"
+# перелогиньтесь, затем:
+docker compose version
+```
+
+4. Клонируйте репозиторий:
+
+```bash
+git clone git@github.com:icekhab/aprender-palabras.git
+cd aprender-palabras
+```
+
+### 2. DNS
+
+В DNS домена создайте **A**-запись на IP VPS, например:
+
+- `palabras.example.com` → `YOUR.VPS.IP`
+
+Дождитесь распространения DNS (минуты–часы).
+
+### 3. Env и запуск
+
+```bash
+cp .env.prod.example .env.prod
+nano .env.prod
+```
+
+Заполните `APP_DOMAIN`, `ACME_EMAIL`, `APP_ORIGIN` (`https://` + тот же домен),
+сильный `POSTGRES_PASSWORD` (тот же пароль в `DATABASE_URL`), ключи API.
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
+```
+
+Проверки:
+
+- `https://APP_DOMAIN` — приложение;
+- `https://APP_DOMAIN/api/health` — health API.
+
+При старте API выполняет `prisma migrate deploy`. Тестовый пользователь —
+см. [auth](./docs/technical/auth.md).
+
+Обновление после `git pull`:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
+```
+
+### Альтернатива: Vercel + PaaS
+
+Файлы [`vercel.json`](./vercel.json) и [`Dockerfile`](./Dockerfile) остаются
+для схемы «фронт на Vercel, API+Postgres на Railway/Render», если понадобится.

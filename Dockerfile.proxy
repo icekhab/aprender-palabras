@@ -1,0 +1,26 @@
+FROM node:24.22.0-alpine AS base
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN corepack enable && corepack install --global pnpm@12.14.0
+
+WORKDIR /workspace
+
+FROM base AS build
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+
+RUN pnpm --filter @aprender-palabras/web build
+
+FROM caddy:2.10.2-alpine
+
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /workspace/apps/web/dist /srv
