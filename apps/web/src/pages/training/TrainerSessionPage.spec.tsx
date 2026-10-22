@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resetSpeechForTests } from '../../shared/speech'
 import { FEEDBACK_HOLD_MS } from './feedback'
 import { TrainerSessionPage } from './TrainerSessionPage'
 
@@ -76,24 +77,27 @@ function renderSession(initialPath = `/entrenamiento/${TRAINER_ID}`) {
 }
 
 function stubSpeech() {
-  const speak = vi.fn<(utterance: SpeechSynthesisUtterance) => void>()
-  vi.stubGlobal('speechSynthesis', {
-    getVoices: () => [],
-    cancel: vi.fn<() => void>(),
-    speak,
-    addEventListener: vi.fn<() => void>(),
-    removeEventListener: vi.fn<() => void>(),
-  })
-  class MockUtterance {
-    text: string
-    lang = ''
-    voice: SpeechSynthesisVoice | null = null
-    constructor(text: string) {
-      this.text = text
-    }
+  const start = vi.fn<() => void>()
+  const source = {
+    buffer: null as AudioBuffer | null,
+    connect: vi.fn<() => void>(),
+    start,
+    stop: vi.fn<() => void>(),
+    disconnect: vi.fn<() => void>(),
+    onended: null as (() => void) | null,
   }
-  vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
-  return speak
+
+  class MockAudioContext {
+    state = 'running'
+    resume = vi.fn<() => Promise<void>>(async () => undefined)
+    decodeAudioData = vi.fn<(data: ArrayBuffer) => Promise<AudioBuffer>>(
+      async () => ({ duration: 0.1 }) as AudioBuffer,
+    )
+    createBufferSource = vi.fn<() => typeof source>(() => source)
+  }
+
+  vi.stubGlobal('AudioContext', MockAudioContext)
+  return start
 }
 
 function progressNow() {
@@ -117,6 +121,12 @@ function mockSession(
   let completeCalls = 0
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input)
+    if (url.startsWith('/api/speech/')) {
+      return new Response(new ArrayBuffer(8), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/mpeg' },
+      })
+    }
     if (
       url === `/api/training/trainers/${TRAINER_ID}` &&
       (!init?.method || init.method === 'GET')
@@ -196,6 +206,7 @@ function mockSession(
 
 afterEach(() => {
   cleanup()
+  resetSpeechForTests()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()

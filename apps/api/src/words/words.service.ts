@@ -23,6 +23,7 @@ import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { getMissingTrainerFields } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
+import { WordAudioService } from '../speech/word-audio.service.js'
 import { normalizeWordKey } from './word-normalize.js'
 
 @Injectable()
@@ -33,6 +34,7 @@ export class WordsService {
     private readonly prisma: PrismaService,
     private readonly openAiService: OpenAiService,
     private readonly unsplashService: UnsplashService,
+    private readonly wordAudioService: WordAudioService,
   ) {}
 
   async preview(input: WordPairInput): Promise<WordDraft> {
@@ -416,6 +418,8 @@ export class WordsService {
         },
       })
 
+      await this.wordAudioService.ensureWordAudio(word.id)
+
       return {
         id: card.id,
         wordId: word.id,
@@ -526,6 +530,8 @@ export class WordsService {
       ) {
         void this.unsplashService.trackDownload(draft.imageDownloadLocation)
       }
+
+      await this.wordAudioService.ensureWordAudio(word.id)
 
       return toWordResponse(word)
     } catch (error) {

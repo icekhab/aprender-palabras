@@ -70,8 +70,17 @@ model Word {
   updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
   cards                  UserCard[]
   lessonWords            LessonWord[]
+  audio                  WordAudio?
 
   @@unique([normalizedSpanish, normalizedRussian])
+}
+
+model WordAudio {
+  wordId    String   @id @db.Uuid
+  mp3       Bytes
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  word      Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
 }
 
 model UserCard {

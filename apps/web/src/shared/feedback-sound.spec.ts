@@ -17,13 +17,15 @@ function stubWebAudio(options?: {
   start?: () => void
   stop?: () => void
 }) {
-  const start = options?.start ?? vi.fn()
-  const stop = options?.stop ?? vi.fn()
-  const resume = options?.resume ?? vi.fn().mockResolvedValue(undefined)
-  const connect = vi.fn()
-  const disconnect = vi.fn()
+  const start = options?.start ?? vi.fn<() => void>()
+  const stop = options?.stop ?? vi.fn<() => void>()
+  const resume =
+    options?.resume ??
+    vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+  const connect = vi.fn<() => void>()
+  const disconnect = vi.fn<() => void>()
   const decodeAudioData = vi
-    .fn()
+    .fn<(data: ArrayBuffer) => Promise<AudioBuffer>>()
     .mockResolvedValue({ duration: 0.1 } as AudioBuffer)
 
   class MockSource {
@@ -48,10 +50,10 @@ function stubWebAudio(options?: {
   vi.stubGlobal('AudioContext', MockAudioContext)
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({
+    vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
-    }),
+    } as Response),
   )
 
   return { start, stop, resume, decodeAudioData }
@@ -70,10 +72,10 @@ describe('playFeedbackSound', () => {
 
   it('loads the incorrect sound url', async () => {
     const { start } = stubWebAudio()
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
-    })
+    } as Response)
     vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('incorrect')
@@ -85,10 +87,10 @@ describe('playFeedbackSound', () => {
 
   it('loads the tap sound url', async () => {
     const { start } = stubWebAudio()
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
-    })
+    } as Response)
     vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('tap')
@@ -100,10 +102,10 @@ describe('playFeedbackSound', () => {
 
   it('loads the win sound url', async () => {
     const { start } = stubWebAudio()
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
-    })
+    } as Response)
     vi.stubGlobal('fetch', fetchMock)
 
     playFeedbackSound('win')
@@ -126,7 +128,7 @@ describe('playFeedbackSound', () => {
   })
 
   it('resumes a suspended audio context', async () => {
-    const resume = vi.fn().mockResolvedValue(undefined)
+    const resume = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const { start } = stubWebAudio({
       contextState: 'suspended',
       resume,

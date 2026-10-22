@@ -258,25 +258,41 @@ describe('App', () => {
         })
       }
 
+      if (url.startsWith('/api/speech/')) {
+        return new Response(new ArrayBuffer(8), {
+          status: 200,
+          headers: { 'Content-Type': 'audio/mpeg' },
+        })
+      }
+
       throw new Error(`Unexpected request: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('speechSynthesis', {
-      getVoices: () => [],
-      cancel: vi.fn(),
-      speak: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })
-    class MockUtterance {
-      text: string
-      lang = ''
-      voice: SpeechSynthesisVoice | null = null
-      constructor(text: string) {
-        this.text = text
-      }
+    class MockAudioContext {
+      state = 'running'
+      resume = vi.fn<() => Promise<void>>(async () => undefined)
+      decodeAudioData = vi.fn<(data: ArrayBuffer) => Promise<AudioBuffer>>(
+        async () => ({ duration: 0.1 }) as AudioBuffer,
+      )
+      createBufferSource = vi.fn<
+        () => {
+          buffer: AudioBuffer | null
+          connect: () => void
+          start: () => void
+          stop: () => void
+          disconnect: () => void
+          onended: (() => void) | null
+        }
+      >(() => ({
+        buffer: null as AudioBuffer | null,
+        connect: vi.fn<() => void>(),
+        start: vi.fn<() => void>(),
+        stop: vi.fn<() => void>(),
+        disconnect: vi.fn<() => void>(),
+        onended: null as (() => void) | null,
+      }))
     }
-    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
+    vi.stubGlobal('AudioContext', MockAudioContext)
 
     renderApp()
 
@@ -571,11 +587,6 @@ describe('App', () => {
         throw new Error(`Unexpected request: ${url}`)
       }),
     )
-    vi.stubGlobal('speechSynthesis', {
-      getVoices: () => [],
-      addEventListener: vi.fn<() => void>(),
-      removeEventListener: vi.fn<() => void>(),
-    })
 
     renderApp()
 
@@ -584,6 +595,11 @@ describe('App', () => {
 
     expect(
       await screen.findByRole('heading', { name: 'Ajustes' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Las palabras se escuchan con la voz integrada de la aplicación.',
+      ),
     ).toBeInTheDocument()
   })
 
@@ -664,62 +680,6 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { name: 'Iniciar sesión' }),
     ).toBeInTheDocument()
-  })
-
-  it('saves the selected Spanish voice in settings', async () => {
-    const voices = [
-      {
-        lang: 'es-ES',
-        name: 'Spanish Spain',
-        default: false,
-        localService: true,
-        voiceURI: 'es-es-voice',
-      },
-      {
-        lang: 'es-MX',
-        name: 'Spanish Mexico',
-        default: false,
-        localService: true,
-        voiceURI: 'es-mx-voice',
-      },
-    ]
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>(async (input) => {
-        if (String(input) === '/api/auth/me') {
-          return jsonResponse(user)
-        }
-
-        throw new Error(`Unexpected request: ${String(input)}`)
-      }),
-    )
-    vi.stubGlobal('speechSynthesis', {
-      getVoices: () => voices,
-      addEventListener: vi.fn<() => void>(),
-      removeEventListener: vi.fn<() => void>(),
-      cancel: vi.fn<() => void>(),
-      speak: vi.fn<(utterance: SpeechSynthesisUtterance) => void>(),
-    })
-    class MockUtterance {
-      text: string
-      lang = ''
-      voice: SpeechSynthesisVoice | null = null
-
-      constructor(text: string) {
-        this.text = text
-      }
-    }
-    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
-
-    renderApp('/settings')
-
-    const select = await screen.findByLabelText('Voz')
-    fireEvent.change(select, { target: { value: 'es-mx-voice' } })
-
-    expect(window.localStorage.getItem('aprender-palabras.spanishVoiceURI')).toBe(
-      'es-mx-voice',
-    )
   })
 
   it('loads suggestions after debounce', async () => {

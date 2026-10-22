@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { Button } from '@/components/ui/button'
 import { playFeedbackSound } from '../../shared/feedback-sound'
-import { speakSpanish } from '../../shared/speech'
+import { speakWord } from '../../shared/speech'
 import { FEEDBACK_HOLD_MS } from './feedback'
 import { compareSpanishAnswer } from './spanish-answer'
 
@@ -25,8 +25,8 @@ export function Exercise4Screen({
   } | null>(null)
 
   useEffect(() => {
-    speakSpanish(word.spanish)
-  }, [word.spanish])
+    speakWord(word.wordId)
+  }, [word.wordId])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -77,7 +77,7 @@ export function Exercise4Screen({
           aria-label="Escuchar"
           className="inline-flex size-28 cursor-pointer items-center justify-center rounded-full bg-orange-600 text-white shadow-md transition hover:bg-orange-700 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 sm:size-32"
           onClick={() => {
-            speakSpanish(word.spanish)
+            speakWord(word.wordId)
           }}
         >
           <Volume2 className="size-12 sm:size-14" aria-hidden />

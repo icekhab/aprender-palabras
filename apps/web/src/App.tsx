@@ -15,7 +15,7 @@ import {
   type SuggestionItem,
   type SuggestionsResponse,
 } from '@aprender-palabras/contracts'
-import { BookOpen, LogOut, Plus, Settings, Volume2 } from 'lucide-react'
+import { BookOpen, LogOut, Plus, Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
@@ -34,12 +34,6 @@ import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
 import { getTodayTraining } from './shared/api/training'
 import { addExistingWord, listDictionaryWords } from './shared/api/words'
-import {
-  getPreferredSpanishVoiceURI,
-  getSpanishVoices,
-  setPreferredSpanishVoiceURI,
-  speakSpanish,
-} from './shared/speech'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
@@ -699,43 +693,6 @@ function SettingsPage() {
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const logoutMutation = useLogoutMutation()
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [selectedVoiceURI, setSelectedVoiceURI] = useState(
-    () => getPreferredSpanishVoiceURI() ?? '',
-  )
-
-  useEffect(() => {
-    const syncVoices = () => {
-      const spanishVoices = getSpanishVoices()
-      setVoices(spanishVoices)
-
-      setSelectedVoiceURI((current) => {
-        if (
-          current &&
-          spanishVoices.some((voice) => voice.voiceURI === current)
-        ) {
-          return current
-        }
-
-        const stored = getPreferredSpanishVoiceURI()
-        if (
-          stored &&
-          spanishVoices.some((voice) => voice.voiceURI === stored)
-        ) {
-          return stored
-        }
-
-        return spanishVoices[0]?.voiceURI ?? ''
-      })
-    }
-
-    syncVoices()
-    window.speechSynthesis?.addEventListener('voiceschanged', syncVoices)
-
-    return () => {
-      window.speechSynthesis?.removeEventListener('voiceschanged', syncVoices)
-    }
-  }, [])
 
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
@@ -766,61 +723,10 @@ function SettingsPage() {
 
       <div className="mx-auto max-w-3xl space-y-6 px-5 py-6 sm:px-8">
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Voz en español</h2>
+          <h2 className="text-lg font-semibold">Pronunciación</h2>
           <p className="text-sm text-orange-900/70">
-            Elige la voz que se usará al escuchar palabras y ejemplos.
+            Las palabras se escuchan con la voz integrada de la aplicación.
           </p>
-
-          {voices.length === 0 ? (
-            <p className="text-sm text-orange-900/70" role="status">
-              No hay voces en español en este dispositivo. La reproducción puede
-              no estar disponible.
-            </p>
-          ) : (
-            <>
-              <label
-                className="block text-sm font-medium"
-                htmlFor="spanish-voice"
-              >
-                Voz
-              </label>
-              <div className="flex max-w-md items-center gap-3">
-                <select
-                  id="spanish-voice"
-                  value={selectedVoiceURI}
-                  onChange={(event) => {
-                    const nextURI = event.target.value
-                    setSelectedVoiceURI(nextURI)
-                    setPreferredSpanishVoiceURI(nextURI || null)
-                  }}
-                  className="h-10 min-w-0 flex-1 appearance-none rounded-lg border border-orange-200 bg-white bg-[length:1rem] bg-[position:right_0.75rem_center] bg-no-repeat px-3 pr-10 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a3412' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                  }}
-                >
-                  {voices.map((voice) => (
-                    <option key={voice.voiceURI} value={voice.voiceURI}>
-                      {voice.name} ({voice.lang})
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-10"
-                  aria-label="Probar voz"
-                  disabled={!selectedVoiceURI}
-                  onClick={() => {
-                    setPreferredSpanishVoiceURI(selectedVoiceURI || null)
-                    speakSpanish('Hola, esta es una prueba de voz.')
-                  }}
-                >
-                  <Volume2 className="size-5" aria-hidden />
-                </Button>
-              </div>
-            </>
-          )}
         </section>
       </div>
     </main>

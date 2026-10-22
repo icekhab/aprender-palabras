@@ -29,7 +29,7 @@ describe('WordRow', () => {
   })
 
   it('calls onSelect when the spanish word is clicked', () => {
-    const onSelect = vi.fn()
+    const onSelect = vi.fn<() => void>()
     render(
       <ul>
         <WordRow

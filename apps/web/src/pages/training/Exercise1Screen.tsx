@@ -2,7 +2,7 @@ import { Volume2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { playFeedbackSound } from '../../shared/feedback-sound'
-import { speakSpanish } from '../../shared/speech'
+import { speakWord } from '../../shared/speech'
 import { buildExercise1Step } from './exercise1'
 import { FEEDBACK_HOLD_MS } from './feedback'
 
@@ -19,8 +19,8 @@ export function Exercise1Screen({
   const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => {
-    speakSpanish(step.spanish)
-  }, [step])
+    speakWord(word.wordId)
+  }, [word.wordId])
 
   useEffect(() => {
     if (selected === null) {
@@ -47,7 +47,7 @@ export function Exercise1Screen({
           aria-label="Escuchar"
           className="inline-flex size-16 cursor-pointer items-center justify-center rounded-full bg-orange-700 text-white shadow-sm transition hover:bg-orange-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
           onClick={() => {
-            speakSpanish(step.spanish)
+            speakWord(word.wordId)
           }}
         >
           <Volume2 className="size-7" aria-hidden />

@@ -7,6 +7,7 @@ import { OriginGuard } from './auth/origin.guard.js'
 import { HealthController } from './health.controller.js'
 import { LessonsModule } from './lessons/lessons.module.js'
 import { PrismaModule } from './prisma.module.js'
+import { SpeechModule } from './speech/speech.module.js'
 import { SuggestionsModule } from './suggestions/suggestions.module.js'
 import { TrainingModule } from './training/training.module.js'
 import { WordsModule } from './words/words.module.js'
@@ -19,6 +20,7 @@ import { WordsModule } from './words/words.module.js'
     WordsModule,
     LessonsModule,
     TrainingModule,
+    SpeechModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,

@@ -101,6 +101,7 @@ function WordCardContent({ card }: { card: UserCardDetail }) {
     <div className="space-y-6">
       <WordCardFields
         draft={card}
+        wordId={card.wordId}
         progress={card.progress}
         onProgressDoubleClick={
           actionPending ? undefined : () => setConfirmAction('reset')

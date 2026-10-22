@@ -2,7 +2,7 @@ import { Frown, Info } from 'lucide-react'
 import { useEffect } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { Button } from '@/components/ui/button'
-import { speakSpanish } from '../../shared/speech'
+import { speakWord } from '../../shared/speech'
 import { WordDetailCard } from './WordDetailCard'
 
 export function AnswerResultScreen({
@@ -21,8 +21,8 @@ export function AnswerResultScreen({
   onDone: () => void
 }) {
   useEffect(() => {
-    speakSpanish(word.spanish)
-  }, [word])
+    speakWord(word.wordId)
+  }, [word.wordId])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

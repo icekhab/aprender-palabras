@@ -21,11 +21,13 @@ export type WordCardFieldsData = Pick<
 
 export function WordCardFields({
   draft,
+  wordId,
   progress,
   onProgressDoubleClick,
   onEdit,
 }: {
   draft: WordCardFieldsData
+  wordId?: string | null
   progress?: number
   onProgressDoubleClick?: () => void
   onEdit?: () => void
@@ -33,9 +35,11 @@ export function WordCardFields({
   return (
     <section className="space-y-6">
       <div className="flex items-start gap-3">
-        <span className="inline-flex h-[1lh] shrink-0 items-center text-3xl font-bold leading-tight">
-          <SpeakButton text={draft.spanish} size="lg" />
-        </span>
+        {wordId ? (
+          <span className="inline-flex h-[1lh] shrink-0 items-center text-3xl font-bold leading-tight">
+            <SpeakButton wordId={wordId} size="lg" />
+          </span>
+        ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <p className="min-w-0 text-3xl font-bold tracking-tight leading-tight">
@@ -116,10 +120,7 @@ export function WordCardFields({
         {draft.examples.length > 0 ? (
           <ul className="mt-1 space-y-2">
             {draft.examples.map((example) => (
-              <li key={example} className="flex items-start gap-2">
-                <span className="inline-flex h-[1lh] shrink-0 items-center leading-6">
-                  <SpeakButton text={example} size="xs" />
-                </span>
+              <li key={example}>
                 <p className="leading-6 text-orange-950">{example}</p>
               </li>
             ))}

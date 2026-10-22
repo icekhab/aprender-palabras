@@ -15,6 +15,7 @@ import type {
 import { Prisma } from '../generated/prisma/client.js'
 import { isWordReadyForTrainer } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
+import { WordAudioService } from '../speech/word-audio.service.js'
 import { applyProgressChange } from './progress.js'
 import {
   buildDailyTrainers,
@@ -26,7 +27,10 @@ import {
 
 @Injectable()
 export class TrainingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly wordAudioService: WordAudioService,
+  ) {}
 
   async getTrainerSession(
     userId: string,
@@ -44,6 +48,10 @@ export class TrainingService {
     if (!trainer) {
       throw new NotFoundException('Trainer not found')
     }
+
+    await this.wordAudioService.ensureWordsAudio(
+      trainer.words.map((item) => item.userCard.wordId),
+    )
 
     return {
       id: trainer.id,

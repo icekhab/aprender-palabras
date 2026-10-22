@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LessonsService } from './lessons.service.js'
 import { PrismaService } from '../prisma.service.js'
+import { WordAudioService } from '../speech/word-audio.service.js'
 
 describe('LessonsService', () => {
   const tx = {
@@ -55,11 +56,21 @@ describe('LessonsService', () => {
     word: tx.word,
   }
 
+  const wordAudioService = {
+    ensureWordAudio: vi.fn<(wordId: string) => Promise<boolean>>(),
+    ensureWordsAudio: vi.fn<(wordIds: string[]) => Promise<void>>(),
+  }
+
   let service: LessonsService
 
   beforeEach(() => {
     vi.clearAllMocks()
-    service = new LessonsService(prisma as unknown as PrismaService)
+    wordAudioService.ensureWordAudio.mockResolvedValue(true)
+    wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
+    service = new LessonsService(
+      prisma as unknown as PrismaService,
+      wordAudioService as unknown as WordAudioService,
+    )
   })
 
   it('creates a lesson at the end of the order', async () => {

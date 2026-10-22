@@ -9,7 +9,7 @@ import {
   getTrainerSession,
 } from '../../shared/api/training'
 import { playFeedbackSound } from '../../shared/feedback-sound'
-import { speakSpanish } from '../../shared/speech'
+import { preloadWordAudio, speakWord } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
 import { CompletionScreen } from './CompletionScreen'
 import { Exercise1Screen } from './Exercise1Screen'
@@ -43,8 +43,10 @@ export function TrainerSessionPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [stepIndex, setStepIndex] = useState(0)
-  const [queue, setQueue] = useState<SessionStep[]>([])
-  const [queueReady, setQueueReady] = useState(false)
+  const [prepared, setPrepared] = useState<{
+    sessionId: string
+    queue: SessionStep[]
+  } | null>(null)
   /** Steps closed so far (intro / resolved exercise). Drives the session bar. */
   const [completedCount, setCompletedCount] = useState(0)
   const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>(
@@ -70,38 +72,60 @@ export function TrainerSessionPage() {
     enabled: Boolean(trainerId),
   })
 
+  const sessionId = sessionQuery.data?.id
+  const queue =
+    prepared && prepared.sessionId === sessionId ? prepared.queue : []
+  const sessionReady = Boolean(
+    sessionId && prepared && prepared.sessionId === sessionId,
+  )
+
   useEffect(() => {
     if (!sessionQuery.data) {
       return
     }
-    setQueue(buildSessionQueue(sessionQuery.data.words))
-    setQueueReady(true)
-    setStepIndex(0)
-    setCompletedCount(0)
-    setAnswerResult(null)
-    setAttemptCounts({})
-    setErrorCounts({})
-    setCompletion(null)
-    setSaving(false)
+
+    const data = sessionQuery.data
+    let cancelled = false
+
+    void preloadWordAudio(data.words.map((word) => word.wordId)).finally(() => {
+      if (cancelled) {
+        return
+      }
+      setPrepared({
+        sessionId: data.id,
+        queue: buildSessionQueue(data.words),
+      })
+      setStepIndex(0)
+      setCompletedCount(0)
+      setAnswerResult(null)
+      setAttemptCounts({})
+      setErrorCounts({})
+      setCompletion(null)
+      setSaving(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [sessionQuery.data])
 
   const currentStep = queue[stepIndex] ?? null
 
   useEffect(() => {
-    if (currentStep?.kind !== 'intro') {
+    if (!sessionReady || currentStep?.kind !== 'intro') {
       return
     }
-    speakSpanish(currentStep.word.spanish)
-  }, [currentStep])
+    speakWord(currentStep.word.wordId)
+  }, [sessionReady, currentStep])
 
   useEffect(() => {
-    if (!sessionQuery.isSuccess || !queueReady) {
+    if (!sessionQuery.isSuccess || !sessionReady) {
       return
     }
     if (queue.length === 0) {
       void navigate('/', { replace: true })
     }
-  }, [sessionQuery.isSuccess, queueReady, queue.length, navigate])
+  }, [sessionQuery.isSuccess, sessionReady, queue.length, navigate])
 
   const isCurrentStepResolved = useCallback((): boolean => {
     if (!currentStep) {
@@ -185,7 +209,9 @@ export function TrainerSessionPage() {
       const attempts = attemptCounts[key] ?? 0
       if (attempts < MAX_ATTEMPTS_PER_EXERCISE) {
         nextQueue = [...queue, createRetryStep(currentStep, attempts)]
-        setQueue(nextQueue)
+        if (sessionId) {
+          setPrepared({ sessionId, queue: nextQueue })
+        }
       }
     }
 
@@ -208,6 +234,7 @@ export function TrainerSessionPage() {
     currentStep,
     isCurrentStepResolved,
     queue,
+    sessionId,
     stepIndex,
     submitCompletion,
   ])
@@ -244,10 +271,14 @@ export function TrainerSessionPage() {
     [currentStep],
   )
 
-  if (sessionQuery.isPending) {
+  if (sessionQuery.isPending || (sessionQuery.isSuccess && !sessionReady)) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 py-6 sm:px-8">
-        <p className="text-sm text-orange-900/70">Cargando entrenamiento…</p>
+        <p className="text-sm text-orange-900/70" role="status">
+          {sessionQuery.isPending
+            ? 'Cargando entrenamiento…'
+            : 'Preparando audio…'}
+        </p>
       </main>
     )
   }

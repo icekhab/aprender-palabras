@@ -1,13 +1,13 @@
 import { Volume2 } from 'lucide-react'
-import { speakSpanish } from '../shared/speech'
+import { speakWord } from '../shared/speech'
 
 export function SpeakButton({
-  text,
+  wordId,
   size = 'sm',
   variant = 'default',
   className = '',
 }: {
-  text: string
+  wordId: string
   size?: 'xs' | 'sm' | 'lg'
   variant?: 'default' | 'onAccent'
   className?: string
@@ -28,7 +28,7 @@ export function SpeakButton({
       aria-label="Escuchar"
       className={`inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-3 ${tone} ${box} ${className}`}
       onClick={() => {
-        speakSpanish(text)
+        speakWord(wordId)
       }}
     >
       <Volume2 className={icon} aria-hidden />

@@ -24,6 +24,7 @@ import type {
 } from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
+import { WordAudioService } from '../speech/word-audio.service.js'
 import { normalizeWordKey } from '../words/word-normalize.js'
 import {
   getMissingTrainerFields,
@@ -32,7 +33,10 @@ import {
 
 @Injectable()
 export class LessonsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly wordAudioService: WordAudioService,
+  ) {}
 
   async list(
     userId: string,
@@ -435,6 +439,8 @@ export class LessonsService {
         },
       )
 
+      await this.wordAudioService.ensureWordAudio(word.id)
+
       return {
         wordId: word.id,
         userCardId: ensuredCard.id,
@@ -578,6 +584,8 @@ export class LessonsService {
 
         return existing
       })
+
+      await this.wordAudioService.ensureWordAudio(word.id)
 
       return {
         id: word.id,

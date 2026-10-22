@@ -8,6 +8,7 @@ import type { UpdateWordCardInput, WordDraft } from '@aprender-palabras/contract
 import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { PrismaService } from '../prisma.service.js'
+import { WordAudioService } from '../speech/word-audio.service.js'
 import { WordsService } from './words.service.js'
 
 const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
@@ -98,10 +99,17 @@ describe('WordsService', () => {
     trackDownload: vi.fn<(downloadLocation: string) => Promise<void>>(),
   }
 
+  const wordAudioService = {
+    ensureWordAudio: vi.fn<(wordId: string) => Promise<boolean>>(),
+    ensureWordsAudio: vi.fn<(wordIds: string[]) => Promise<void>>(),
+  }
+
   let service: WordsService
 
   beforeEach(() => {
     vi.clearAllMocks()
+    wordAudioService.ensureWordAudio.mockResolvedValue(true)
+    wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     )
@@ -109,6 +117,7 @@ describe('WordsService', () => {
       prisma as unknown as PrismaService,
       openAiService as unknown as OpenAiService,
       unsplashService as unknown as UnsplashService,
+      wordAudioService as unknown as WordAudioService,
     )
   })
 
@@ -291,7 +300,7 @@ describe('WordsService', () => {
     prisma.userCard.findMany.mockResolvedValue([])
 
     await expect(
-      service.list('user-1', { limit: 20, offset: 0 }),
+      service.list('user-1', { limit: 20, offset: 0, q: undefined }),
     ).resolves.toEqual({
       totalCount: 0,
       averageProgress: 0,
@@ -323,7 +332,7 @@ describe('WordsService', () => {
     ])
 
     await expect(
-      service.list('user-1', { limit: 20, offset: 0 }),
+      service.list('user-1', { limit: 20, offset: 0, q: undefined }),
     ).resolves.toEqual({
       totalCount: 21,
       averageProgress: 50,
@@ -465,15 +474,14 @@ describe('WordsService', () => {
         ],
       },
     }
-    prisma.userCard.count.mockImplementation(
-      async (args: { where: unknown }) => {
-        if (JSON.stringify(args.where) === JSON.stringify(listWhere)) {
-          return 1
-        }
+    prisma.userCard.count.mockImplementation(async (args: unknown) => {
+      const where = (args as { where: unknown }).where
+      if (JSON.stringify(where) === JSON.stringify(listWhere)) {
+        return 1
+      }
 
-        return 7
-      },
-    )
+      return 7
+    })
     prisma.userCard.aggregate.mockResolvedValue({ _avg: { progress: 60 } })
     prisma.userCard.findMany.mockResolvedValue([
       {

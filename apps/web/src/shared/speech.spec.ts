@@ -1,62 +1,71 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  getPreferredSpanishVoice,
-  setPreferredSpanishVoiceURI,
-  speakSpanish,
+  preloadWordAudio,
+  resetSpeechForTests,
+  speakWord,
+  wordAudioUrl,
 } from './speech'
 
-const VOICE_STORAGE_KEY = 'aprender-palabras.spanishVoiceURI'
-
 afterEach(() => {
-  window.localStorage.clear()
+  resetSpeechForTests()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
-describe('speech preference', () => {
-  it('uses the preferred Spanish voice from localStorage', () => {
-    const preferred = {
-      lang: 'es-MX',
-      name: 'Mexican',
-      default: false,
-      localService: true,
-      voiceURI: 'es-mx-voice',
-    }
-    const other = {
-      lang: 'es-ES',
-      name: 'Spanish',
-      default: false,
-      localService: true,
-      voiceURI: 'es-es-voice',
+describe('word speech', () => {
+  it('builds the speech audio URL', () => {
+    expect(wordAudioUrl('word-1')).toBe('/api/speech/word-1')
+  })
+
+  it('preloads and speaks audio from the API', async () => {
+    const start = vi.fn<() => void>()
+    const connect = vi.fn<() => void>()
+    const source = {
+      buffer: null as AudioBuffer | null,
+      connect,
+      start,
+      stop: vi.fn<() => void>(),
+      disconnect: vi.fn<() => void>(),
+      onended: null as (() => void) | null,
     }
 
-    const speak = vi.fn<(utterance: SpeechSynthesisUtterance) => void>()
-    const cancel = vi.fn<() => void>()
-    vi.stubGlobal('speechSynthesis', {
-      speak,
-      cancel,
-      getVoices: () => [other, preferred],
+    const decodeAudioData = vi.fn<
+      (data: ArrayBuffer) => Promise<AudioBuffer>
+    >(async () => ({ duration: 0.5 }) as AudioBuffer)
+    const resume = vi.fn<() => Promise<void>>(async () => undefined)
+    const createBufferSource = vi.fn<() => typeof source>(() => source)
+
+    class MockAudioContext {
+      state = 'running'
+      resume = resume
+      decodeAudioData = decodeAudioData
+      createBufferSource = createBufferSource
+    }
+
+    vi.stubGlobal('AudioContext', MockAudioContext)
+
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return {
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      } as Response
     })
-    class MockUtterance {
-      text: string
-      lang = ''
-      voice: SpeechSynthesisVoice | null = null
+    vi.stubGlobal('fetch', fetchMock)
 
-      constructor(text: string) {
-        this.text = text
-      }
-    }
-    vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance)
+    await preloadWordAudio(['word-1', 'word-1'])
 
-    setPreferredSpanishVoiceURI('es-mx-voice')
-    expect(getPreferredSpanishVoice()?.voiceURI).toBe('es-mx-voice')
-    expect(window.localStorage.getItem(VOICE_STORAGE_KEY)).toBe('es-mx-voice')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/speech/word-1',
+      expect.objectContaining({
+        credentials: 'same-origin',
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    speakSpanish('hola')
-
-    expect(cancel).toHaveBeenCalled()
-    const utterance = speak.mock.calls[0]?.[0] as SpeechSynthesisUtterance
-    expect(utterance.text).toBe('hola')
-    expect(utterance.voice?.voiceURI).toBe('es-mx-voice')
-    expect(utterance.lang).toBe('es-MX')
+    speakWord('word-1')
+    await vi.waitFor(() => {
+      expect(start).toHaveBeenCalled()
+    })
+    expect(connect).toHaveBeenCalled()
   })
 })

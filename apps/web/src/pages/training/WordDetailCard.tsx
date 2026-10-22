@@ -61,7 +61,7 @@ export function WordDetailCard({ word }: { word: TrainerSessionWord }) {
             </p>
           </div>
           <SpeakButton
-            text={word.spanish}
+            wordId={word.wordId}
             size="lg"
             variant="onAccent"
             className="shrink-0"
@@ -85,8 +85,7 @@ export function WordDetailCard({ word }: { word: TrainerSessionWord }) {
         {word.examples.length > 0 ? (
           <ul className="mt-1 space-y-2">
             {word.examples.map((example) => (
-              <li key={example} className="flex items-start gap-2">
-                <SpeakButton text={example} size="xs" />
+              <li key={example}>
                 <p className="text-orange-950 leading-6">{example}</p>
               </li>
             ))}
