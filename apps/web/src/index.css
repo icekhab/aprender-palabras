@@ -64,6 +64,39 @@ body {
   min-height: 100svh;
 }
 
+@keyframes word-gen-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes word-gen-pulse {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.word-gen-spin {
+  animation: word-gen-spin 1s linear infinite;
+}
+
+.word-gen-pulse {
+  animation: word-gen-pulse 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-gen-spin,
+  .word-gen-pulse {
+    animation: none;
+  }
+}
+
 button,
 input,
 textarea,

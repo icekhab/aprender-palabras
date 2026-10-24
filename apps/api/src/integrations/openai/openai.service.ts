@@ -18,7 +18,7 @@ const suggestionsPayloadSchema = z.object({
 const wordContentSchema = z.object({
   additionalTranslations: z.array(z.string()).max(10),
   definitionEs: z.string().nullable(),
-  examples: z.array(z.string()).max(3),
+  examples: z.array(z.string()).min(2).max(3),
   partOfSpeech: z.string().nullable(),
   gender: z.enum(['masculine', 'feminine']).nullable(),
   wrongRussian: z.array(z.string()).length(10),
@@ -198,7 +198,7 @@ Guiding principle: the learner should pick the right translation by knowing the 
 Rules:
 - additionalTranslations: other Russian wordings of the SAME meaning only (not other senses). May be empty.
 - definitionEs: a short definition in Spanish for this meaning, or null if unsure.
-- examples: 2 or 3 short natural Spanish example sentences using this meaning.
+- examples: REQUIRED. Exactly 2 or 3 short natural Spanish example sentences for this meaning. Each sentence must use "${spanish}". Never return an empty list or fewer than 2 examples.
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
 - gender: masculine or feminine only for nouns when known; otherwise null.
 - wrongRussian: exactly 10 Russian distractors. Apply the distractor rules below relative to "${russian}" / "${spanish}".
@@ -214,7 +214,7 @@ ${distractorRules}`
           {
             role: 'system',
             content:
-              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Follow the distractor rules strictly: unambiguously wrong (no other senses), grammatically matched, CEFR-aligned, diverse in meaning, natural, and non-obvious.',
+              'You help Spanish learners build bilingual vocabulary cards. Return only structured card content for one concrete Spanish–Russian meaning. Always include 2 or 3 Spanish example sentences. Follow the distractor rules strictly: unambiguously wrong (no other senses), grammatically matched, CEFR-aligned, diverse in meaning, natural, and non-obvious.',
           },
           {
             role: 'user',
@@ -244,6 +244,9 @@ function sanitizeWordContent(
 ): GeneratedWordContent {
   const additionalTranslations = uniqueNonEmpty(content.additionalTranslations)
   const examples = uniqueNonEmpty(content.examples).slice(0, 3)
+  if (examples.length < 2) {
+    throw new Error('OpenAI returned fewer than 2 examples')
+  }
   const wrongRussian = uniqueNonEmpty(content.wrongRussian).slice(0, 10)
   const wrongSpanish = uniqueNonEmpty(content.wrongSpanish).slice(0, 10)
   const definitionEs = normalizeOptionalText(content.definitionEs)

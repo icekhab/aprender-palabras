@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
+import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { addNewWordToLesson } from '@/shared/api/lessons'
 import { createWord, previewWord } from '@/shared/api/words'
 import {
@@ -67,8 +68,8 @@ export function AddWordPage() {
       : null
 
   return (
-    <main className="min-h-svh bg-orange-50 text-orange-950">
-      <header className="border-b border-orange-100 bg-white/90">
+    <main className="flex min-h-svh flex-col bg-orange-50 text-orange-950">
+      <header className="shrink-0 border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
             <BrandLink />
@@ -82,46 +83,46 @@ export function AddWordPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
-        {previewQuery.isPending ? (
-          <p className="text-sm text-orange-900/70" role="status">
-            Generando la tarjeta…
-          </p>
-        ) : null}
+      {previewQuery.isPending ? (
+        <div className="grid flex-1 place-items-center px-5 py-10">
+          <WordGenerateLoader />
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-6 sm:px-8">
+          {previewQuery.isError ? (
+            <div className="mb-6" role="status">
+              <p className="text-sm text-orange-900/70">
+                No se pudo generar automáticamente. Puedes completar la tarjeta
+                a mano o reintentar.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() => void previewQuery.refetch()}
+              >
+                Reintentar generación
+              </Button>
+            </div>
+          ) : null}
 
-        {previewQuery.isError ? (
-          <div className="mb-6" role="status">
-            <p className="text-sm text-orange-900/70">
-              No se pudo generar automáticamente. Puedes completar la tarjeta a
-              mano o reintentar.
-            </p>
-            <Button
-              className="mt-3"
-              variant="outline"
-              onClick={() => void previewQuery.refetch()}
-            >
-              Reintentar generación
-            </Button>
-          </div>
-        ) : null}
-
-        {formInitial ? (
-          <WordCardForm
-            key={`${formInitial.spanish}|${formInitial.russian}|${previewQuery.isSuccess ? 'ai' : 'manual'}`}
-            initial={formInitial}
-            spanishEditable
-            submitLabel="Confirmar"
-            submittingLabel="Guardando…"
-            isSubmitting={createMutation.isPending}
-            saveError={createMutation.error}
-            conflictMessage="Esta palabra ya existe en la base de datos."
-            onSubmit={(payload: UpdateWordCardInput) => {
-              createMutation.mutate(updatePayloadToWordDraft(payload))
-            }}
-            onCancel={() => navigate(cancelPath)}
-          />
-        ) : null}
-      </div>
+          {formInitial ? (
+            <WordCardForm
+              key={`${formInitial.spanish}|${formInitial.russian}|${previewQuery.isSuccess ? 'ai' : 'manual'}`}
+              initial={formInitial}
+              spanishEditable
+              submitLabel="Confirmar"
+              submittingLabel="Guardando…"
+              isSubmitting={createMutation.isPending}
+              saveError={createMutation.error}
+              conflictMessage="Esta palabra ya existe en la base de datos."
+              onSubmit={(payload: UpdateWordCardInput) => {
+                createMutation.mutate(updatePayloadToWordDraft(payload))
+              }}
+              onCancel={() => navigate(cancelPath)}
+            />
+          ) : null}
+        </div>
+      )}
     </main>
   )
 }
