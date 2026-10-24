@@ -16,7 +16,13 @@ import {
   type SuggestionsResponse,
 } from '@aprender-palabras/contracts'
 import { BookOpen, LogOut, Plus, Settings } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { AppSplash } from '@/components/app-splash'
@@ -383,13 +389,19 @@ function HomePage() {
                 setSearchFocused(true)
               }}
               onBlur={(event) => {
-                if (
-                  !event.currentTarget.contains(
-                    event.relatedTarget as Node | null,
-                  )
-                ) {
+                const root = event.currentTarget
+                const next = event.relatedTarget as Node | null
+                // iOS often reports relatedTarget=null before the suggestion
+                // tap lands; defer so pointer handlers can run first.
+                window.setTimeout(() => {
+                  if (next && root.contains(next)) {
+                    return
+                  }
+                  if (root.contains(document.activeElement)) {
+                    return
+                  }
                   setSearchFocused(false)
-                }
+                }, 0)
               }}
             >
               <label className="sr-only" htmlFor="word-search">
@@ -906,6 +918,8 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
         <button
           type="button"
           className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50"
+          onMouseDown={keepSearchFocus}
+          onPointerDown={keepSearchFocus}
           onClick={() => {
             navigate(`/words/new?${params}`)
           }}
@@ -924,6 +938,8 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
           className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={`Añadir ${label}`}
           disabled={addMutation.isPending}
+          onMouseDown={keepSearchFocus}
+          onPointerDown={keepSearchFocus}
           onClick={() => {
             addMutation.mutate()
           }}
@@ -981,6 +997,13 @@ function SuggestionProgressIcon({
 
 function suggestionKey(item: SuggestionItem): string {
   return `${item.spanish}|${item.russian}`
+}
+
+/** Prevents the search input from blurring before a suggestion click (iOS). */
+function keepSearchFocus(
+  event: ReactMouseEvent | ReactPointerEvent,
+): void {
+  event.preventDefault()
 }
 
 function useCurrentUser() {

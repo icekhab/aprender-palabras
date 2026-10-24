@@ -774,7 +774,9 @@ describe('App', () => {
 
     fireEvent.blur(searchInput)
 
-    expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
+    })
 
     fireEvent.focus(searchInput)
 
