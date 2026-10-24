@@ -31,7 +31,7 @@ export function AnswerResultScreen({
       </div>
 
       {correct && accentWarning ? (
-        <div className="shrink-0 px-5 sm:px-8">
+        <div className="shrink-0 px-5 pb-3 sm:px-8">
           <div
             className="flex items-center gap-3 rounded-2xl bg-orange-100 px-4 py-3 text-orange-950"
             role="status"
@@ -47,7 +47,7 @@ export function AnswerResultScreen({
       ) : null}
 
       {!correct && showIncorrectBanner ? (
-        <div className="shrink-0 px-5 sm:px-8">
+        <div className="shrink-0 px-5 pb-3 sm:px-8">
           <div
             className="flex items-center gap-3 rounded-2xl bg-orange-950 px-4 py-3 text-white"
             role="status"
@@ -60,7 +60,7 @@ export function AnswerResultScreen({
         </div>
       ) : null}
 
-      <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+      <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] sm:px-8">
         <Button
           type="button"
           className="h-11 w-full bg-orange-700 text-base hover:bg-orange-800"

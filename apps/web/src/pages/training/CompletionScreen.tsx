@@ -155,7 +155,7 @@ export function CompletionScreen({
         </div>
       </div>
 
-      <div className="relative z-10 shrink-0 px-5 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+      <div className="relative z-10 shrink-0 px-5 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] sm:px-8">
         {error ? (
           <Button
             type="button"

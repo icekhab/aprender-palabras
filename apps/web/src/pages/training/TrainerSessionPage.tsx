@@ -402,7 +402,7 @@ export function TrainerSessionPage() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-8">
             <WordDetailCard word={currentStep.word} />
           </div>
-          <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+          <div className="shrink-0 border-t border-orange-100 bg-white px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] sm:px-8">
             <Button
               type="button"
               className="h-11 w-full bg-orange-700 text-base hover:bg-orange-800"
