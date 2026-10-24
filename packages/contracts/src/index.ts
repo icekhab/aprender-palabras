@@ -417,6 +417,10 @@ export interface CompleteTrainerCardInput {
 
 export interface CompleteTrainerRequest {
   cards: CompleteTrainerCardInput[]
+  /** Client clock when the session became ready (ISO). Soft-accepted by the API. */
+  startedAt?: string
+  /** Client clock when complete was submitted (ISO). Soft-accepted by the API. */
+  completedAt?: string
 }
 
 export interface CompleteTrainerCardResult {

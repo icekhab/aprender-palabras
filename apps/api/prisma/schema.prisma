@@ -132,6 +132,8 @@ model DailyTrainer {
   slot        Int
   status      DailyTrainerStatus @default(not_started)
   sourceLabel String
+  startedAt   DateTime?          @db.Timestamptz(3)
+  completedAt DateTime?          @db.Timestamptz(3)
   createdAt   DateTime           @default(now()) @db.Timestamptz(3)
   day         DailyTrainingDay   @relation(fields: [dayId], references: [id], onDelete: Cascade)
   words       DailyTrainerWord[]

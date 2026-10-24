@@ -378,11 +378,97 @@ describe('TrainingService.completeTrainer', () => {
     })
     expect(prisma._tx.dailyTrainer.update).toHaveBeenCalledWith({
       where: { id: 'trainer-1' },
-      data: { status: 'completed' },
+      data: {
+        status: 'completed',
+        startedAt: null,
+        completedAt: null,
+      },
     })
     expect(prisma._tx.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       data: { lastCompletedTrainerAt: expect.any(Date) },
+    })
+  })
+
+  it('stores client startedAt and completedAt when the pair is valid', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'not_started',
+      day: { id: 'day-1' },
+      words: [sessionWord({ id: 'card-1', progress: 0 })],
+    })
+    prisma.dailyTrainer.findMany.mockResolvedValue([
+      {
+        id: 'trainer-1',
+        kind: 'daily',
+        status: 'completed',
+        slot: 1,
+      },
+      {
+        id: 'trainer-2',
+        kind: 'daily',
+        status: 'not_started',
+        slot: 2,
+      },
+    ])
+
+    const startedAt = new Date(Date.now() - 5 * 60_000).toISOString()
+    const completedAt = new Date().toISOString()
+
+    await service.completeTrainer(
+      'user-1',
+      'trainer-1',
+      [{ userCardId: 'card-1', errorCount: 0 }],
+      { startedAt, completedAt },
+    )
+
+    expect(prisma._tx.dailyTrainer.update).toHaveBeenCalledWith({
+      where: { id: 'trainer-1' },
+      data: {
+        status: 'completed',
+        startedAt: new Date(startedAt),
+        completedAt: new Date(completedAt),
+      },
+    })
+  })
+
+  it('ignores invalid client times without failing completion', async () => {
+    prisma.dailyTrainer.findFirst.mockResolvedValue({
+      id: 'trainer-1',
+      status: 'not_started',
+      day: { id: 'day-1' },
+      words: [sessionWord({ id: 'card-1', progress: 0 })],
+    })
+    prisma.dailyTrainer.findMany.mockResolvedValue([
+      {
+        id: 'trainer-1',
+        kind: 'daily',
+        status: 'completed',
+        slot: 1,
+      },
+      {
+        id: 'trainer-2',
+        kind: 'daily',
+        status: 'not_started',
+        slot: 2,
+      },
+    ])
+
+    const result = await service.completeTrainer(
+      'user-1',
+      'trainer-1',
+      [{ userCardId: 'card-1', errorCount: 0 }],
+      { startedAt: 'not-a-date', completedAt: new Date().toISOString() },
+    )
+
+    expect(result.wordCount).toBe(1)
+    expect(prisma._tx.dailyTrainer.update).toHaveBeenCalledWith({
+      where: { id: 'trainer-1' },
+      data: {
+        status: 'completed',
+        startedAt: null,
+        completedAt: null,
+      },
     })
   })
 

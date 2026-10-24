@@ -26,6 +26,8 @@ const completeTrainerBodySchema = z.object({
       }),
     )
     .min(1),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
 })
 
 @Controller('training')
@@ -61,6 +63,10 @@ export class TrainingController {
       request.authUser.id,
       id,
       parsed.data.cards,
+      {
+        startedAt: parsed.data.startedAt,
+        completedAt: parsed.data.completedAt,
+      },
     )
   }
 }

@@ -65,6 +65,8 @@ export function TrainerSessionPage() {
   const [exitOpen, setExitOpen] = useState(false)
   const [completion, setCompletion] = useState<CompletionSummary | null>(null)
   const [saving, setSaving] = useState(false)
+  /** ISO timestamp when the session queue became ready (client clock). */
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null)
 
   const sessionQuery = useQuery({
     queryKey: TRAINER_SESSION_QUERY_KEY(trainerId),
@@ -95,6 +97,7 @@ export function TrainerSessionPage() {
         sessionId: data.id,
         queue: buildSessionQueue(data.words),
       })
+      setSessionStartedAt(new Date().toISOString())
       setStepIndex(0)
       setCompletedCount(0)
       setAnswerResult(null)
@@ -169,6 +172,8 @@ export function TrainerSessionPage() {
           userCardId: word.userCardId,
           errorCount: errorCounts[word.userCardId] ?? 0,
         })),
+        ...(sessionStartedAt ? { startedAt: sessionStartedAt } : {}),
+        completedAt: new Date().toISOString(),
       })
       setCompletion({
         wordCount: result.wordCount,
@@ -191,7 +196,13 @@ export function TrainerSessionPage() {
     } finally {
       setSaving(false)
     }
-  }, [errorCounts, queryClient, sessionQuery.data, trainerId])
+  }, [
+    errorCounts,
+    queryClient,
+    sessionQuery.data,
+    sessionStartedAt,
+    trainerId,
+  ])
 
   const handleContinue = useCallback(() => {
     playFeedbackSound('tap')

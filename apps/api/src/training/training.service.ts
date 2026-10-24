@@ -66,6 +66,7 @@ export class TrainingService {
     userId: string,
     trainerId: string,
     cards: CompleteTrainerCardInput[],
+    timing?: { startedAt?: string; completedAt?: string },
   ): Promise<CompleteTrainerResponse> {
     const trainer = await this.prisma.dailyTrainer.findFirst({
       where: {
@@ -112,6 +113,11 @@ export class TrainingService {
     }
 
     const now = new Date()
+    const sessionTimes = parseClientSessionTimes(
+      timing?.startedAt,
+      timing?.completedAt,
+      now,
+    )
     const results = trainer.words.map((item) => {
       const errorCount = errorByCard.get(item.userCard.id) ?? 0
       const oldProgress = item.userCard.progress
@@ -145,7 +151,11 @@ export class TrainingService {
 
       await tx.dailyTrainer.update({
         where: { id: trainerId },
-        data: { status: 'completed' },
+        data: {
+          status: 'completed',
+          startedAt: sessionTimes?.startedAt ?? null,
+          completedAt: sessionTimes?.completedAt ?? null,
+        },
       })
 
       await tx.user.update({
@@ -551,4 +561,47 @@ function toSessionWord(
 
 function calendarDate(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`)
+}
+
+/** Clock skew allowed for client completedAt vs server now. */
+const CLIENT_TIME_SKEW_MS = 60_000
+/** Max plausible session length for duration analytics. */
+const MAX_SESSION_DURATION_MS = 3 * 60 * 60 * 1000
+
+function parseClientDate(value: string | undefined): Date | null {
+  if (!value) {
+    return null
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+  return parsed
+}
+
+/**
+ * Soft-accept client session bounds. Invalid / missing / out-of-window → null
+ * (completion still succeeds; duration stats simply skip the row).
+ */
+function parseClientSessionTimes(
+  startedAtRaw: string | undefined,
+  completedAtRaw: string | undefined,
+  serverNow: Date,
+): { startedAt: Date; completedAt: Date } | null {
+  const startedAt = parseClientDate(startedAtRaw)
+  const completedAt = parseClientDate(completedAtRaw)
+  if (!startedAt || !completedAt) {
+    return null
+  }
+  if (startedAt.getTime() > completedAt.getTime()) {
+    return null
+  }
+  const durationMs = completedAt.getTime() - startedAt.getTime()
+  if (durationMs > MAX_SESSION_DURATION_MS) {
+    return null
+  }
+  if (completedAt.getTime() > serverNow.getTime() + CLIENT_TIME_SKEW_MS) {
+    return null
+  }
+  return { startedAt, completedAt }
 }
