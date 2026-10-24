@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BusyLoader } from '@/components/busy-loader'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '../../shared/api/auth'
 import {
@@ -284,12 +285,14 @@ export function TrainerSessionPage() {
 
   if (sessionQuery.isPending || (sessionQuery.isSuccess && !sessionReady)) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 py-6 sm:px-8">
-        <p className="text-sm text-orange-900/70" role="status">
-          {sessionQuery.isPending
-            ? 'Cargando entrenamiento…'
-            : 'Preparando audio…'}
-        </p>
+      <main className="grid min-h-dvh place-items-center px-5">
+        <BusyLoader
+          label={
+            sessionQuery.isPending
+              ? 'Cargando entrenamiento…'
+              : 'Preparando audio…'
+          }
+        />
       </main>
     )
   }
