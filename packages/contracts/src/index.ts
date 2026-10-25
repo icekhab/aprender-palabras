@@ -17,8 +17,96 @@ export interface AuthUser {
   role: UserRole
 }
 
+/** Limits for primary Spanish / Russian pair fields and suggestions `q`. */
+export const SPANISH_MAX_CHARS = 100
+export const SPANISH_MAX_WORDS = 10
+export const RUSSIAN_MAX_CHARS = 120
+export const WORD_FIELD_MIN_CHARS = 1
+
+const CYRILLIC_RE = /\p{Script=Cyrillic}/u
+
+export function hasCyrillic(text: string): boolean {
+  return CYRILLIC_RE.test(text)
+}
+
+/** Word count after trim and collapsing whitespace. */
+export function countWords(text: string): number {
+  const normalized = text.trim().replace(/\s+/g, ' ')
+  if (normalized === '') {
+    return 0
+  }
+  return normalized.split(' ').length
+}
+
+export function isValidSpanishField(text: string): boolean {
+  const trimmed = text.trim()
+  return (
+    trimmed.length >= WORD_FIELD_MIN_CHARS &&
+    trimmed.length <= SPANISH_MAX_CHARS &&
+    countWords(trimmed) <= SPANISH_MAX_WORDS
+  )
+}
+
+export function isValidRussianField(text: string): boolean {
+  const trimmed = text.trim()
+  return (
+    trimmed.length >= WORD_FIELD_MIN_CHARS &&
+    trimmed.length <= RUSSIAN_MAX_CHARS
+  )
+}
+
+function addSpanishFieldIssues(
+  value: string,
+  ctx: z.RefinementCtx,
+  path: PropertyKey[] = [],
+): void {
+  if (value.length > SPANISH_MAX_CHARS) {
+    ctx.addIssue({
+      code: 'custom',
+      path,
+      message: `Spanish text must be at most ${SPANISH_MAX_CHARS} characters`,
+    })
+  }
+  if (countWords(value) > SPANISH_MAX_WORDS) {
+    ctx.addIssue({
+      code: 'custom',
+      path,
+      message: `Spanish text must have at most ${SPANISH_MAX_WORDS} words`,
+    })
+  }
+}
+
+const spanishFieldSchema = z
+  .string()
+  .trim()
+  .min(WORD_FIELD_MIN_CHARS)
+  .superRefine((value, ctx) => {
+    addSpanishFieldIssues(value, ctx)
+  })
+
+const russianFieldSchema = z
+  .string()
+  .trim()
+  .min(WORD_FIELD_MIN_CHARS)
+  .max(RUSSIAN_MAX_CHARS)
+
 export const suggestionsQuerySchema = z.object({
-  q: z.string().trim().min(2).max(100),
+  q: z
+    .string()
+    .trim()
+    .min(WORD_FIELD_MIN_CHARS)
+    .superRefine((value, ctx) => {
+      if (hasCyrillic(value)) {
+        if (value.length > RUSSIAN_MAX_CHARS) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `Query must be at most ${RUSSIAN_MAX_CHARS} characters`,
+          })
+        }
+        return
+      }
+      addSpanishFieldIssues(value, ctx)
+    }),
 })
 
 export type SuggestionsQuery = z.infer<typeof suggestionsQuerySchema>
@@ -43,8 +131,8 @@ export const addExistingWordSchema = z.object({
 export type AddExistingWordInput = z.infer<typeof addExistingWordSchema>
 
 export const wordPairSchema = z.object({
-  spanish: z.string().trim().min(1).max(200),
-  russian: z.string().trim().min(1).max(200),
+  spanish: spanishFieldSchema,
+  russian: russianFieldSchema,
 })
 
 export type WordPairInput = z.infer<typeof wordPairSchema>
@@ -79,8 +167,8 @@ const imageFieldsSchema = {
 }
 
 export const wordDraftSchema = z.object({
-  spanish: z.string().trim().min(1).max(200),
-  russian: z.string().trim().min(1).max(200),
+  spanish: spanishFieldSchema,
+  russian: russianFieldSchema,
   additionalTranslations: z.array(z.string().trim().min(1).max(200)).max(10),
   definitionEs: z.string().trim().min(1).max(2000).nullable(),
   examples: z.array(z.string().trim().min(1).max(500)).max(3),
@@ -95,8 +183,8 @@ export type WordDraft = z.infer<typeof wordDraftSchema>
 
 export const updateWordCardSchema = z
   .object({
-    spanish: z.string().trim().min(1).max(200),
-    russian: z.string().trim().min(1).max(200),
+    spanish: spanishFieldSchema,
+    russian: russianFieldSchema,
     definitionEs: z.string().trim().min(1).max(2000),
     examples: z.array(z.string().trim().min(1).max(500)).min(2).max(3),
     partOfSpeech: partOfSpeechSchema,
@@ -148,8 +236,9 @@ export const updateWordCardSchema = z
 export type UpdateWordCardInput = z.infer<typeof updateWordCardSchema>
 
 export const regenerateWordImageSchema = z.object({
-  spanish: z.string().trim().min(1).max(200),
-  russian: z.string().trim().min(1).max(200),
+  spanish: spanishFieldSchema,
+  russian: russianFieldSchema,
+  wordId: z.string().uuid().optional(),
   excludeImageUrl: z.string().trim().url().optional(),
 })
 

@@ -37,15 +37,21 @@ describe('SuggestionsService', () => {
     },
   }
 
+  const quotaService = {
+    consumeSuggestions: vi.fn<(userId: string) => Promise<void>>(),
+  }
+
   let service: SuggestionsService
 
   beforeEach(() => {
     vi.clearAllMocks()
     prisma.word.findMany.mockResolvedValue([])
     prisma.userCard.findMany.mockResolvedValue([])
+    quotaService.consumeSuggestions.mockResolvedValue(undefined)
     service = new SuggestionsService(
       openAiService as unknown as OpenAiService,
       prisma as unknown as PrismaService,
+      quotaService as never,
     )
   })
 

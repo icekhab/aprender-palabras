@@ -22,6 +22,11 @@ model User {
   createdAt              DateTime           @default(now()) @db.Timestamptz(3)
   currentLessonId        String?            @db.Uuid
   lastCompletedTrainerAt DateTime?          @db.Timestamptz(3)
+  dailyGenerationLimit   Int?
+  dailySuggestionsLimit  Int?
+  quotaDate              DateTime?          @db.Date
+  generationsCount       Int                @default(0)
+  suggestionsCount       Int                @default(0)
   sessions               Session[]
   cards                  UserCard[]
   createdWords           Word[]             @relation("WordCreator")
@@ -74,6 +79,7 @@ model Word {
   imagePhotographerUrl   String?
   imagePageUrl           String?
   imageProvider          ImageProvider?
+  imageGenerationCount   Int            @default(0)
   createdByUserId        String?        @db.Uuid
   createdViaLesson       Boolean        @default(false)
   createdAt              DateTime       @default(now()) @db.Timestamptz(3)

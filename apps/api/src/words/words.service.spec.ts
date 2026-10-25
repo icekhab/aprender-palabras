@@ -108,12 +108,20 @@ describe('WordsService', () => {
     ensureWordsAudio: vi.fn<(wordIds: string[]) => Promise<void>>(),
   }
 
+  const quotaService = {
+    consumeGeneration: vi.fn<(userId: string) => Promise<void>>(),
+    consumeSuggestions: vi.fn<(userId: string) => Promise<void>>(),
+    consumeImageGeneration: vi.fn<(wordId: string) => Promise<void>>(),
+  }
+
   let service: WordsService
 
   beforeEach(() => {
     vi.clearAllMocks()
     wordAudioService.ensureWordAudio.mockResolvedValue(true)
     wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
+    quotaService.consumeGeneration.mockResolvedValue(undefined)
+    quotaService.consumeImageGeneration.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     )
@@ -122,6 +130,7 @@ describe('WordsService', () => {
       openAiService as unknown as OpenAiService,
       unsplashService as unknown as UnsplashService,
       wordAudioService as unknown as WordAudioService,
+      quotaService as never,
     )
   })
 
@@ -147,7 +156,7 @@ describe('WordsService', () => {
     })
 
     await expect(
-      service.preview({ spanish: 'esperar', russian: 'ждать' }),
+      service.preview('user-1', { spanish: 'esperar', russian: 'ждать' }),
     ).resolves.toMatchObject({
       spanish: 'esperar',
       russian: 'ждать',
@@ -155,13 +164,14 @@ describe('WordsService', () => {
       imageUrl: 'https://images.unsplash.com/photo.jpg',
       imageProvider: 'unsplash',
     })
+    expect(quotaService.consumeGeneration).toHaveBeenCalledWith('user-1')
   })
 
   it('returns empty optional fields when OpenAI is not configured', async () => {
     openAiService.isConfigured.mockReturnValue(false)
 
     await expect(
-      service.preview({ spanish: 'esperar', russian: 'ждать' }),
+      service.preview('user-1', { spanish: 'esperar', russian: 'ждать' }),
     ).resolves.toEqual({
       spanish: 'esperar',
       russian: 'ждать',
@@ -187,7 +197,7 @@ describe('WordsService', () => {
     openAiService.generateWordContent.mockRejectedValue(new Error('network'))
 
     await expect(
-      service.preview({ spanish: 'esperar', russian: 'ждать' }),
+      service.preview('user-1', { spanish: 'esperar', russian: 'ждать' }),
     ).resolves.toMatchObject({
       spanish: 'esperar',
       russian: 'ждать',
@@ -597,6 +607,8 @@ describe('WordsService', () => {
         progress: 0,
       },
     })
+    expect(wordAudioService.ensureWordAudio).not.toHaveBeenCalled()
+    expect(quotaService.consumeGeneration).not.toHaveBeenCalled()
   })
 
   it('throws NotFoundException when adding a missing word', async () => {

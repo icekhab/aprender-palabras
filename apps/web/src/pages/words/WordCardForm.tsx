@@ -1,6 +1,8 @@
 import {
   PART_OF_SPEECH_OPTIONS,
   partOfSpeechSchema,
+  RUSSIAN_MAX_CHARS,
+  SPANISH_MAX_CHARS,
   updateWordCardSchema,
   type PartOfSpeech,
   type RegeneratedWordImage,
@@ -62,6 +64,7 @@ export function WordCardForm({
   isSubmitting,
   saveError,
   conflictMessage = 'Ya existe otra palabra con esta traducción.',
+  wordId,
   onSubmit,
   onCancel,
 }: {
@@ -72,6 +75,8 @@ export function WordCardForm({
   isSubmitting: boolean
   saveError: unknown
   conflictMessage?: string
+  /** When set, image regenerations count against the word's image quota. */
+  wordId?: string
   onSubmit: (payload: UpdateWordCardInput) => void
   onCancel: () => void
 }) {
@@ -89,6 +94,7 @@ export function WordCardForm({
       regenerateWordImage({
         spanish: form.spanish.trim() || initial.spanish,
         russian: form.russian.trim() || initial.russian,
+        wordId,
         excludeImageUrl: form.imageUrl ?? undefined,
       }),
     onSuccess: (image: RegeneratedWordImage) => {
@@ -130,6 +136,7 @@ export function WordCardForm({
           <input
             className={`${fieldClassName} text-3xl font-bold tracking-tight ${showErrors && errors.spanish ? fieldErrorClassName : ''}`}
             value={form.spanish}
+            maxLength={SPANISH_MAX_CHARS}
             onChange={(event) =>
               setForm((current) => ({
                 ...current,
@@ -206,6 +213,7 @@ export function WordCardForm({
         <input
           className={`${fieldClassName} ${showErrors && errors.russian ? fieldErrorClassName : ''}`}
           value={form.russian}
+          maxLength={RUSSIAN_MAX_CHARS}
           onChange={(event) =>
             setForm((current) => ({ ...current, russian: event.target.value }))
           }
@@ -465,9 +473,26 @@ function zodIssuesToFieldErrors(
 
 function humanizeError(field: string, message: string): string {
   if (field === 'spanish') {
+    if (message.includes('words')) {
+      return 'Máximo 10 palabras en español.'
+    }
+    if (
+      message.includes('Too big') ||
+      message.includes('at most') ||
+      message.includes('<=')
+    ) {
+      return 'Máximo 100 caracteres en español.'
+    }
     return 'La palabra en español es obligatoria.'
   }
   if (field === 'russian') {
+    if (
+      message.includes('Too big') ||
+      message.includes('at most') ||
+      message.includes('<=')
+    ) {
+      return 'Máximo 120 caracteres en ruso.'
+    }
     return 'La traducción es obligatoria.'
   }
   if (field === 'definitionEs') {

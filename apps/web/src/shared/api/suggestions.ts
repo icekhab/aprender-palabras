@@ -15,7 +15,7 @@ export async function getSuggestions(
   })
 
   if (!response.ok) {
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   return response.json() as Promise<SuggestionsResponse>

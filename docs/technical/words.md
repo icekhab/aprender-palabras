@@ -15,8 +15,9 @@
   `user` — никогда; иначе `PATCH` → `403`, без карандаша;
 - admin: «Todas las palabras» → каталог; edit по `wordId`; в шапке —
   suggestions (add в общий `Word` без `UserCard`); фильтр списка отдельно;
-- реген картинки: `POST /words/image/regenerate`, max **2** на `Word`
-  (`imageRegenerationCount`); квоты — [quotas.md](./quotas.md);
+- картинки: create + `POST /words/image/regenerate`, max **3** суммарно на
+  `Word` (`imageGenerationCount`); квоты — [quotas.md](./quotas.md);
+- лимиты основной пары: ES 1–100 символов / ≤10 слов; RU 1–120 символов;
 - воспроизведение — из `WordAudio` mp3.
 
 ## Модель `Word`
@@ -27,11 +28,11 @@
 Поля: испанский текст, основной русский перевод, дополнительные переводы,
 определение на испанском, примеры, часть речи, род, до десяти неверных вариантов
 каждого направления (для задания выбираются 3 случайных), URL изображения и
-атрибуция Unsplash, **`createdByUserId`**, **`imageRegenerationCount`**
-(0..2). При создании новой пары — текущий пользователь; при reuse владельца
+атрибуция Unsplash, **`createdByUserId`**, **`imageGenerationCount`**
+(0..3). При создании новой пары — текущий пользователь; при reuse владельца
 не менять.
 
-Backfill: автор = seed-admin; `imageRegenerationCount = 0`.
+Backfill: автор = seed-admin; `imageGenerationCount = 0`.
 
 `createdViaLesson` пишется при create из урока (для аудита / курсов);
 на `canEdit` влияет только роль и `createdByUserId` (см.

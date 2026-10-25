@@ -159,7 +159,7 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   if (response.status === 204) {

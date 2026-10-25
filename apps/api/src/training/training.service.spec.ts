@@ -4,13 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { WordAudioService } from '../speech/word-audio.service.js'
 import { TrainingService } from './training.service.js'
-
-const wordAudioService = {
-  ensureWordAudio: vi.fn<(wordId: string) => Promise<boolean>>(),
-  ensureWordsAudio: vi.fn<(wordIds: string[]) => Promise<void>>(),
-}
 
 function createPrismaMock() {
   const tx = {
@@ -101,12 +95,7 @@ describe('TrainingService.getToday', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    wordAudioService.ensureWordAudio.mockResolvedValue(true)
-    wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
-    service = new TrainingService(
-      prisma as never,
-      wordAudioService as unknown as WordAudioService,
-    )
+    service = new TrainingService(prisma as never)
   })
 
   it('returns an existing day without regenerating trainers', async () => {
@@ -195,12 +184,7 @@ describe('TrainingService.getTrainerSession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    wordAudioService.ensureWordAudio.mockResolvedValue(true)
-    wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
-    service = new TrainingService(
-      prisma as never,
-      wordAudioService as unknown as WordAudioService,
-    )
+    service = new TrainingService(prisma as never)
   })
 
   it('returns full session words with showIntro from completedTrainerCount', async () => {
@@ -292,16 +276,11 @@ describe('TrainingService.completeTrainer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    wordAudioService.ensureWordAudio.mockResolvedValue(true)
-    wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof prisma._tx) => Promise<unknown>) =>
         callback(prisma._tx),
     )
-    service = new TrainingService(
-      prisma as never,
-      wordAudioService as unknown as WordAudioService,
-    )
+    service = new TrainingService(prisma as never)
   })
 
   it('updates progress, marks trainer completed, and returns deltas', async () => {

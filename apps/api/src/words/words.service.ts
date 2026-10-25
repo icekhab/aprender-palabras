@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -28,6 +29,7 @@ import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { getMissingTrainerFields } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
+import { QuotaService } from '../quotas/quota.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
 import { canEditWord } from './word-edit-access.js'
 import { normalizeWordKey } from './word-normalize.js'
@@ -41,9 +43,10 @@ export class WordsService {
     private readonly openAiService: OpenAiService,
     private readonly unsplashService: UnsplashService,
     private readonly wordAudioService: WordAudioService,
+    private readonly quotaService: QuotaService,
   ) {}
 
-  async preview(input: WordPairInput): Promise<WordDraft> {
+  async preview(userId: string, input: WordPairInput): Promise<WordDraft> {
     const spanish = input.spanish.trim()
     const russian = input.russian.trim()
     const emptyDraft = emptyWordDraft(spanish, russian)
@@ -51,6 +54,8 @@ export class WordsService {
     if (!this.openAiService.isConfigured()) {
       return emptyDraft
     }
+
+    await this.quotaService.consumeGeneration(userId)
 
     try {
       const content = await this.openAiService.generateWordContent(
@@ -336,6 +341,7 @@ export class WordsService {
           imagePhotographerUrl: draft.imagePhotographerUrl,
           imagePageUrl: draft.imagePageUrl,
           imageProvider: draft.imageProvider,
+          imageGenerationCount: draft.imageUrl ? 1 : 0,
           createdByUserId: userId,
           createdViaLesson: false,
         },
@@ -460,6 +466,10 @@ export class WordsService {
       throw new ServiceUnavailableException('Image regeneration unavailable')
     }
 
+    if (input.wordId) {
+      await this.quotaService.consumeImageGeneration(input.wordId)
+    }
+
     try {
       const unsplashQuery = await this.openAiService.generateUnsplashQuery(
         input.spanish.trim(),
@@ -476,7 +486,10 @@ export class WordsService {
 
       return image
     } catch (error) {
-      if (error instanceof ServiceUnavailableException) {
+      if (
+        error instanceof ServiceUnavailableException ||
+        error instanceof HttpException
+      ) {
         throw error
       }
 
@@ -655,8 +668,6 @@ export class WordsService {
         },
       })
 
-      await this.wordAudioService.ensureWordAudio(word.id)
-
       return {
         id: card.id,
         wordId: word.id,
@@ -684,84 +695,89 @@ export class WordsService {
     const normalizedRussian = normalizeWordKey(russian)
 
     try {
-      const word = await this.prisma.$transaction(async (tx) => {
-        let existing = await tx.word.findUnique({
-          where: {
-            normalizedSpanish_normalizedRussian: {
-              normalizedSpanish,
-              normalizedRussian,
-            },
-          },
-        })
-
-        if (!existing) {
-          try {
-            existing = await tx.word.create({
-              data: {
-                spanish,
-                russian,
+      const { word, createdNewWord } = await this.prisma.$transaction(
+        async (tx) => {
+          let existing = await tx.word.findUnique({
+            where: {
+              normalizedSpanish_normalizedRussian: {
                 normalizedSpanish,
                 normalizedRussian,
-                additionalTranslations: draft.additionalTranslations,
-                definitionEs: draft.definitionEs,
-                examples: draft.examples,
-                partOfSpeech: draft.partOfSpeech,
-                gender: draft.gender,
-                wrongRussian: draft.wrongRussian,
-                wrongSpanish: draft.wrongSpanish,
-                imageUrl: draft.imageUrl,
-                imagePhotographerName: draft.imagePhotographerName,
-                imagePhotographerUrl: draft.imagePhotographerUrl,
-                imagePageUrl: draft.imagePageUrl,
-                imageProvider: draft.imageProvider,
-                createdByUserId: userId,
-                createdViaLesson: false,
               },
-            })
-          } catch (error) {
-            if (
-              error instanceof Prisma.PrismaClientKnownRequestError &&
-              error.code === 'P2002'
-            ) {
-              existing = await tx.word.findUniqueOrThrow({
-                where: {
-                  normalizedSpanish_normalizedRussian: {
-                    normalizedSpanish,
-                    normalizedRussian,
-                  },
+            },
+          })
+          let wasCreated = false
+
+          if (!existing) {
+            try {
+              existing = await tx.word.create({
+                data: {
+                  spanish,
+                  russian,
+                  normalizedSpanish,
+                  normalizedRussian,
+                  additionalTranslations: draft.additionalTranslations,
+                  definitionEs: draft.definitionEs,
+                  examples: draft.examples,
+                  partOfSpeech: draft.partOfSpeech,
+                  gender: draft.gender,
+                  wrongRussian: draft.wrongRussian,
+                  wrongSpanish: draft.wrongSpanish,
+                  imageUrl: draft.imageUrl,
+                  imagePhotographerName: draft.imagePhotographerName,
+                  imagePhotographerUrl: draft.imagePhotographerUrl,
+                  imagePageUrl: draft.imagePageUrl,
+                  imageProvider: draft.imageProvider,
+                  imageGenerationCount: draft.imageUrl ? 1 : 0,
+                  createdByUserId: userId,
+                  createdViaLesson: false,
                 },
               })
-            } else {
-              throw error
+              wasCreated = true
+            } catch (error) {
+              if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+              ) {
+                existing = await tx.word.findUniqueOrThrow({
+                  where: {
+                    normalizedSpanish_normalizedRussian: {
+                      normalizedSpanish,
+                      normalizedRussian,
+                    },
+                  },
+                })
+              } else {
+                throw error
+              }
             }
           }
-        }
 
-        const existingCard = await tx.userCard.findUnique({
-          where: {
-            userId_wordId: {
+          const existingCard = await tx.userCard.findUnique({
+            where: {
+              userId_wordId: {
+                userId,
+                wordId: existing.id,
+              },
+            },
+          })
+
+          if (existingCard) {
+            throw new ConflictException('Word already exists')
+          }
+
+          await tx.userCard.create({
+            data: {
               userId,
               wordId: existing.id,
+              source: 'manual',
+              inDictionary: true,
+              progress: 0,
             },
-          },
-        })
+          })
 
-        if (existingCard) {
-          throw new ConflictException('Word already exists')
-        }
-
-        await tx.userCard.create({
-          data: {
-            userId,
-            wordId: existing.id,
-            source: 'manual',
-            inDictionary: true,
-            progress: 0,
-          },
-        })
-
-        return existing
-      })
+          return { word: existing, createdNewWord: wasCreated }
+        },
+      )
 
       if (
         draft.imageProvider === 'unsplash' &&
@@ -770,7 +786,9 @@ export class WordsService {
         void this.unsplashService.trackDownload(draft.imageDownloadLocation)
       }
 
-      await this.wordAudioService.ensureWordAudio(word.id)
+      if (createdNewWord) {
+        await this.wordAudioService.ensureWordAudio(word.id)
+      }
 
       return toWordResponse(word)
     } catch (error) {

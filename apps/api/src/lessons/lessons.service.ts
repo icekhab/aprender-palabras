@@ -439,8 +439,6 @@ export class LessonsService {
         },
       )
 
-      await this.wordAudioService.ensureWordAudio(word.id)
-
       return {
         wordId: word.id,
         userCardId: ensuredCard.id,
@@ -479,115 +477,122 @@ export class LessonsService {
     const normalizedRussian = normalizeWordKey(russian)
 
     try {
-      const word = await this.prisma.$transaction(async (tx) => {
-        let existing = await tx.word.findUnique({
-          where: {
-            normalizedSpanish_normalizedRussian: {
-              normalizedSpanish,
-              normalizedRussian,
-            },
-          },
-        })
-
-        if (!existing) {
-          try {
-            existing = await tx.word.create({
-              data: {
-                spanish,
-                russian,
+      const { word, createdNewWord } = await this.prisma.$transaction(
+        async (tx) => {
+          let existing = await tx.word.findUnique({
+            where: {
+              normalizedSpanish_normalizedRussian: {
                 normalizedSpanish,
                 normalizedRussian,
-                additionalTranslations: draft.additionalTranslations,
-                definitionEs: draft.definitionEs,
-                examples: draft.examples,
-                partOfSpeech: draft.partOfSpeech,
-                gender: draft.gender,
-                wrongRussian: draft.wrongRussian,
-                wrongSpanish: draft.wrongSpanish,
-                imageUrl: draft.imageUrl,
-                imagePhotographerName: draft.imagePhotographerName,
-                imagePhotographerUrl: draft.imagePhotographerUrl,
-                imagePageUrl: draft.imagePageUrl,
-                imageProvider: draft.imageProvider,
-                createdByUserId: userId,
-                createdViaLesson: true,
               },
-            })
-          } catch (error) {
-            if (
-              error instanceof Prisma.PrismaClientKnownRequestError &&
-              error.code === 'P2002'
-            ) {
-              existing = await tx.word.findUniqueOrThrow({
-                where: {
-                  normalizedSpanish_normalizedRussian: {
-                    normalizedSpanish,
-                    normalizedRussian,
-                  },
+            },
+          })
+          let wasCreated = false
+
+          if (!existing) {
+            try {
+              existing = await tx.word.create({
+                data: {
+                  spanish,
+                  russian,
+                  normalizedSpanish,
+                  normalizedRussian,
+                  additionalTranslations: draft.additionalTranslations,
+                  definitionEs: draft.definitionEs,
+                  examples: draft.examples,
+                  partOfSpeech: draft.partOfSpeech,
+                  gender: draft.gender,
+                  wrongRussian: draft.wrongRussian,
+                  wrongSpanish: draft.wrongSpanish,
+                  imageUrl: draft.imageUrl,
+                  imagePhotographerName: draft.imagePhotographerName,
+                  imagePhotographerUrl: draft.imagePhotographerUrl,
+                  imagePageUrl: draft.imagePageUrl,
+                  imageProvider: draft.imageProvider,
+                  imageGenerationCount: draft.imageUrl ? 1 : 0,
+                  createdByUserId: userId,
+                  createdViaLesson: true,
                 },
               })
-            } else {
-              throw error
+              wasCreated = true
+            } catch (error) {
+              if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+              ) {
+                existing = await tx.word.findUniqueOrThrow({
+                  where: {
+                    normalizedSpanish_normalizedRussian: {
+                      normalizedSpanish,
+                      normalizedRussian,
+                    },
+                  },
+                })
+              } else {
+                throw error
+              }
             }
           }
-        }
 
-        const existingLink = await tx.lessonWord.findUnique({
-          where: {
-            lessonId_wordId: {
+          const existingLink = await tx.lessonWord.findUnique({
+            where: {
+              lessonId_wordId: {
+                lessonId,
+                wordId: existing.id,
+              },
+            },
+          })
+          if (existingLink) {
+            throw new ConflictException('Word already in lesson')
+          }
+
+          const existingCard = await tx.userCard.findUnique({
+            where: {
+              userId_wordId: {
+                userId,
+                wordId: existing.id,
+              },
+            },
+          })
+
+          if (!existingCard) {
+            await tx.userCard.create({
+              data: {
+                userId,
+                wordId: existing.id,
+                source: 'lesson',
+                inDictionary: addToDictionary,
+                progress: 0,
+              },
+            })
+          } else if (addToDictionary && !existingCard.inDictionary) {
+            await tx.userCard.update({
+              where: { id: existingCard.id },
+              data: { inDictionary: true },
+            })
+          }
+
+          const aggregate = await tx.lessonWord.aggregate({
+            where: { lessonId },
+            _max: { position: true },
+          })
+          const { _max: maxNewWordPosition } = aggregate
+
+          await tx.lessonWord.create({
+            data: {
               lessonId,
               wordId: existing.id,
-            },
-          },
-        })
-        if (existingLink) {
-          throw new ConflictException('Word already in lesson')
-        }
-
-        const existingCard = await tx.userCard.findUnique({
-          where: {
-            userId_wordId: {
-              userId,
-              wordId: existing.id,
-            },
-          },
-        })
-
-        if (!existingCard) {
-          await tx.userCard.create({
-            data: {
-              userId,
-              wordId: existing.id,
-              source: 'lesson',
-              inDictionary: addToDictionary,
-              progress: 0,
+              position: (maxNewWordPosition.position ?? 0) + 1,
             },
           })
-        } else if (addToDictionary && !existingCard.inDictionary) {
-          await tx.userCard.update({
-            where: { id: existingCard.id },
-            data: { inDictionary: true },
-          })
-        }
 
-        const aggregate = await tx.lessonWord.aggregate({
-          where: { lessonId },
-          _max: { position: true },
-        })
-        const { _max: maxNewWordPosition } = aggregate
+          return { word: existing, createdNewWord: wasCreated }
+        },
+      )
 
-        await tx.lessonWord.create({
-          data: {
-            lessonId,
-            wordId: existing.id,
-            position: (maxNewWordPosition.position ?? 0) + 1,
-          },
-        })
-
-        return existing
-      })
-
-      await this.wordAudioService.ensureWordAudio(word.id)
+      if (createdNewWord) {
+        await this.wordAudioService.ensureWordAudio(word.id)
+      }
 
       return {
         id: word.id,

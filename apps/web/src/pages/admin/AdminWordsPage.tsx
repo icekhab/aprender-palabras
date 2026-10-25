@@ -2,6 +2,7 @@ import type {
   AdminWordsSortBy,
   SuggestionItem,
 } from '@aprender-palabras/contracts'
+import { RUSSIAN_MAX_CHARS } from '@aprender-palabras/contracts'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   useEffect,
@@ -16,6 +17,8 @@ import { Button } from '@/components/ui/button'
 import { listAdminWords } from '@/shared/api/admin-words'
 import { ApiError } from '@/shared/api/auth'
 import { getSuggestions } from '@/shared/api/suggestions'
+import { SuggestionsErrorMessage } from '@/shared/suggestions-error'
+import { getSuggestionsQueryError } from '@/shared/suggestions-query'
 
 const ADMIN_WORDS_QUERY_KEY = ['admin', 'words'] as const
 const PAGE_SIZE = 20
@@ -67,10 +70,15 @@ export function AdminWordsPage({
     }
   }, [filterInput])
 
+  const suggestionsValidationError =
+    getSuggestionsQueryError(debouncedSuggestion)
+
   const suggestionsQuery = useQuery({
     queryKey: ['admin', 'suggestions', debouncedSuggestion],
     queryFn: ({ signal }) => getSuggestions(debouncedSuggestion, signal),
-    enabled: debouncedSuggestion.length >= MIN_QUERY_LENGTH,
+    enabled:
+      debouncedSuggestion.length >= MIN_QUERY_LENGTH &&
+      !suggestionsValidationError,
     retry: false,
   })
 
@@ -147,6 +155,7 @@ export function AdminWordsPage({
                 onChange={(event) => setSuggestionInput(event.target.value)}
                 placeholder="Buscar para añadir…"
                 autoComplete="off"
+                maxLength={RUSSIAN_MAX_CHARS}
                 className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
               />
 
@@ -156,7 +165,11 @@ export function AdminWordsPage({
                   role="listbox"
                   aria-label="Sugerencias"
                 >
-                  {suggestionsQuery.isFetching ? (
+                  {suggestionsValidationError ? (
+                    <SuggestionsErrorMessage message={suggestionsValidationError} />
+                  ) : null}
+
+                  {!suggestionsValidationError && suggestionsQuery.isFetching ? (
                     <p
                       className="px-4 py-3 text-sm text-orange-900/70"
                       role="status"
@@ -165,23 +178,20 @@ export function AdminWordsPage({
                     </p>
                   ) : null}
 
-                  {suggestionsQuery.isError ? (
-                    <p className="px-4 py-3 text-sm text-red-700" role="alert">
-                      {suggestionsQuery.error instanceof ApiError &&
-                      suggestionsQuery.error.status === 503
-                        ? 'Las sugerencias no están disponibles.'
-                        : 'No se pudieron cargar las sugerencias.'}
-                    </p>
+                  {!suggestionsValidationError && suggestionsQuery.isError ? (
+                    <SuggestionsErrorMessage error={suggestionsQuery.error} />
                   ) : null}
 
-                  {suggestionsQuery.isSuccess &&
+                  {!suggestionsValidationError &&
+                  suggestionsQuery.isSuccess &&
                   suggestionsQuery.data.suggestions.length === 0 ? (
                     <p className="px-4 py-3 text-sm text-orange-900/70">
                       No hay sugerencias.
                     </p>
                   ) : null}
 
-                  {suggestionsQuery.isSuccess &&
+                  {!suggestionsValidationError &&
+                  suggestionsQuery.isSuccess &&
                   suggestionsQuery.data.suggestions.length > 0 ? (
                     <ul>
                       {suggestionsQuery.data.suggestions.map((item) => (

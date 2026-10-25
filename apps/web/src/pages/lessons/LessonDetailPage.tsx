@@ -3,7 +3,11 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import type { LessonWordItem, SuggestionItem } from '@aprender-palabras/contracts'
+import {
+  RUSSIAN_MAX_CHARS,
+  type LessonWordItem,
+  type SuggestionItem,
+} from '@aprender-palabras/contracts'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -20,6 +24,8 @@ import {
   renameLesson,
 } from '../../shared/api/lessons'
 import { getSuggestions } from '../../shared/api/suggestions'
+import { SuggestionsErrorMessage } from '../../shared/suggestions-error'
+import { getSuggestionsQueryError } from '../../shared/suggestions-query'
 import { ProgressRing } from './progress-ring'
 import { LESSONS_QUERY_KEY } from './query-keys'
 import { lessonStatusLabel } from './status-label'
@@ -58,7 +64,9 @@ export function LessonDetailPage({
     enabled: Boolean(id),
   })
 
-  const suggestionsEnabled = debouncedQuery.length >= MIN_QUERY_LENGTH
+  const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
+  const suggestionsEnabled =
+    debouncedQuery.length >= MIN_QUERY_LENGTH && !suggestionsValidationError
   const suggestionsQuery = useQuery({
     queryKey: ['suggestions', 'lesson', id, debouncedQuery],
     queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
@@ -136,8 +144,9 @@ export function LessonDetailPage({
 
   const lesson = lessonQuery.data
   const showSuggestions =
-    suggestionsEnabled &&
-    (suggestionsQuery.isFetching ||
+    debouncedQuery.length >= MIN_QUERY_LENGTH &&
+    (Boolean(suggestionsValidationError) ||
+      suggestionsQuery.isFetching ||
       suggestionsQuery.isError ||
       suggestionsQuery.isSuccess)
 
@@ -209,6 +218,7 @@ export function LessonDetailPage({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar palabra para la lección…"
             autoComplete="off"
+            maxLength={RUSSIAN_MAX_CHARS}
             className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
           />
 
@@ -218,28 +228,30 @@ export function LessonDetailPage({
               role="listbox"
               aria-label="Sugerencias"
             >
-              {suggestionsQuery.isFetching ? (
+              {suggestionsValidationError ? (
+                <SuggestionsErrorMessage message={suggestionsValidationError} />
+              ) : null}
+
+              {!suggestionsValidationError && suggestionsQuery.isFetching ? (
                 <p className="px-4 py-3 text-sm text-orange-900/70" role="status">
                   Buscando…
                 </p>
               ) : null}
 
-              {suggestionsQuery.isError ? (
-                <p className="px-4 py-3 text-sm text-red-700" role="alert">
-                  {isServiceUnavailable(suggestionsQuery.error)
-                    ? 'Las sugerencias no están disponibles.'
-                    : 'No se pudieron cargar las sugerencias.'}
-                </p>
+              {!suggestionsValidationError && suggestionsQuery.isError ? (
+                <SuggestionsErrorMessage error={suggestionsQuery.error} />
               ) : null}
 
-              {suggestionsQuery.isSuccess &&
+              {!suggestionsValidationError &&
+              suggestionsQuery.isSuccess &&
               suggestionsQuery.data.suggestions.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-orange-900/70">
                   No hay sugerencias.
                 </p>
               ) : null}
 
-              {suggestionsQuery.isSuccess &&
+              {!suggestionsValidationError &&
+              suggestionsQuery.isSuccess &&
               suggestionsQuery.data.suggestions.length > 0 ? (
                 <ul>
                   {suggestionsQuery.data.suggestions.map((item) => {
@@ -579,10 +591,6 @@ function LessonSuggestionProgressIcon({
       <ProgressDot progress={progress} />
     </span>
   )
-}
-
-function isServiceUnavailable(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 503
 }
 
 function isConflict(error: unknown): boolean {

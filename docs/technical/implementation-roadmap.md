@@ -83,10 +83,10 @@
 
 **Цель:** убрать ElevenLabs из trainer / lazy speech; оставить только create.
 
-- [ ] Удалить `ensureWordAudio` из training session / массового прогрева.
-- [ ] `GET /speech/:wordId` — только чтение `WordAudio`; без генерации.
-- [ ] Оставить TTS в create слова (поиск и урок курса).
-- [ ] Тесты / ручная проверка: play без нового TTS; create пишет mp3.
+- [x] Удалить `ensureWordAudio` из training session / массового прогрева.
+- [x] `GET /speech/:wordId` — только чтение `WordAudio`; без генерации.
+- [x] Оставить TTS в create слова (поиск и урок курса).
+- [x] Тесты / ручная проверка: play без нового TTS; create пишет mp3.
 
 **Ссылки:** [01-words §7](../product/01-words.md), [04-word-trainer](../product/04-word-trainer.md), [quotas.md](./quotas.md).
 
@@ -94,18 +94,20 @@
 
 ## 5. Квоты платных API
 
-**Цель:** дневные лимиты + реген картинки ≤ 2; проверка **до** внешних вызовов.
+**Цель:** дневные лимиты (gen + suggestions) + картинки ≤ 3 на слово;
+проверка **до** внешних вызовов. Лимиты полей ES/RU — см. [quotas.md](./quotas.md),
+[01-words §12](../product/01-words.md).
 
-- [ ] Prisma `User`: nullable
-  `dailySearchGenerationLimit`, `dailyTotalGenerationLimit`,
-  `dailySuggestionsLimit`; счётчики дня + `quotaDate` (Madrid).
-- [ ] Prisma `Word.imageRegenerationCount` (0..2).
-- [ ] Сервис квот: сброс по дате Madrid; admin без дневных gen/suggestions.
-- [ ] Search-генерация: `search < 20` (или override) **и** `search+course < 100`.
-- [ ] Course-генерация: `search+course < totalLimit`.
-- [ ] `GET /suggestions` → счётчик suggestions (дефолт 300); `429` при лимите.
-- [ ] Реген картинки: отказ после 2; инкремент при успешном регене.
-- [ ] Тесты квот и override в БД.
+- [x] Prisma `User`: nullable `dailyGenerationLimit`, `dailySuggestionsLimit`;
+  счётчики `generationsCount` / `suggestionsCount` + `quotaDate` (Madrid).
+- [x] Prisma `Word.imageGenerationCount` (0..3).
+- [x] Сервис квот: сброс по дате Madrid; дефолты по роли
+  (user gen 30 / sug 300; teacher gen 100 / sug 600); admin без дневных.
+- [x] Генерация (поиск или урок): один счётчик `generations`.
+- [x] `GET /suggestions` → счётчик suggestions; `429` при лимите.
+- [x] Картинка (create + regen): отказ после 3; инкремент при успехе.
+- [x] Лимиты полей: ES ≤100 / ≤10 слов; RU ≤120; suggestions `q` по направлению.
+- [x] Тесты квот, override в БД, лимитов полей.
 
 **Ссылки:** [quotas.md](./quotas.md), [01-words §12](../product/01-words.md).
 
@@ -120,9 +122,9 @@
 
 - [x] Frontend: `user` search — preview+create без формы (квота API — §5).
 - [x] Admin/teacher — прежний preview → форма → save.
-- [ ] Existing (`+`) без генерации / без квоты gen (уже так; квоты — §5).
+- [x] Existing (`+`) без генерации / без квоты gen (уже так; квоты — §5).
 - [x] После auto-add — без карандаша (`canEdit` у user = false).
-- [ ] Тесты UX/API / серверный one-shot с квотой (§5).
+- [x] Тесты UX/API / серверный one-shot с квотой (§5).
 
 **Ссылки:** [01-words §4](../product/01-words.md), [suggestions.md](./suggestions.md).
 

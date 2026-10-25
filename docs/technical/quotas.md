@@ -20,52 +20,49 @@ TTS **не** вызывается из trainer, lazy `GET /speech` или про
 
 ## Дневные квоты (не-admin)
 
-| Квота | Дефолт | Условие ошибки |
-|---|---:|---|
-| Генерации через поиск | 20 | `searchCount >= searchLimit` |
-| Генерации всего (поиск + курсы) | 100 | `searchCount + courseCount >= totalLimit` |
-| Suggestions | 300 | `suggestionsCount >= suggestionsLimit` |
+Одна квота **генерации слов** (поиск и урок делят один счётчик) и квота
+**suggestions**. Дефолты зависят от роли:
+
+| Квота | `user` | `teacher` | Условие ошибки |
+|---|---:|---:|---|
+| Генерация слов | 30 | 100 | `generationsCount >= generationLimit` |
+| Suggestions | 300 | 600 | `suggestionsCount >= suggestionsLimit` |
 
 Перед любым платным вызовом проверить квоту; при исчерпании — ответ с
 ошибкой дневной квоты (**без** вызова внешнего API), счётчик не увеличивать
-за неудачный отказ по квоте. После успешного (или начатого по политике
-реализации — зафиксировать: инкремент **перед** вызовом после прохождения
-проверки, чтобы параллельные запросы не обходили лимит) — инкремент.
+за неудачный отказ по квоте. Инкремент **после** прохождения проверки и
+**до** внешнего вызова (чтобы параллельные запросы не обходили лимит).
 
 **admin** дневные квоты gen/suggestions не применяет.
 
-## Лимит на слово (все роли, включая admin)
+## Лимит картинок на слово (все роли, включая admin)
 
 | Лимит | Значение |
 |---|---:|
-| Регенерации картинки на один `Word` | 2 за всё время жизни записи |
+| Успешных генераций картинки на один `Word` | **3** суммарно за жизнь записи |
 
-Поле `Word.imageRegenerationCount`. Третий вызов → ошибка без OpenAI/Unsplash.
+Считается каждое успешное получение картинки (create + «Otra imagen»).
+Поле `Word.imageGenerationCount` (0..3). Четвёртый вызов → ошибка без
+OpenAI/Unsplash.
 
 ## Поля `User` (override)
 
-`null` = использовать дефолт:
+`null` = дефолт по роли:
 
-- `dailySearchGenerationLimit`
-- `dailyTotalGenerationLimit`
+- `dailyGenerationLimit`
 - `dailySuggestionsLimit`
 
-Счётчики текущего дня (сброс при смене даты Madrid), например:
+Счётчики текущего дня (сброс при смене даты Madrid):
 
 - `quotaDate` (date Madrid)
-- `searchGenerationsCount`
-- `courseGenerationsCount`
+- `generationsCount`
 - `suggestionsCount`
 
 ## Эндпоинты под квотами
 
 | Эндпоинт | Квота |
 |---|---|
-| Генерация+создание слова из поиска (non-admin auto-add / admin preview+create) | search + total |
-| Генерация при добавлении слова в урок курса | course + total |
-| `POST /words/image/regenerate` | `imageRegenerationCount` на Word |
+| Генерация+создание слова из поиска (user auto-add / teacher|admin preview+create) | generations |
+| Генерация при добавлении слова в урок | generations (тот же счётчик) |
+| `POST /words/image/regenerate` (и первая картинка при create) | `imageGenerationCount` на Word |
 | `GET /suggestions` (ветка с OpenAI) | suggestions |
-
-Проверка search-генерации: одновременно `search < searchLimit` и
-`search + course < totalLimit`. Course-генерация: `search + course < totalLimit`
-(отдельного «course-only» потолка нет; search дополнительно ограничен 20).

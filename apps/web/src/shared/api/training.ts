@@ -19,7 +19,7 @@ export async function getTodayTraining(
   })
 
   if (!response.ok) {
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   return response.json() as Promise<DailyTrainingTodayResponse>
@@ -39,7 +39,7 @@ export async function getTrainerSession(
   })
 
   if (!response.ok) {
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   return response.json() as Promise<TrainerSessionResponse>
@@ -60,7 +60,7 @@ export async function completeTrainerSession(
   })
 
   if (!response.ok) {
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   return response.json() as Promise<CompleteTrainerResponse>

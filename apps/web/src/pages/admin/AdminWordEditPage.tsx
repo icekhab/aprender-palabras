@@ -91,6 +91,7 @@ function AdminWordEditForm({ word }: { word: AdminWordDetail }) {
   return (
     <WordCardForm
       initial={word}
+      wordId={word.id}
       spanishEditable={false}
       submitLabel="Guardar"
       submittingLabel="Guardando…"

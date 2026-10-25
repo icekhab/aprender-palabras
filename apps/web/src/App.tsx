@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-query'
 import {
   loginSchema,
+  RUSSIAN_MAX_CHARS,
   type AuthUser,
   type DailyTrainerItem,
   type DictionaryListItem,
@@ -42,8 +43,17 @@ import { WordCardEditPage } from './pages/words/WordCardEditPage'
 import { WordCardPage } from './pages/words/WordCardPage'
 import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
+import { generationQuotaToastCopyFromError } from './shared/quota-messages'
+import { SuggestionsErrorMessage } from './shared/suggestions-error'
+import { getSuggestionsQueryError } from './shared/suggestions-query'
+import { useToast } from './shared/toast'
 import { getTodayTraining } from './shared/api/training'
-import { addExistingWord, listDictionaryWords } from './shared/api/words'
+import {
+  addExistingWord,
+  createWord,
+  listDictionaryWords,
+  previewWord,
+} from './shared/api/words'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
@@ -397,10 +407,13 @@ function HomePage() {
     }
   }, [dictionaryFilterInput])
 
+  const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
+
   const suggestionsQuery = useQuery({
     queryKey: ['suggestions', debouncedQuery],
     queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
-    enabled: debouncedQuery.length >= MIN_QUERY_LENGTH,
+    enabled:
+      debouncedQuery.length >= MIN_QUERY_LENGTH && !suggestionsValidationError,
     retry: false,
   })
 
@@ -477,6 +490,7 @@ function HomePage() {
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Buscar palabra…"
                 autoComplete="off"
+                maxLength={RUSSIAN_MAX_CHARS}
                 className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
               />
 
@@ -486,7 +500,11 @@ function HomePage() {
                   role="listbox"
                   aria-label="Sugerencias"
                 >
-                  {suggestionsQuery.isFetching && (
+                  {suggestionsValidationError ? (
+                    <SuggestionsErrorMessage message={suggestionsValidationError} />
+                  ) : null}
+
+                  {!suggestionsValidationError && suggestionsQuery.isFetching && (
                     <p
                       className="px-4 py-3 text-sm text-orange-900/70"
                       role="status"
@@ -495,22 +513,20 @@ function HomePage() {
                     </p>
                   )}
 
-                  {suggestionsQuery.isError && (
-                    <p className="px-4 py-3 text-sm text-red-700" role="alert">
-                      {isServiceUnavailable(suggestionsQuery.error)
-                        ? 'Las sugerencias no están disponibles.'
-                        : 'No se pudieron cargar las sugerencias.'}
-                    </p>
+                  {!suggestionsValidationError && suggestionsQuery.isError && (
+                    <SuggestionsErrorMessage error={suggestionsQuery.error} />
                   )}
 
-                  {suggestionsQuery.isSuccess &&
+                  {!suggestionsValidationError &&
+                    suggestionsQuery.isSuccess &&
                     suggestionsQuery.data.suggestions.length === 0 && (
                       <p className="px-4 py-3 text-sm text-orange-900/70">
                         No hay sugerencias.
                       </p>
                     )}
 
-                  {suggestionsQuery.isSuccess &&
+                  {!suggestionsValidationError &&
+                    suggestionsQuery.isSuccess &&
                     suggestionsQuery.data.suggestions.length > 0 && (
                       <ul>
                         {suggestionsQuery.data.suggestions.map((item) => (
@@ -938,6 +954,8 @@ function useLogoutMutation() {
 function SuggestionRow({ item }: { item: SuggestionItem }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
+  const authUser = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const params = new URLSearchParams({
     spanish: item.spanish,
     russian: item.russian,
@@ -972,9 +990,35 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
     },
   })
 
+  const autoAddMutation = useMutation({
+    mutationFn: async () => {
+      const draft = await previewWord({
+        spanish: item.spanish,
+        russian: item.russian,
+      })
+      return createWord(draft)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] })
+    },
+    onError: (error) => {
+      const quotaCopy = generationQuotaToastCopyFromError(error)
+      if (quotaCopy) {
+        showToast(quotaCopy)
+        return
+      }
+      showToast({
+        title: 'No se pudo añadir la palabra',
+        description: 'Inténtalo de nuevo.',
+      })
+    },
+  })
+
   const label = `${item.spanish} — ${item.russian}`
   const inDictionary = item.wordId !== null && item.progress !== null
   const canQuickAdd = item.wordId !== null && item.progress === null
+  const isUserAutoAdd = authUser?.role === 'user'
 
   const text = (
     <span className="min-w-0 flex-1 text-base">
@@ -989,10 +1033,15 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
       <li className="border-t border-orange-100 first:border-t-0" role="option">
         <button
           type="button"
-          className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50"
+          className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={autoAddMutation.isPending}
           onMouseDown={keepSearchFocus}
           onPointerDown={keepSearchFocus}
           onClick={() => {
+            if (isUserAutoAdd) {
+              autoAddMutation.mutate()
+              return
+            }
             navigate(`/words/new?${params}`)
           }}
         >
@@ -1088,10 +1137,6 @@ function useCurrentUser() {
 
 function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401
-}
-
-function isServiceUnavailable(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 503
 }
 
 function SessionLoader() {

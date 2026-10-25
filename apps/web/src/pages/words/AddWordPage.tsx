@@ -9,9 +9,14 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordGenerateLoader } from '@/components/word-generate-loader'
-import { ApiError } from '@/shared/api/auth'
+import { ApiError, isGenerationQuotaError } from '@/shared/api/auth'
 import { addNewWordToLesson } from '@/shared/api/lessons'
 import { createWord, previewWord } from '@/shared/api/words'
+import {
+  generationQuotaScreenCopyFromError,
+  generationQuotaToastCopyFromError,
+} from '@/shared/quota-messages'
+import { useToast } from '@/shared/toast'
 import {
   updatePayloadToWordDraft,
   WordCardForm,
@@ -92,6 +97,13 @@ function AutoAddWordPage({
     startAutoAdd()
   }, [startAutoAdd])
 
+  const quotaCopy = generationQuotaScreenCopyFromError(autoAddMutation.error)
+  const otherErrorMessage =
+    autoAddMutation.error instanceof ApiError &&
+    autoAddMutation.error.status === 409
+      ? 'Esta palabra ya está en tu diccionario.'
+      : 'No se pudo añadir la palabra. Inténtalo de nuevo.'
+
   return (
     <main className="flex min-h-svh flex-col bg-orange-50 text-orange-950">
       <header className="shrink-0 border-b border-orange-100 bg-white/90">
@@ -110,25 +122,38 @@ function AutoAddWordPage({
 
       <div className="grid flex-1 place-items-center px-5 py-10">
         {autoAddMutation.isError ? (
-          <div className="max-w-md text-center" role="alert">
-            <p className="text-sm text-red-700">
-              {autoAddMutation.error instanceof ApiError &&
-              autoAddMutation.error.status === 409
-                ? 'Esta palabra ya está en tu diccionario.'
-                : 'No se pudo añadir la palabra. Inténtalo de nuevo.'}
-            </p>
-            <div className="mt-4 flex justify-center gap-2">
+          <div className="max-w-sm text-center" role="alert">
+            {quotaCopy ? (
+              <>
+                <img
+                  src="/quota-limit.svg"
+                  alt=""
+                  className="mx-auto mb-5 w-36 max-w-full object-contain sm:w-40"
+                />
+                <h2 className="text-lg font-semibold tracking-tight text-orange-950">
+                  {quotaCopy.title}
+                </h2>
+                <p className="mt-2 text-sm text-orange-900/70">
+                  {quotaCopy.description}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-orange-950">{otherErrorMessage}</p>
+            )}
+            <div className="mt-5 flex justify-center gap-2">
               <Button variant="outline" onClick={() => navigate(cancelPath)}>
                 Volver
               </Button>
-              <Button
-                onClick={() => {
-                  startedRef.current = true
-                  autoAddMutation.mutate()
-                }}
-              >
-                Reintentar
-              </Button>
+              {!isGenerationQuotaError(autoAddMutation.error) ? (
+                <Button
+                  onClick={() => {
+                    startedRef.current = true
+                    autoAddMutation.mutate()
+                  }}
+                >
+                  Reintentar
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -152,12 +177,35 @@ function AddWordFormPage({
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
+  const quotaRedirectedRef = useRef(false)
 
   const previewQuery = useQuery({
     queryKey: ['words', 'preview', spanish, russian],
     queryFn: ({ signal }) => previewWord({ spanish, russian }, signal),
     retry: false,
   })
+
+  useEffect(() => {
+    if (!previewQuery.isError || quotaRedirectedRef.current) {
+      return
+    }
+
+    const toastCopy = generationQuotaToastCopyFromError(previewQuery.error)
+    if (!toastCopy) {
+      return
+    }
+
+    quotaRedirectedRef.current = true
+    showToast(toastCopy)
+    navigate(cancelPath, { replace: true })
+  }, [
+    cancelPath,
+    navigate,
+    previewQuery.error,
+    previewQuery.isError,
+    showToast,
+  ])
 
   const createMutation = useMutation({
     mutationFn: (draft: WordDraft) => {
@@ -182,9 +230,10 @@ function AddWordFormPage({
   })
 
   const emptyInitial = emptyFormInitial(spanish, russian)
+  const quotaBlocked = isGenerationQuotaError(previewQuery.error)
   const formInitial: WordCardFormInitial | null = previewQuery.isSuccess
     ? previewQuery.data
-    : previewQuery.isError
+    : previewQuery.isError && !quotaBlocked
       ? emptyInitial
       : null
 
@@ -204,7 +253,7 @@ function AddWordFormPage({
         </div>
       </header>
 
-      {previewQuery.isPending ? (
+      {previewQuery.isPending || quotaBlocked ? (
         <div className="grid flex-1 place-items-center px-5 py-10">
           <WordGenerateLoader />
         </div>

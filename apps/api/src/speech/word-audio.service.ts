@@ -21,23 +21,39 @@ export class WordAudioService {
     return this.elevenLabsService.isConfigured()
   }
 
-  /** Generate and store mp3 when missing. Safe to call concurrently. */
+  /** Generate and store mp3 when missing. Safe to call concurrently. Create paths only. */
   async ensureWordAudio(wordId: string): Promise<boolean> {
     const buffer = await this.getOrCreateAudio(wordId)
     return buffer !== null
   }
 
-  async ensureWordsAudio(wordIds: string[]): Promise<void> {
-    const unique = [...new Set(wordIds)]
-    await Promise.all(unique.map((id) => this.ensureWordAudio(id)))
-  }
-
+  /** Read stored mp3 only — never calls ElevenLabs. */
   async getAudioMp3(wordId: string): Promise<Buffer> {
-    const buffer = await this.getOrCreateAudio(wordId)
-    if (!buffer) {
+    const existing = await this.prisma.wordAudio.findUnique({
+      where: { wordId },
+      select: { mp3: true },
+    })
+
+    if (!existing) {
+      const word = await this.prisma.word.findUnique({
+        where: { id: wordId },
+        select: { id: true },
+      })
+      if (!word) {
+        throw new NotFoundException('Word not found')
+      }
+      throw new NotFoundException('Speech audio not found')
+    }
+
+    if (!existing.mp3 || existing.mp3.length === 0) {
       throw new ServiceUnavailableException('Speech audio unavailable')
     }
-    return buffer
+
+    return Buffer.from(
+      existing.mp3.buffer,
+      existing.mp3.byteOffset,
+      existing.mp3.byteLength,
+    )
   }
 
   private async getOrCreateAudio(wordId: string): Promise<Buffer | null> {
@@ -46,7 +62,11 @@ export class WordAudioService {
       select: { mp3: true },
     })
     if (existing?.mp3 && existing.mp3.length > 0) {
-      return Buffer.from(existing.mp3.buffer, existing.mp3.byteOffset, existing.mp3.byteLength)
+      return Buffer.from(
+        existing.mp3.buffer,
+        existing.mp3.byteOffset,
+        existing.mp3.byteLength,
+      )
     }
 
     const inFlight = this.inFlight.get(wordId)

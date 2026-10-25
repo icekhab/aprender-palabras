@@ -9,6 +9,7 @@ import {
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { ToastProvider } from './shared/toast'
 
 const user = {
   id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
@@ -28,7 +29,9 @@ function renderApp(initialPath = '/') {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   )

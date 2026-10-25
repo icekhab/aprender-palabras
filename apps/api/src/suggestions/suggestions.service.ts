@@ -9,6 +9,7 @@ import {
   type TranslationSuggestion,
 } from '../integrations/openai/openai.service.js'
 import { PrismaService } from '../prisma.service.js'
+import { QuotaService } from '../quotas/quota.service.js'
 import { normalizeWordKey } from '../words/word-normalize.js'
 
 @Injectable()
@@ -16,6 +17,7 @@ export class SuggestionsService {
   constructor(
     private readonly openAiService: OpenAiService,
     private readonly prisma: PrismaService,
+    private readonly quotaService: QuotaService,
   ) {}
 
   async suggest(userId: string, query: string): Promise<SuggestionsResponse> {
@@ -24,6 +26,8 @@ export class SuggestionsService {
         'Translation suggestions are unavailable',
       )
     }
+
+    await this.quotaService.consumeSuggestions(userId)
 
     let suggestions: TranslationSuggestion[]
 

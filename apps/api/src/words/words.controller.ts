@@ -46,13 +46,16 @@ export class WordsController {
   }
 
   @Post('preview')
-  preview(@Body() body: unknown): Promise<WordDraft> {
+  preview(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<WordDraft> {
     const result = wordPairSchema.safeParse(body)
     if (!result.success) {
       throw new BadRequestException('Invalid word pair')
     }
 
-    return this.wordsService.preview(result.data)
+    return this.wordsService.preview(request.authUser.id, result.data)
   }
 
   @Post('existing')

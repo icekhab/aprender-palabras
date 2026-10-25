@@ -105,7 +105,7 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
       throw new AdminConflictError(409, wordId)
     }
 
-    throw new ApiError(`API returned ${response.status}`, response.status)
+    throw await ApiError.fromResponse(response)
   }
 
   if (response.status === 204) {
