@@ -29,11 +29,11 @@
 
 **Цель:** `User.role = user | teacher | admin`.
 
-- [ ] Prisma: enum + поле `role` (default `user`).
-- [ ] Миграция: seed-пользователь → `admin`.
-- [ ] `AuthUser` / login / `GET /auth/me` возвращают `role`.
-- [ ] Документ «как выдать teacher миграцией» в [auth.md](./auth.md) актуален.
-- [ ] Тесты: me/login с role.
+- [x] Prisma: enum + поле `role` (default `user`).
+- [x] Миграция: seed-пользователь → `admin`.
+- [x] `AuthUser` / login / `GET /auth/me` возвращают `role`.
+- [x] Документ «как выдать teacher миграцией» в [auth.md](./auth.md) актуален.
+- [x] Тесты: me/login с role.
 
 **Готово когда:** в ответе auth есть `role`; админ seed на месте.
 
@@ -43,19 +43,19 @@
 
 **Цель:** ограничить PATCH контента `Word`; UI без карандаша без права.
 
-- [ ] Prisma: `Word.createdByUserId` (+ backfill на seed-admin).
-- [ ] При `word.create` писать `createdByUserId`; при reuse не менять.
-- [ ] Правило `canEdit`:
+- [x] Prisma: `Word.createdByUserId` (+ backfill на seed-admin).
+- [x] При `word.create` писать `createdByUserId`; при reuse не менять.
+- [x] Правило `canEdit`:
   - `admin` — любые слова;
-  - иначе — только слова, добавленные **этим** пользователем **через урок курса**
-    (поиск-созданные у не-admin не редактируются).
-- [ ] `UserCardDetail.canEdit`; `PATCH /words/:cardId` → `403` без права.
-- [ ] UI: `onEdit` только при `canEdit`; прямой `/edit` → редирект/ошибка.
-- [ ] Тесты прав.
+  - `teacher` — только свои (`createdByUserId`);
+  - `user` — никогда.
+- [x] `UserCardDetail.canEdit`; `PATCH /words/:cardId` → `403` без права.
+- [x] UI: `onEdit` только при `canEdit`; прямой `/edit` → редирект/ошибка.
+- [x] Тесты прав.
 
 **Ссылки:** [01-words §3, §8](../product/01-words.md), [words.md](./words.md).
 
-**Готово когда:** не-admin не правит search-слово; admin правит всё.
+**Готово когда:** `user` не правит контент; teacher — свои; admin — всё.
 
 ---
 
@@ -63,10 +63,10 @@
 
 **Цель:** меню аватара → все слова, новые сверху; edit по `wordId`.
 
-- [ ] `GET/PATCH /api/admin/words` (+ get by id), guard `role === admin`.
-- [ ] Пункт «Todas las palabras» только для admin.
-- [ ] Страница списка `createdAt DESC`; клик → edit по `wordId`.
-- [ ] Тесты 403 для non-admin.
+- [x] `GET/PATCH /api/admin/words` (+ get by id), guard `role === admin`.
+- [x] Пункт «Todas las palabras» только для admin.
+- [x] Страница списка `createdAt DESC`; клик → edit по `wordId`.
+- [x] Тесты 403 для non-admin.
 
 **Ссылки:** [words.md](./words.md) (admin API), [01-words WORD-17](../product/01-words.md).
 
@@ -106,15 +106,16 @@
 
 ---
 
-## 6. UX добавления слова через поиск (non-admin)
+## 6. UX добавления слова через поиск (по роли)
 
-**Цель:** generate + сразу в словарь, без экрана правки.
+**Цель:** у `user` — generate + сразу в словарь без правки; у teacher/admin —
+форма.
 
-- [ ] API: для non-admin — один шаг generate+create (или эквивалент) с квотой.
-- [ ] Admin — прежний preview → форма → save.
-- [ ] Frontend: ветка по `role`; existing (`+`) без генерации / без квоты gen.
-- [ ] После auto-add — просмотр карточки без карандаша (п. 2).
-- [ ] Тесты UX/API.
+- [x] Frontend: `user` search — preview+create без формы (квота API — §5).
+- [x] Admin/teacher — прежний preview → форма → save.
+- [ ] Existing (`+`) без генерации / без квоты gen (уже так; квоты — §5).
+- [x] После auto-add — без карандаша (`canEdit` у user = false).
+- [ ] Тесты UX/API / серверный one-shot с квотой (§5).
 
 **Ссылки:** [01-words §4](../product/01-words.md), [suggestions.md](./suggestions.md).
 

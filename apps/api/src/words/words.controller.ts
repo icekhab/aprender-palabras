@@ -104,7 +104,11 @@ export class WordsController {
     @Req() request: AuthenticatedRequest,
     @Param('cardId', ParseUUIDPipe) cardId: string,
   ): Promise<UserCardDetail> {
-    return this.wordsService.getCard(request.authUser.id, cardId)
+    return this.wordsService.getCard(
+      request.authUser.id,
+      request.authUser.role,
+      cardId,
+    )
   }
 
   @Patch(':cardId')
@@ -120,6 +124,7 @@ export class WordsController {
 
     return this.wordsService.updateCard(
       request.authUser.id,
+      request.authUser.role,
       cardId,
       result.data,
     )
@@ -130,7 +135,11 @@ export class WordsController {
     @Req() request: AuthenticatedRequest,
     @Param('cardId', ParseUUIDPipe) cardId: string,
   ): Promise<UserCardDetail> {
-    return this.wordsService.resetProgress(request.authUser.id, cardId)
+    return this.wordsService.resetProgress(
+      request.authUser.id,
+      request.authUser.role,
+      cardId,
+    )
   }
 
   @Delete(':cardId')

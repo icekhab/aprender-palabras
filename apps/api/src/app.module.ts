@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { AdminModule } from './admin/admin.module.js'
 import { AuthGuard } from './auth/auth.guard.js'
 import { AuthModule } from './auth/auth.module.js'
 import { OriginGuard } from './auth/origin.guard.js'
@@ -18,6 +19,7 @@ import { WordsModule } from './words/words.module.js'
     AuthModule,
     SuggestionsModule,
     WordsModule,
+    AdminModule,
     LessonsModule,
     TrainingModule,
     SpeechModule,

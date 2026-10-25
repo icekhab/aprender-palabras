@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
@@ -52,7 +53,10 @@ describe('WordsService', () => {
       (callback: (client: typeof tx) => Promise<unknown>) => Promise<unknown>
     >(async (callback) => callback(tx)),
     word: {
+      count: vi.fn<(args?: unknown) => Promise<number>>(),
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+      create: vi.fn<(args: unknown) => Promise<unknown>>(),
       update: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     userCard: {
@@ -235,7 +239,12 @@ describe('WordsService', () => {
       createdAt: now.toISOString(),
     })
 
-    expect(tx.word.create).toHaveBeenCalled()
+    expect(tx.word.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        createdByUserId: 'user-1',
+        createdViaLesson: false,
+      }),
+    })
     expect(tx.userCard.create).toHaveBeenCalledWith({
       data: {
         userId: 'user-1',
@@ -374,13 +383,17 @@ describe('WordsService', () => {
         imagePhotographerUrl: null,
         imagePageUrl: null,
         imageProvider: null,
+        createdByUserId: 'user-1',
+        createdViaLesson: false,
       },
     })
     prisma.lessonWord.findMany.mockResolvedValue([
       { lesson: { id: 'lesson-1', title: 'Uno' } },
     ])
 
-    await expect(service.getCard('user-1', 'card-1')).resolves.toMatchObject({
+    await expect(
+      service.getCard('user-1', 'user', 'card-1'),
+    ).resolves.toMatchObject({
       id: 'card-1',
       wordId: 'word-1',
       spanish: 'esperar',
@@ -388,6 +401,7 @@ describe('WordsService', () => {
       progress: 60,
       ready: true,
       missingFields: [],
+      canEdit: false,
       lessons: [{ id: 'lesson-1', title: 'Uno' }],
     })
   })
@@ -395,9 +409,9 @@ describe('WordsService', () => {
   it('throws NotFoundException when the card is missing', async () => {
     prisma.userCard.findFirst.mockResolvedValue(null)
 
-    await expect(service.getCard('user-1', 'card-missing')).rejects.toBeInstanceOf(
-      NotFoundException,
-    )
+    await expect(
+      service.getCard('user-1', 'user', 'card-missing'),
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it('resets progress and training counters as if the word was just added', async () => {
@@ -424,11 +438,15 @@ describe('WordsService', () => {
         imagePhotographerUrl: null,
         imagePageUrl: null,
         imageProvider: null,
+        createdByUserId: 'user-1',
+        createdViaLesson: false,
       },
     })
     prisma.lessonWord.findMany.mockResolvedValue([])
 
-    await expect(service.resetProgress('user-1', 'card-1')).resolves.toMatchObject({
+    await expect(
+      service.resetProgress('user-1', 'user', 'card-1'),
+    ).resolves.toMatchObject({
       progress: 0,
     })
 
@@ -631,6 +649,8 @@ describe('WordsService', () => {
           normalizedSpanish: 'esperar',
           normalizedRussian: 'ждать',
           imageUrl: null,
+          createdByUserId: 'user-1',
+          createdViaLesson: true,
         },
       })
       .mockResolvedValueOnce({
@@ -655,17 +675,22 @@ describe('WordsService', () => {
           imagePhotographerUrl: null,
           imagePageUrl: null,
           imageProvider: null,
+          createdByUserId: 'user-1',
+          createdViaLesson: true,
         },
       })
     prisma.word.findUnique.mockResolvedValue(null)
     prisma.word.update.mockResolvedValue({})
     prisma.lessonWord.findMany.mockResolvedValue([])
 
-    await expect(service.updateCard('user-1', 'card-1', input)).resolves.toMatchObject({
+    await expect(
+      service.updateCard('user-1', 'teacher', 'card-1', input),
+    ).resolves.toMatchObject({
       russian: 'ожидать',
       partOfSpeech: 'verbo',
       gender: null,
       ready: true,
+      canEdit: true,
     })
 
     expect(prisma.word.update).toHaveBeenCalledWith({
@@ -688,12 +713,14 @@ describe('WordsService', () => {
         normalizedSpanish: 'esperar',
         normalizedRussian: 'ждать',
         imageUrl: null,
+        createdByUserId: 'user-1',
+        createdViaLesson: true,
       },
     })
     prisma.word.findUnique.mockResolvedValue({ id: 'word-other' })
 
     await expect(
-      service.updateCard('user-1', 'card-1', {
+      service.updateCard('user-1', 'teacher', 'card-1', {
         spanish: 'esperar',
         russian: 'надеться',
         definitionEs: 'Definición',
@@ -711,6 +738,199 @@ describe('WordsService', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException)
     expect(prisma.word.update).not.toHaveBeenCalled()
+  })
+
+  it('forbids updating a search-created word for a non-admin', async () => {
+    prisma.userCard.findFirst.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      word: {
+        russian: 'ждать',
+        normalizedSpanish: 'esperar',
+        normalizedRussian: 'ждать',
+        imageUrl: null,
+        createdByUserId: 'user-1',
+        createdViaLesson: false,
+      },
+    })
+
+    await expect(
+      service.updateCard('user-1', 'user', 'card-1', {
+        spanish: 'esperar',
+        russian: 'ждать',
+        definitionEs: 'Definición',
+        examples: ['Uno.', 'Dos.'],
+        partOfSpeech: 'verbo',
+        gender: null,
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        imageUrl: null,
+        imagePhotographerName: null,
+        imagePhotographerUrl: null,
+        imagePageUrl: null,
+        imageProvider: null,
+        imageDownloadLocation: null,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(prisma.word.update).not.toHaveBeenCalled()
+  })
+
+  it('lists admin words by updatedAt desc by default', async () => {
+    const createdAt = new Date('2026-10-18T12:00:00.000Z')
+    const updatedAt = new Date('2026-10-20T12:00:00.000Z')
+    prisma.word.count.mockResolvedValue(1)
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        spanish: 'esperar',
+        russian: 'ждать',
+        createdAt,
+        updatedAt,
+      },
+    ])
+
+    await expect(
+      service.listAdminWords({
+        limit: 20,
+        offset: 0,
+        sortBy: 'updatedAt',
+        q: undefined,
+      }),
+    ).resolves.toEqual({
+      totalCount: 1,
+      hasMore: false,
+      items: [
+        {
+          id: 'word-1',
+          spanish: 'esperar',
+          russian: 'ждать',
+          createdAt: createdAt.toISOString(),
+          updatedAt: updatedAt.toISOString(),
+        },
+      ],
+    })
+
+    expect(prisma.word.findMany).toHaveBeenCalledWith({
+      where: {},
+      orderBy: { updatedAt: 'desc' },
+      skip: 0,
+      take: 20,
+      select: {
+        id: true,
+        spanish: true,
+        russian: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+  })
+
+  it('creates an admin catalog word without a user card', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    prisma.word.findUnique.mockResolvedValue(null)
+    prisma.word.create.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: 'Def',
+      examples: ['Uno.', 'Dos.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: ['a', 'b', 'c'],
+      wrongSpanish: ['x', 'y', 'z'],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await expect(
+      service.createAdminWord('admin-1', emptyDraft({
+        definitionEs: 'Def',
+        examples: ['Uno.', 'Dos.'],
+        partOfSpeech: 'verbo',
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+      })),
+    ).resolves.toMatchObject({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+    })
+
+    expect(prisma.word.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        createdByUserId: 'admin-1',
+        createdViaLesson: false,
+      }),
+    })
+    expect(prisma.userCard.create).not.toHaveBeenCalled()
+    expect(wordAudioService.ensureWordAudio).toHaveBeenCalledWith('word-1')
+  })
+
+  it('rejects admin catalog create when the pair already exists', async () => {
+    prisma.word.findUnique.mockResolvedValue({ id: 'word-existing' })
+
+    await expect(
+      service.createAdminWord('admin-1', emptyDraft()),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.word.create).not.toHaveBeenCalled()
+  })
+
+  it('filters and sorts admin words by createdAt when requested', async () => {
+    const createdAt = new Date('2026-10-18T12:00:00.000Z')
+    const updatedAt = new Date('2026-10-20T12:00:00.000Z')
+    const where = {
+      OR: [
+        { spanish: { contains: 'esp', mode: 'insensitive' } },
+        { russian: { contains: 'esp', mode: 'insensitive' } },
+      ],
+    }
+    prisma.word.count
+      .mockResolvedValueOnce(17)
+      .mockResolvedValueOnce(1)
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        spanish: 'esperar',
+        russian: 'ждать',
+        createdAt,
+        updatedAt,
+      },
+    ])
+
+    await expect(
+      service.listAdminWords({
+        limit: 20,
+        offset: 0,
+        sortBy: 'createdAt',
+        q: 'esp',
+      }),
+    ).resolves.toMatchObject({
+      totalCount: 17,
+      hasMore: false,
+      items: [{ id: 'word-1' }],
+    })
+
+    expect(prisma.word.count).toHaveBeenNthCalledWith(1)
+    expect(prisma.word.count).toHaveBeenNthCalledWith(2, { where })
+    expect(prisma.word.findMany).toHaveBeenCalledWith({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: 0,
+      take: 20,
+      select: {
+        id: true,
+        spanish: true,
+        russian: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
   })
 
   it('regenerates an image using AI query and Unsplash', async () => {

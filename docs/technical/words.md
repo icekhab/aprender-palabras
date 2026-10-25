@@ -6,14 +6,14 @@
 
 - suggestions обогащаются `wordId` / `progress` из `Word` и `UserCard`
   (см. [suggestions.md](./suggestions.md));
-- если пары нет в БД: **admin** — полный preview/edit/save; **не-admin** —
-  generate+create в одном шаге без UI правки (квота gen до внешних API);
+- если пары нет в БД: **admin/teacher** — preview → форма → save;
+  **user** — generate+create без UI правки (квота gen до внешних API);
 - если пара есть — «+» → `POST /words/existing` (без OpenAI/Unsplash/TTS);
 - генерация: OpenAI + Unsplash; TTS (ElevenLabs) **только** при create нового
   `Word`; trainer/speech **не** вызывают ensure/generate TTS;
-- `canEdit`: `admin` **или** слово добавлено текущим пользователем через
-  урок курса; иначе `PATCH` → `403`, без карандаша;
-- admin: «Todas las palabras» → каталог `createdAt DESC`; edit по `wordId`;
+- `canEdit`: `admin` — любые; `teacher` — только `createdByUserId === me`;
+  `user` — никогда; иначе `PATCH` → `403`, без карандаша;
+- admin: «Todas las palabras» → каталог; edit по `wordId`;
 - реген картинки: `POST /words/image/regenerate`, max **2** на `Word`
   (`imageRegenerationCount`); квоты — [quotas.md](./quotas.md);
 - воспроизведение — из `WordAudio` mp3.
@@ -32,8 +32,8 @@
 
 Backfill: автор = seed-admin; `imageRegenerationCount = 0`.
 
-Флаг происхождения для `canEdit` у не-admin: слово создано/привязано через
-урок курса этим пользователем (деталь реализации — при коде; продукт:
+`createdViaLesson` пишется при create из урока (для аудита / курсов);
+на `canEdit` влияет только роль и `createdByUserId` (см.
 [01-words.md](../product/01-words.md) §3).
 
 ## Модель `UserCard`
@@ -98,7 +98,7 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 ### `GET /words/:cardId`
 
 Возвращает полную карточку `UserCard` текущего пользователя: поля слова,
-прогресс, `ready` / `missingFields`, `canEdit` (создатель слова или admin),
+прогресс, `ready` / `missingFields`, `canEdit` (admin или teacher-создатель),
 список уроков пользователя, в которых есть это слово.
 
 Ошибки: `401` нет сессии, `404` карточки нет или она чужая.
@@ -122,7 +122,13 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 Только `role === admin`.
 
-- `GET /admin/words` — пагинация, сортировка `createdAt DESC` (новые сверху).
+- `GET /admin/words` — пагинация (`limit`/`offset`); query `q` (подстрока
+  es/ru, без учёта регистра); `sortBy=updatedAt|createdAt` (default
+  `updatedAt`, всегда `DESC`). `totalCount` — по всему каталогу (без `q`);
+  `hasMore` — по совпадениям с фильтром. В items: `createdAt`, `updatedAt`.
+- `POST /admin/words` — создать `Word` в каталоге **без** `UserCard`
+  (тело как draft/`POST /words`); `409` + `wordId` если пара уже есть;
+  TTS при новом слове.
 - `GET /admin/words/:wordId` — полные поля слова для формы.
 - `PATCH /admin/words/:wordId` — то же тело обновления контента, что у карточки;
   не требует `UserCard` админа на это слово.

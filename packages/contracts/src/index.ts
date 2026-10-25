@@ -7,9 +7,14 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>
 
+export const userRoleSchema = z.enum(['user', 'teacher', 'admin'])
+
+export type UserRole = z.infer<typeof userRoleSchema>
+
 export interface AuthUser {
   id: string
   login: string
+  role: UserRole
 }
 
 export const suggestionsQuerySchema = z.object({
@@ -244,7 +249,66 @@ export interface UserCardDetail {
   addedAt: string
   ready: boolean
   missingFields: string[]
+  canEdit: boolean
   lessons: UserCardLessonRef[]
+}
+
+export const adminWordsSortBySchema = z.enum(['updatedAt', 'createdAt'])
+
+export type AdminWordsSortBy = z.infer<typeof adminWordsSortBySchema>
+
+export const adminWordsListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  sortBy: adminWordsSortBySchema.default('updatedAt'),
+  q: z
+    .string()
+    .max(100)
+    .optional()
+    .transform((value) => {
+      if (value === undefined) {
+        return undefined
+      }
+
+      const trimmed = value.trim()
+      return trimmed === '' ? undefined : trimmed
+    }),
+})
+
+export type AdminWordsListQuery = z.infer<typeof adminWordsListQuerySchema>
+
+export interface AdminWordListItem {
+  id: string
+  spanish: string
+  russian: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminWordsListResponse {
+  totalCount: number
+  hasMore: boolean
+  items: AdminWordListItem[]
+}
+
+export interface AdminWordDetail {
+  id: string
+  spanish: string
+  russian: string
+  additionalTranslations: string[]
+  definitionEs: string | null
+  examples: string[]
+  partOfSpeech: string | null
+  gender: WordGender | null
+  wrongRussian: string[]
+  wrongSpanish: string[]
+  imageUrl: string | null
+  imagePhotographerName: string | null
+  imagePhotographerUrl: string | null
+  imagePageUrl: string | null
+  imageProvider: 'unsplash' | null
+  createdAt: string
+  updatedAt: string
 }
 
 export const lessonListQuerySchema = z.object({

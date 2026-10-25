@@ -1,6 +1,6 @@
 import type { UpdateWordCardInput, UserCardDetail } from '@aprender-palabras/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/shared/api/auth'
@@ -19,6 +19,10 @@ export function WordCardEditPage() {
     enabled: cardId.length > 0,
     retry: false,
   })
+
+  if (cardQuery.isSuccess && !cardQuery.data.canEdit) {
+    return <Navigate replace to={`/words/${cardId}`} />
+  }
 
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">

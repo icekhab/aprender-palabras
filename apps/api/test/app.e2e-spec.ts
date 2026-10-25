@@ -12,6 +12,7 @@ describe('AppController (e2e)', () => {
   const user = {
     id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
     login: 'icekhab@gmail.com',
+    role: 'admin' as const,
   }
   const authService = {
     login: vi.fn(async (input: { login: string; password: string }) =>

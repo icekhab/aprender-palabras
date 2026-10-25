@@ -25,6 +25,7 @@ export class AuthService {
       select: {
         id: true,
         login: true,
+        role: true,
         passwordHash: true,
       },
     })
@@ -56,7 +57,7 @@ export class AuthService {
     ])
 
     return {
-      user: { id: user.id, login: user.login },
+      user: { id: user.id, login: user.login, role: user.role },
       token,
       expiresAt,
     }
@@ -72,6 +73,7 @@ export class AuthService {
           select: {
             id: true,
             login: true,
+            role: true,
           },
         },
       },

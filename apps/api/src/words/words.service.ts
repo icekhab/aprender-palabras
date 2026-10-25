@@ -1,12 +1,16 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import type {
+  AdminWordDetail,
+  AdminWordsListQuery,
+  AdminWordsListResponse,
   DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
@@ -14,6 +18,7 @@ import type {
   RegenerateWordImageInput,
   UpdateWordCardInput,
   UserCardDetail,
+  UserRole,
   Word,
   WordDraft,
   WordPairInput,
@@ -24,6 +29,7 @@ import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { getMissingTrainerFields } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
+import { canEditWord } from './word-edit-access.js'
 import { normalizeWordKey } from './word-normalize.js'
 
 @Injectable()
@@ -76,7 +82,11 @@ export class WordsService {
     }
   }
 
-  async getCard(userId: string, cardId: string): Promise<UserCardDetail> {
+  async getCard(
+    userId: string,
+    role: UserRole,
+    cardId: string,
+  ): Promise<UserCardDetail> {
     const card = await this.prisma.userCard.findFirst({
       where: { id: cardId, userId },
       include: { word: true },
@@ -86,11 +96,12 @@ export class WordsService {
       throw new NotFoundException('Card not found')
     }
 
-    return this.toCardDetail(userId, card)
+    return this.toCardDetail(userId, role, card)
   }
 
   async resetProgress(
     userId: string,
+    role: UserRole,
     cardId: string,
   ): Promise<UserCardDetail> {
     const existing = await this.prisma.userCard.findFirst({
@@ -113,7 +124,7 @@ export class WordsService {
       include: { word: true },
     })
 
-    return this.toCardDetail(userId, card)
+    return this.toCardDetail(userId, role, card)
   }
 
   async deleteCard(userId: string, cardId: string): Promise<void> {
@@ -141,6 +152,7 @@ export class WordsService {
 
   async updateCard(
     userId: string,
+    role: UserRole,
     cardId: string,
     input: UpdateWordCardInput,
   ): Promise<UserCardDetail> {
@@ -151,6 +163,10 @@ export class WordsService {
 
     if (!card) {
       throw new NotFoundException('Card not found')
+    }
+
+    if (!canEditWord(role, userId, card.word)) {
+      throw new ForbiddenException('No permission to edit this word')
     }
 
     if (normalizeWordKey(input.spanish) !== card.word.normalizedSpanish) {
@@ -217,7 +233,224 @@ export class WordsService {
       void this.unsplashService.trackDownload(input.imageDownloadLocation)
     }
 
-    return this.getCard(userId, cardId)
+    return this.getCard(userId, role, cardId)
+  }
+
+  async listAdminWords(
+    query: AdminWordsListQuery,
+  ): Promise<AdminWordsListResponse> {
+    const where = query.q
+      ? {
+          OR: [
+            { spanish: { contains: query.q, mode: 'insensitive' as const } },
+            { russian: { contains: query.q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}
+
+    const [totalCount, matchedCount, words] = await Promise.all([
+      this.prisma.word.count(),
+      this.prisma.word.count({ where }),
+      this.prisma.word.findMany({
+        where,
+        orderBy: { [query.sortBy]: 'desc' },
+        skip: query.offset,
+        take: query.limit,
+        select: {
+          id: true,
+          spanish: true,
+          russian: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+    ])
+
+    return {
+      totalCount,
+      hasMore: query.offset + words.length < matchedCount,
+      items: words.map((word) => ({
+        id: word.id,
+        spanish: word.spanish,
+        russian: word.russian,
+        createdAt: word.createdAt.toISOString(),
+        updatedAt: word.updatedAt.toISOString(),
+      })),
+    }
+  }
+
+  async getAdminWord(wordId: string): Promise<AdminWordDetail> {
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+    })
+
+    if (!word) {
+      throw new NotFoundException('Word not found')
+    }
+
+    return toAdminWordDetail(word)
+  }
+
+  async createAdminWord(
+    userId: string,
+    draft: WordDraft,
+  ): Promise<AdminWordDetail> {
+    const spanish = draft.spanish.trim()
+    const russian = draft.russian.trim()
+    const normalizedSpanish = normalizeWordKey(spanish)
+    const normalizedRussian = normalizeWordKey(russian)
+
+    const existing = await this.prisma.word.findUnique({
+      where: {
+        normalizedSpanish_normalizedRussian: {
+          normalizedSpanish,
+          normalizedRussian,
+        },
+      },
+      select: { id: true },
+    })
+
+    if (existing) {
+      throw new ConflictException({
+        message: 'Word already exists',
+        wordId: existing.id,
+      })
+    }
+
+    try {
+      const word = await this.prisma.word.create({
+        data: {
+          spanish,
+          russian,
+          normalizedSpanish,
+          normalizedRussian,
+          additionalTranslations: draft.additionalTranslations,
+          definitionEs: draft.definitionEs,
+          examples: draft.examples,
+          partOfSpeech: draft.partOfSpeech,
+          gender: draft.gender,
+          wrongRussian: draft.wrongRussian,
+          wrongSpanish: draft.wrongSpanish,
+          imageUrl: draft.imageUrl,
+          imagePhotographerName: draft.imagePhotographerName,
+          imagePhotographerUrl: draft.imagePhotographerUrl,
+          imagePageUrl: draft.imagePageUrl,
+          imageProvider: draft.imageProvider,
+          createdByUserId: userId,
+          createdViaLesson: false,
+        },
+      })
+
+      if (
+        draft.imageProvider === 'unsplash' &&
+        draft.imageDownloadLocation
+      ) {
+        void this.unsplashService.trackDownload(draft.imageDownloadLocation)
+      }
+
+      await this.wordAudioService.ensureWordAudio(word.id)
+
+      return toAdminWordDetail(word)
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const conflict = await this.prisma.word.findUnique({
+          where: {
+            normalizedSpanish_normalizedRussian: {
+              normalizedSpanish,
+              normalizedRussian,
+            },
+          },
+          select: { id: true },
+        })
+
+        throw new ConflictException({
+          message: 'Word already exists',
+          wordId: conflict?.id,
+        })
+      }
+
+      throw error
+    }
+  }
+
+  async updateAdminWord(
+    wordId: string,
+    input: UpdateWordCardInput,
+  ): Promise<AdminWordDetail> {
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+    })
+
+    if (!word) {
+      throw new NotFoundException('Word not found')
+    }
+
+    if (normalizeWordKey(input.spanish) !== word.normalizedSpanish) {
+      throw new BadRequestException('Spanish text cannot be changed')
+    }
+
+    const russian = input.russian.trim()
+    const normalizedRussian = normalizeWordKey(russian)
+    const gender = input.partOfSpeech === 'sustantivo' ? input.gender : null
+
+    if (normalizedRussian !== normalizeWordKey(word.russian)) {
+      const conflict = await this.prisma.word.findUnique({
+        where: {
+          normalizedSpanish_normalizedRussian: {
+            normalizedSpanish: word.normalizedSpanish,
+            normalizedRussian,
+          },
+        },
+        select: { id: true },
+      })
+
+      if (conflict && conflict.id !== word.id) {
+        throw new ConflictException('Word already exists')
+      }
+    }
+
+    try {
+      const updated = await this.prisma.word.update({
+        where: { id: wordId },
+        data: {
+          russian,
+          normalizedRussian,
+          definitionEs: input.definitionEs,
+          examples: input.examples,
+          partOfSpeech: input.partOfSpeech,
+          gender,
+          wrongRussian: input.wrongRussian,
+          wrongSpanish: input.wrongSpanish,
+          imageUrl: input.imageUrl,
+          imagePhotographerName: input.imagePhotographerName,
+          imagePhotographerUrl: input.imagePhotographerUrl,
+          imagePageUrl: input.imagePageUrl,
+          imageProvider: input.imageProvider,
+        },
+      })
+
+      if (
+        input.imageProvider === 'unsplash' &&
+        input.imageDownloadLocation &&
+        input.imageUrl !== word.imageUrl
+      ) {
+        void this.unsplashService.trackDownload(input.imageDownloadLocation)
+      }
+
+      return toAdminWordDetail(updated)
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Word already exists')
+      }
+
+      throw error
+    }
   }
 
   async regenerateImage(
@@ -254,6 +487,7 @@ export class WordsService {
 
   private async toCardDetail(
     userId: string,
+    role: UserRole,
     card: {
       id: string
       wordId: string
@@ -276,6 +510,8 @@ export class WordsService {
         imagePhotographerUrl: string | null
         imagePageUrl: string | null
         imageProvider: 'unsplash' | null
+        createdByUserId: string | null
+        createdViaLesson: boolean
       }
     },
   ): Promise<UserCardDetail> {
@@ -317,6 +553,7 @@ export class WordsService {
       addedAt: card.addedAt.toISOString(),
       ready: missingFields.length === 0,
       missingFields,
+      canEdit: canEditWord(role, userId, card.word),
       lessons: lessons.map((item) => ({
         id: item.lesson.id,
         title: item.lesson.title,
@@ -477,6 +714,8 @@ export class WordsService {
                 imagePhotographerUrl: draft.imagePhotographerUrl,
                 imagePageUrl: draft.imagePageUrl,
                 imageProvider: draft.imageProvider,
+                createdByUserId: userId,
+                createdViaLesson: false,
               },
             })
           } catch (error) {
@@ -590,6 +829,46 @@ function toWordResponse(word: {
   createdAt: Date
   updatedAt: Date
 }): Word {
+  return {
+    id: word.id,
+    spanish: word.spanish,
+    russian: word.russian,
+    additionalTranslations: word.additionalTranslations,
+    definitionEs: word.definitionEs,
+    examples: word.examples,
+    partOfSpeech: word.partOfSpeech,
+    gender: word.gender,
+    wrongRussian: word.wrongRussian,
+    wrongSpanish: word.wrongSpanish,
+    imageUrl: word.imageUrl,
+    imagePhotographerName: word.imagePhotographerName,
+    imagePhotographerUrl: word.imagePhotographerUrl,
+    imagePageUrl: word.imagePageUrl,
+    imageProvider: word.imageProvider,
+    createdAt: word.createdAt.toISOString(),
+    updatedAt: word.updatedAt.toISOString(),
+  }
+}
+
+function toAdminWordDetail(word: {
+  id: string
+  spanish: string
+  russian: string
+  additionalTranslations: string[]
+  definitionEs: string | null
+  examples: string[]
+  partOfSpeech: string | null
+  gender: 'masculine' | 'feminine' | null
+  wrongRussian: string[]
+  wrongSpanish: string[]
+  imageUrl: string | null
+  imagePhotographerName: string | null
+  imagePhotographerUrl: string | null
+  imagePageUrl: string | null
+  imageProvider: 'unsplash' | null
+  createdAt: Date
+  updatedAt: Date
+}): AdminWordDetail {
   return {
     id: word.id,
     spanish: word.spanish,

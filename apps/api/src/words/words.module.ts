@@ -9,5 +9,6 @@ import { WordsService } from './words.service.js'
   imports: [OpenAiModule, UnsplashModule, SpeechModule],
   controllers: [WordsController],
   providers: [WordsService],
+  exports: [WordsService],
 })
 export class WordsModule {}

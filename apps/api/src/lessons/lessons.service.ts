@@ -509,6 +509,8 @@ export class LessonsService {
                 imagePhotographerUrl: draft.imagePhotographerUrl,
                 imagePageUrl: draft.imagePageUrl,
                 imageProvider: draft.imageProvider,
+                createdByUserId: userId,
+                createdViaLesson: true,
               },
             })
           } catch (error) {

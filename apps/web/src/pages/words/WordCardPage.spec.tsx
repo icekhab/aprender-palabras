@@ -56,6 +56,7 @@ describe('WordCardPage', () => {
               addedAt: '2026-10-18T12:00:00.000Z',
               ready: true,
               missingFields: [],
+              canEdit: true,
               lessons: [{ id: 'lesson-1', title: 'Uno' }],
             }),
             {

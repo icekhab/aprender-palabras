@@ -15,13 +15,14 @@ import {
   type SuggestionItem,
   type SuggestionsResponse,
 } from '@aprender-palabras/contracts'
-import { BookOpen, LogOut, Plus, Settings } from 'lucide-react'
+import { BookOpen, Library, LogOut, Plus, Settings } from 'lucide-react'
 import {
   useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
@@ -30,6 +31,9 @@ import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { ProgressDot } from '@/components/progress-dot'
 import { WordRow } from '@/components/word-row'
+import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
+import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
+import { AdminWordsPage } from './pages/admin/AdminWordsPage'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
 import { LessonsPage } from './pages/lessons/LessonsPage'
 import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
@@ -102,6 +106,36 @@ function App() {
         }
       />
       <Route
+        path="/admin/words"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminWordsRoutePage />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/words/new"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminWordNewPage />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/words/:wordId/edit"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminWordEditPage />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/lecciones"
         element={
           <ProtectedRoute>
@@ -139,7 +173,7 @@ function LessonsRoutePage() {
     <LessonsPage
       userMenu={
         user ? (
-          <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+          <UserMenu user={user} logoutMutation={logoutMutation} />
         ) : null
       }
     />
@@ -155,11 +189,41 @@ function LessonDetailRoutePage() {
     <LessonDetailPage
       userMenu={
         user ? (
-          <UserMenu userLogin={user.login} logoutMutation={logoutMutation} />
+          <UserMenu user={user} logoutMutation={logoutMutation} />
         ) : null
       }
     />
   )
+}
+
+function AdminWordsRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <AdminWordsPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function AdminRoute({ children }: { children: ReactNode }) {
+  const currentUser = useCurrentUser()
+
+  if (currentUser.isPending) {
+    return <AppSplash />
+  }
+
+  if (currentUser.data?.role !== 'admin') {
+    return <Navigate replace to="/" />
+  }
+
+  return children
 }
 
 function LoginPage() {
@@ -462,10 +526,7 @@ function HomePage() {
             </div>
 
             {user ? (
-              <UserMenu
-                userLogin={user.login}
-                logoutMutation={logoutMutation}
-              />
+              <UserMenu user={user} logoutMutation={logoutMutation} />
             ) : null}
           </div>
         </div>
@@ -719,10 +780,7 @@ function SettingsPage() {
               Volver
             </Button>
             {user ? (
-              <UserMenu
-                userLogin={user.login}
-                logoutMutation={logoutMutation}
-              />
+              <UserMenu user={user} logoutMutation={logoutMutation} />
             ) : null}
           </div>
         </div>
@@ -746,16 +804,16 @@ function SettingsPage() {
 }
 
 function UserMenu({
-  userLogin,
+  user,
   logoutMutation,
 }: {
-  userLogin: string
+  user: AuthUser
   logoutMutation: ReturnType<typeof useLogoutMutation>
 }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const initial = userLogin.trim().charAt(0).toLocaleUpperCase() || '?'
+  const initial = user.login.trim().charAt(0).toLocaleUpperCase() || '?'
 
   useEffect(() => {
     if (!open) {
@@ -816,6 +874,20 @@ function UserMenu({
             <BookOpen className="size-4 shrink-0" aria-hidden />
             Lecciones
           </button>
+          {user.role === 'admin' ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full cursor-pointer items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm hover:bg-orange-50"
+              onClick={() => {
+                setOpen(false)
+                navigate('/admin/words')
+              }}
+            >
+              <Library className="size-4 shrink-0" aria-hidden />
+              Todas las palabras
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma.service.js'
 const USER = {
   id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
   login: 'icekhab@gmail.com',
+  role: 'admin' as const,
   passwordHash:
     '$argon2id$v=19$m=65536,p=4,t=3$wTLVO0Cauibw5R0IToCucA$yHJsCfkeaFsmmTing4GbW+UhACxdLSYFcuw4gmaV+Kw',
 }
@@ -62,6 +63,7 @@ describe('AuthService', () => {
     expect(session?.user).toEqual({
       id: USER.id,
       login: USER.login,
+      role: USER.role,
     })
     expect(session?.token).toMatch(/^[\w-]{43}$/)
 
@@ -94,6 +96,7 @@ describe('AuthService', () => {
       user: {
         id: USER.id,
         login: USER.login,
+        role: USER.role,
       },
     })
     const service = new AuthService(prisma as unknown as PrismaService)

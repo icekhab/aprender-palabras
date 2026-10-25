@@ -7,16 +7,24 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserRole {
+  user
+  teacher
+  admin
+}
+
 model User {
   id                     String             @id @default(uuid()) @db.Uuid
   login                  String
   normalizedLogin        String             @unique
   passwordHash           String
+  role                   UserRole           @default(user)
   createdAt              DateTime           @default(now()) @db.Timestamptz(3)
   currentLessonId        String?            @db.Uuid
   lastCompletedTrainerAt DateTime?          @db.Timestamptz(3)
   sessions               Session[]
   cards                  UserCard[]
+  createdWords           Word[]             @relation("WordCreator")
   lessons                Lesson[]           @relation("UserLessons")
   currentLesson          Lesson?            @relation("CurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
   trainingDays           DailyTrainingDay[]
@@ -66,13 +74,18 @@ model Word {
   imagePhotographerUrl   String?
   imagePageUrl           String?
   imageProvider          ImageProvider?
+  createdByUserId        String?        @db.Uuid
+  createdViaLesson       Boolean        @default(false)
   createdAt              DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+  createdBy              User?          @relation("WordCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   cards                  UserCard[]
   lessonWords            LessonWord[]
   audio                  WordAudio?
 
   @@unique([normalizedSpanish, normalizedRussian])
+  @@index([createdByUserId])
+  @@index([createdAt])
 }
 
 model WordAudio {
