@@ -8,9 +8,13 @@
 
 Документы функций:
 
-- [Авторизация](./auth.md).
-- [Подсказки перевода](./suggestions.md).
-- [Слова](./words.md).
+- [Авторизация](./auth.md) — сессии, роли `user` / `admin`, override квот.
+- [Подсказки перевода](./suggestions.md) — квота suggestions.
+- [Слова](./words.md) — `Word`, edit, admin-каталог, TTS только при create.
+- [Квоты платных API](./quotas.md) — gen / suggestions / реген картинки.
+- [Ежедневные подборки](./training.md).
+- [Курсы](./courses.md) — целевая схема (продукт: [05-courses.md](../product/05-courses.md)).
+- [Дорожная карта реализации](./implementation-roadmap.md) — чеклист multi-user / курсы / квоты по порядку.
 
 ## 2. Общая архитектура
 
@@ -268,4 +272,7 @@ pnpm db:studio
 3. уроки;
 4. прогресс и ежедневные подборки — см. [training.md](./training.md);
 5. тренажёр;
-6. PWA и production deployment.
+6. PWA и production deployment;
+7. роли и владение словами — см. [auth.md](./auth.md), [words.md](./words.md);
+8. курсы и приглашения — см. [courses.md](./courses.md);
+9. ежедневный пул по всем активным курсам участника.
