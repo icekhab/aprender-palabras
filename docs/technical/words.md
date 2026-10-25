@@ -13,7 +13,8 @@
   `Word`; trainer/speech **не** вызывают ensure/generate TTS;
 - `canEdit`: `admin` — любые; `teacher` — только `createdByUserId === me`;
   `user` — никогда; иначе `PATCH` → `403`, без карандаша;
-- admin: «Todas las palabras» → каталог; edit по `wordId`;
+- admin: «Todas las palabras» → каталог; edit по `wordId`; в шапке —
+  suggestions (add в общий `Word` без `UserCard`); фильтр списка отдельно;
 - реген картинки: `POST /words/image/regenerate`, max **2** на `Word`
   (`imageRegenerationCount`); квоты — [quotas.md](./quotas.md);
 - воспроизведение — из `WordAudio` mp3.
@@ -122,18 +123,29 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 Только `role === admin`.
 
+**UI (`/admin/words`):**
+
+- шапка: поиск suggestions («Buscar para añadir») — как на главной, но
+  результат идёт в **общий каталог**: нет `wordId` → `/admin/words/new?…`
+  (preview → форма → `POST /admin/words` → редирект на список); есть
+  `wordId` → edit («En catálogo»), без `POST /words/existing`;
+- ниже списка: фильтр каталога (`q`) + сортировка Actualización / Alta;
+  в строке Act. / Alta (дата+время); клик → edit по `wordId`.
+
+**API:**
+
 - `GET /admin/words` — пагинация (`limit`/`offset`); query `q` (подстрока
   es/ru, без учёта регистра); `sortBy=updatedAt|createdAt` (default
   `updatedAt`, всегда `DESC`). `totalCount` — по всему каталогу (без `q`);
   `hasMore` — по совпадениям с фильтром. В items: `createdAt`, `updatedAt`.
-- `POST /admin/words` — создать `Word` в каталоге **без** `UserCard`
+- `POST /admin/words` — создать `Word` **без** `UserCard`
   (тело как draft/`POST /words`); `409` + `wordId` если пара уже есть;
-  TTS при новом слове.
+  TTS при новом слове; UI после успеха → список каталога.
 - `GET /admin/words/:wordId` — полные поля слова для формы.
 - `PATCH /admin/words/:wordId` — то же тело обновления контента, что у карточки;
   не требует `UserCard` админа на это слово.
 
-Ошибки: `401`, `403` не admin, `404`.
+Ошибки: `401`, `403` не admin, `404`, `409` на create.
 
 ### `POST /words/image/regenerate`
 

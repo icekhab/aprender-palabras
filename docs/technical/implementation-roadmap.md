@@ -31,6 +31,7 @@
 
 - [x] Prisma: enum + поле `role` (default `user`).
 - [x] Миграция: seed-пользователь → `admin`.
+- [x] Локальный seed: `teacher@local.test` / `user@local.test` (пароль как у admin).
 - [x] `AuthUser` / login / `GET /auth/me` возвращают `role`.
 - [x] Документ «как выдать teacher миграцией» в [auth.md](./auth.md) актуален.
 - [x] Тесты: me/login с role.
@@ -61,12 +62,18 @@
 
 ## 3. Admin-каталог слов
 
-**Цель:** меню аватара → все слова, новые сверху; edit по `wordId`.
+**Цель:** меню аватара → каталог; поиск suggestions добавляет в общую базу
+(не в личный словарь); edit по `wordId`.
 
 - [x] `GET/PATCH /api/admin/words` (+ get by id), guard `role === admin`.
+- [x] `POST /api/admin/words` — создать `Word` без `UserCard`; `409` + `wordId`
+  если пара есть; после save → список каталога.
 - [x] Пункт «Todas las palabras» только для admin.
-- [x] Страница списка `createdAt DESC`; клик → edit по `wordId`.
-- [x] Тесты 403 для non-admin.
+- [x] Список: `sortBy=updatedAt|createdAt` (default updatedAt DESC); в строке
+  Act./Alta с датой и временем; фильтр каталога (`q`); `totalCount` без фильтра.
+- [x] Шапка: GPT suggestions — новая пара → форма add в каталог; существующая
+  → edit («En catálogo»), не в личный словарь.
+- [x] Тесты 403 для non-admin / create без UserCard.
 
 **Ссылки:** [words.md](./words.md) (admin API), [01-words WORD-17](../product/01-words.md).
 
