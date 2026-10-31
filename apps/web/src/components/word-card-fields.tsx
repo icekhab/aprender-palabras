@@ -1,6 +1,7 @@
 import type { WordDraft } from '@aprender-palabras/contracts'
 import { Pencil } from 'lucide-react'
 import { SpeakButton } from '@/components/speak-button'
+import { UnsplashAttribution } from '@/components/unsplash-attribution'
 import { ProgressRing } from '@/pages/lessons/progress-ring'
 
 export type WordCardFieldsData = Pick<
@@ -85,31 +86,11 @@ export function WordCardFields({
             className="max-h-80 w-full rounded-2xl object-cover"
           />
           {draft.imagePhotographerName && draft.imagePhotographerUrl ? (
-            <figcaption className="mt-2 text-xs text-orange-900/60">
-              Foto de{' '}
-              <a
-                href={draft.imagePhotographerUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                {draft.imagePhotographerName}
-              </a>
-              {draft.imagePageUrl ? (
-                <>
-                  {' '}
-                  en{' '}
-                  <a
-                    href={draft.imagePageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Unsplash
-                  </a>
-                </>
-              ) : null}
-            </figcaption>
+            <UnsplashAttribution
+              photographerName={draft.imagePhotographerName}
+              photographerUrl={draft.imagePhotographerUrl}
+              variant="caption"
+            />
           ) : null}
         </figure>
       ) : null}

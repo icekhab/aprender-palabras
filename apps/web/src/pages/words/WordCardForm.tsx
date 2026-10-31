@@ -11,6 +11,7 @@ import {
 } from '@aprender-palabras/contracts'
 import { useMutation } from '@tanstack/react-query'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { UnsplashAttribution } from '@/components/unsplash-attribution'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/shared/api/auth'
 import { regenerateWordImage } from '@/shared/api/words'
@@ -159,31 +160,11 @@ export function WordCardForm({
             className="max-h-80 w-full rounded-2xl object-cover"
           />
           {form.imagePhotographerName && form.imagePhotographerUrl ? (
-            <figcaption className="mt-2 text-xs text-orange-900/60">
-              Foto de{' '}
-              <a
-                href={form.imagePhotographerUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                {form.imagePhotographerName}
-              </a>
-              {form.imagePageUrl ? (
-                <>
-                  {' '}
-                  en{' '}
-                  <a
-                    href={form.imagePageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Unsplash
-                  </a>
-                </>
-              ) : null}
-            </figcaption>
+            <UnsplashAttribution
+              photographerName={form.imagePhotographerName}
+              photographerUrl={form.imagePhotographerUrl}
+              variant="caption"
+            />
           ) : null}
         </figure>
       ) : (

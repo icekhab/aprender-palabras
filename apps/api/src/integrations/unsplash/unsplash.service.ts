@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 
 const UNSPLASH_API_BASE = 'https://api.unsplash.com'
 const UTM_SOURCE = 'aprender-palabras'
+/** Homepage attribution link required by Unsplash guidelines. */
+export const UNSPLASH_HOME_REFERRAL_URL = `https://unsplash.com/?utm_source=${UTM_SOURCE}&utm_medium=referral`
 
 export interface UnsplashImage {
   imageUrl: string

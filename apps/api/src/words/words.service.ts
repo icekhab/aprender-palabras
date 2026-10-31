@@ -790,6 +790,7 @@ export class WordsService {
       )
 
       if (
+        createdNewWord &&
         draft.imageProvider === 'unsplash' &&
         draft.imageDownloadLocation
       ) {

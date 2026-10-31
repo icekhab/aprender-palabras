@@ -1,5 +1,6 @@
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { SpeakButton } from '@/components/speak-button'
+import { UnsplashAttribution } from '@/components/unsplash-attribution'
 
 export function WordDetailCard({ word }: { word: TrainerSessionWord }) {
   const meta = grammarMeta(word)
@@ -17,29 +18,11 @@ export function WordDetailCard({ word }: { word: TrainerSessionWord }) {
               className="h-52 w-full object-cover sm:h-64"
             />
             {photographerName && photographerUrl ? (
-              <p className="absolute right-2 bottom-2 max-w-[70%] truncate rounded bg-black/40 px-1.5 py-0.5 text-[10px] leading-tight text-white/85">
-                <a
-                  href={photographerUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:underline"
-                >
-                  {photographerName}
-                </a>
-                {word.imagePageUrl ? (
-                  <>
-                    {' · '}
-                    <a
-                      href={word.imagePageUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:underline"
-                    >
-                      Unsplash
-                    </a>
-                  </>
-                ) : null}
-              </p>
+              <UnsplashAttribution
+                photographerName={photographerName}
+                photographerUrl={photographerUrl}
+                variant="overlay"
+              />
             ) : null}
           </div>
         ) : (

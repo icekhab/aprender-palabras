@@ -225,7 +225,9 @@ progress, addedAt).
 4. иначе создать `UserCard` с `source=manual`, `inDictionary=true`, `progress=0`.
 
 При переиспользовании существующего `Word` его поля и `createdByUserId`
-**не** перезаписываются draft’ом.
+**не** перезаписываются draft’ом. `trackDownload` Unsplash вызывается
+только когда создаётся **новый** `Word` с `imageProvider=unsplash`
+(то же при create слова из урока).
 
 Успех `200`: слово (`Word`) с `id` и timestamps.
 
@@ -247,3 +249,8 @@ UNSPLASH_ACCESS_KEY=
 
 Нужен только Unsplash Access Key. Secret Key не используется.
 Ключи хранятся только на backend.
+
+Unsplash compliance: hotlink `photo.urls.regular`; при сохранении выбранного
+изображения — `GET` на `links.download_location`; в UI атрибуция фотографа
+(профиль + UTM) и ссылка «Unsplash» на
+`https://unsplash.com/?utm_source=aprender-palabras&utm_medium=referral`.

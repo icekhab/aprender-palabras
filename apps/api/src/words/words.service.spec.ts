@@ -269,6 +269,50 @@ describe('WordsService', () => {
     )
   })
 
+  it('does not track Unsplash download when reusing an existing word', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    const existingWord = {
+      id: 'word-existing',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: ['ожидать'],
+      definitionEs: 'Esperar algo.',
+      examples: ['Espero tu llamada.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: 'https://images.unsplash.com/old.jpg',
+      imagePhotographerName: 'Old',
+      imagePhotographerUrl: 'https://unsplash.com/@old',
+      imagePageUrl: 'https://unsplash.com/photos/old',
+      imageProvider: 'unsplash' as const,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    tx.word.findUnique.mockResolvedValue(existingWord)
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({ id: 'card-2' })
+
+    await expect(
+      service.create(
+        'user-1',
+        emptyDraft({
+          imageUrl: 'https://images.unsplash.com/new.jpg',
+          imagePhotographerName: 'Ada',
+          imagePhotographerUrl: 'https://unsplash.com/@ada',
+          imagePageUrl: 'https://unsplash.com/photos/abc',
+          imageProvider: 'unsplash',
+          imageDownloadLocation: 'https://api.unsplash.com/photos/abc/download',
+        }),
+      ),
+    ).resolves.toMatchObject({ id: 'word-existing' })
+
+    expect(tx.word.create).not.toHaveBeenCalled()
+    expect(unsplashService.trackDownload).not.toHaveBeenCalled()
+  })
+
   it('reuses an existing word and creates only a user card', async () => {
     const now = new Date('2026-10-18T12:00:00.000Z')
     const existingWord = {

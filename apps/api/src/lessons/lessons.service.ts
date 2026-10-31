@@ -24,6 +24,7 @@ import type {
 } from '@aprender-palabras/contracts'
 import { isEffectivelyActive } from '../courses/course-access.js'
 import { CoursesService } from '../courses/courses.service.js'
+import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
@@ -39,6 +40,7 @@ export class LessonsService {
     private readonly prisma: PrismaService,
     private readonly wordAudioService: WordAudioService,
     private readonly coursesService: CoursesService,
+    private readonly unsplashService: UnsplashService,
   ) {}
 
   async list(
@@ -539,6 +541,14 @@ export class LessonsService {
           return { word: existing, createdNewWord: wasCreated }
         },
       )
+
+      if (
+        createdNewWord &&
+        draft.imageProvider === 'unsplash' &&
+        draft.imageDownloadLocation
+      ) {
+        void this.unsplashService.trackDownload(draft.imageDownloadLocation)
+      }
 
       if (createdNewWord) {
         await this.wordAudioService.ensureWordAudio(word.id)
