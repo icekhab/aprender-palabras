@@ -203,6 +203,7 @@ export class TrainingService {
   async getToday(userId: string): Promise<DailyTrainingTodayResponse> {
     const date = madridDateString()
     const dayDate = calendarDate(date)
+    const readyCardCount = await this.countReadyCards(userId)
 
     let day = await this.prisma.dailyTrainingDay.findUnique({
       where: {
@@ -212,29 +213,73 @@ export class TrainingService {
     })
 
     if (!day) {
+      if (readyCardCount === 0) {
+        return {
+          date,
+          readyCardCount,
+          canGenerate: true,
+          trainers: [],
+        }
+      }
       day = await this.createDay(userId, dayDate)
     }
 
+    return this.buildTodayResponse(userId, date, day, readyCardCount)
+  }
+
+  async generateToday(userId: string): Promise<DailyTrainingTodayResponse> {
+    const date = madridDateString()
+    const dayDate = calendarDate(date)
+
+    let day = await this.prisma.dailyTrainingDay.findUnique({
+      where: {
+        userId_date: { userId, date: dayDate },
+      },
+      include: trainerInclude,
+    })
+
+    const dailyCount =
+      day?.trainers.filter((item) => item.kind === 'daily').length ?? 0
+
+    if (!day) {
+      day = await this.createDay(userId, dayDate)
+    } else if (dailyCount === 0) {
+      day = await this.fillDailyTrainers(userId, day.id)
+    }
+
     const readyCardCount = await this.countReadyCards(userId)
-    const dailyTrainers = day.trainers.filter((item) => item.kind === 'daily')
+    return this.buildTodayResponse(userId, date, day, readyCardCount)
+  }
+
+  private async buildTodayResponse(
+    userId: string,
+    date: string,
+    day: DayWithTrainers,
+    readyCardCount: number,
+  ): Promise<DailyTrainingTodayResponse> {
+    let current = day
+    const dailyTrainers = current.trainers.filter(
+      (item) => item.kind === 'daily',
+    )
+    const canGenerate = dailyTrainers.length === 0
     const allDailyCompleted =
       dailyTrainers.length > 0 &&
       dailyTrainers.every((item) => item.status === 'completed')
 
     if (allDailyCompleted) {
-      const openExtra = day.trainers.find(
+      const openExtra = current.trainers.find(
         (item) => item.kind === 'extra' && item.status === 'not_started',
       )
       if (!openExtra) {
-        await this.ensureExtraTrainer(userId, day.id)
-        day = await this.prisma.dailyTrainingDay.findUniqueOrThrow({
-          where: { id: day.id },
+        await this.ensureExtraTrainer(userId, current.id)
+        current = await this.prisma.dailyTrainingDay.findUniqueOrThrow({
+          where: { id: current.id },
           include: trainerInclude,
         })
       }
     }
 
-    const visible = day.trainers
+    const visible = current.trainers
       .filter((item) => item.status === 'not_started')
       .sort((a, b) => {
         if (a.kind !== b.kind) {
@@ -247,18 +292,13 @@ export class TrainingService {
     return {
       date,
       readyCardCount,
+      canGenerate,
       trainers: visible,
     }
   }
 
   private async createDay(userId: string, dayDate: Date) {
-    const { cards, hasActiveCourseLesson, lastCompletedTrainerAt } =
-      await this.loadSelectionContext(userId)
-    const built = buildDailyTrainers({
-      cards,
-      hasActiveCourseLesson,
-      anchor: resolveAnchor(lastCompletedTrainerAt),
-    })
+    const built = await this.buildDailyTrainerCreates(userId)
 
     try {
       return await this.prisma.dailyTrainingDay.create({
@@ -266,17 +306,7 @@ export class TrainingService {
           userId,
           date: dayDate,
           trainers: {
-            create: built.map((trainer) => ({
-              kind: trainer.kind,
-              slot: trainer.slot,
-              sourceLabel: trainer.sourceLabel,
-              words: {
-                create: trainer.userCardIds.map((userCardId, index) => ({
-                  userCardId,
-                  position: index + 1,
-                })),
-              },
-            })),
+            create: built,
           },
         },
         include: trainerInclude,
@@ -295,6 +325,53 @@ export class TrainingService {
       }
       throw error
     }
+  }
+
+  private async fillDailyTrainers(
+    userId: string,
+    dayId: string,
+  ): Promise<DayWithTrainers> {
+    const built = await this.buildDailyTrainerCreates(userId)
+    for (const trainer of built) {
+      await this.prisma.dailyTrainer.create({
+        data: {
+          dayId,
+          kind: trainer.kind,
+          slot: trainer.slot,
+          sourceLabel: trainer.sourceLabel,
+          words: {
+            create: trainer.words.create,
+          },
+        },
+      })
+    }
+
+    return this.prisma.dailyTrainingDay.findUniqueOrThrow({
+      where: { id: dayId },
+      include: trainerInclude,
+    })
+  }
+
+  private async buildDailyTrainerCreates(userId: string) {
+    const { cards, hasActiveCourseLesson, lastCompletedTrainerAt } =
+      await this.loadSelectionContext(userId)
+    const built = buildDailyTrainers({
+      cards,
+      hasActiveCourseLesson,
+      anchor: resolveAnchor(lastCompletedTrainerAt),
+    })
+
+    return built.map((trainer) => ({
+      kind: trainer.kind,
+      slot: trainer.slot,
+      sourceLabel: trainer.sourceLabel,
+      words: {
+        create: trainer.userCardIds.map((userCardId, index) => ({
+          userCardId,
+          position: index + 1,
+        })),
+      },
+    }))
   }
 
   private async ensureExtraTrainer(userId: string, dayId: string) {

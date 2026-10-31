@@ -46,10 +46,11 @@ function emptyDictionaryResponse() {
   })
 }
 
-function emptyTrainingResponse() {
+function emptyTrainingResponse(overrides: { canGenerate?: boolean } = {}) {
   return jsonResponse({
     date: '2026-10-19',
     readyCardCount: 0,
+    canGenerate: overrides.canGenerate ?? false,
     trainers: [],
   })
 }
@@ -85,6 +86,7 @@ describe('App', () => {
         return jsonResponse({
           date: '2026-10-19',
           readyCardCount: 3,
+          canGenerate: false,
           trainers: [
             {
               id: 'trainer-1',
@@ -133,6 +135,7 @@ describe('App', () => {
         return jsonResponse({
           date: '2026-10-19',
           readyCardCount: 3,
+          canGenerate: false,
           trainers: [
             {
               id: 'trainer-3',
@@ -175,6 +178,7 @@ describe('App', () => {
         return jsonResponse({
           date: '2026-10-19',
           readyCardCount: 7,
+          canGenerate: false,
           trainers: [
             {
               id: 'trainer-extra',
@@ -217,6 +221,7 @@ describe('App', () => {
         return jsonResponse({
           date: '2026-10-19',
           readyCardCount: 1,
+          canGenerate: false,
           trainers: [
             {
               id: trainerId,
@@ -308,6 +313,150 @@ describe('App', () => {
 
     expect(await screen.findByText('hola')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Vale' })).toBeInTheDocument()
+  })
+
+  it('shows a generate training card when canGenerate is true', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse({ canGenerate: true })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Entrenamiento diario' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Generar entrenamientos' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens a no-words modal when generating with an empty dictionary', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse({ canGenerate: true })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Generar entrenamientos' }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Sin palabras' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/No hay palabras añadidas/i),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Añadir palabra' }),
+    ).not.toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input) === '/api/training/today/generate' &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      ),
+    ).toBe(false)
+  })
+
+  it('generates daily trainings when the dictionary has words', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      const method = (init as RequestInit | undefined)?.method ?? 'GET'
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return jsonResponse({
+          totalCount: 2,
+          averageProgress: 10,
+          hasMore: false,
+          items: [
+            {
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'hola',
+              russian: 'привет',
+              progress: 0,
+              addedAt: '2026-10-01T00:00:00.000Z',
+            },
+          ],
+        })
+      }
+
+      if (isTrainingTodayRequest(url) && method === 'GET') {
+        return emptyTrainingResponse({ canGenerate: true })
+      }
+
+      if (url === '/api/training/today/generate' && method === 'POST') {
+        return jsonResponse({
+          date: '2026-10-19',
+          readyCardCount: 2,
+          canGenerate: false,
+          trainers: [
+            {
+              id: 'trainer-1',
+              kind: 'daily',
+              slot: 5,
+              sourceLabel: 'Palabras nuevas',
+              wordCount: 2,
+              words: [],
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Generar entrenamientos' }),
+    )
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Palabras nuevas, 2 palabras',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Generar entrenamientos' }),
+    ).not.toBeInTheDocument()
   })
 
   it('renders the home header for an authenticated user', async () => {

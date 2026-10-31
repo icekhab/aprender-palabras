@@ -141,6 +141,45 @@ describe('TrainingService.getToday', () => {
     expect(result.trainers).toHaveLength(1)
     expect(result.trainers[0]?.words[0]?.spanish).toBe('hola')
     expect(result.readyCardCount).toBe(1)
+    expect(result.canGenerate).toBe(false)
+  })
+
+  it('does not create an empty day when there are no ready cards', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue(null)
+    prisma.userCard.findMany.mockResolvedValue([])
+
+    const result = await service.getToday('user-1')
+
+    expect(prisma.dailyTrainingDay.create).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      date: expect.any(String),
+      readyCardCount: 0,
+      canGenerate: true,
+      trainers: [],
+    })
+  })
+
+  it('marks canGenerate when the day has no daily trainers', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        word: {
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['a', 'b', 'c'],
+          wrongSpanish: ['x', 'y', 'z'],
+        },
+      },
+    ])
+
+    const result = await service.getToday('user-1')
+
+    expect(result.canGenerate).toBe(true)
+    expect(result.trainers).toEqual([])
+    expect(result.readyCardCount).toBe(1)
   })
 
   it('hides completed daily trainers', async () => {
@@ -178,6 +217,117 @@ describe('TrainingService.getToday', () => {
 
     const result = await service.getToday('user-1')
     expect(result.trainers.map((item) => item.id)).toEqual(['t2'])
+    expect(result.canGenerate).toBe(false)
+  })
+})
+
+describe('TrainingService.generateToday', () => {
+  const prisma = createPrismaMock()
+  let service: TrainingService
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    service = new TrainingService(prisma as never)
+  })
+
+  it('fills daily trainers on an empty existing day', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValueOnce({
+      id: 'day-1',
+      trainers: [],
+    })
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      lastCompletedTrainerAt: null,
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        id: 'card-1',
+        wordId: 'word-1',
+        source: 'manual',
+        progress: 0,
+        lastTrainedAt: null,
+        completedTrainerCount: 0,
+        showCount: 0,
+        addedAt: new Date('2026-10-01T00:00:00.000Z'),
+        word: {
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['a', 'b', 'c'],
+          wrongSpanish: ['x', 'y', 'z'],
+        },
+      },
+    ])
+    prisma.courseMembership.findMany.mockResolvedValue([])
+    prisma.dailyTrainer.create.mockResolvedValue({})
+    prisma.dailyTrainingDay.findUniqueOrThrow.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't1',
+          kind: 'daily',
+          slot: 5,
+          status: 'not_started',
+          sourceLabel: 'Palabras nuevas',
+          words: [
+            {
+              userCard: {
+                id: 'card-1',
+                wordId: 'word-1',
+                progress: 0,
+                word: { spanish: 'hola', russian: 'привет' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    const result = await service.generateToday('user-1')
+
+    expect(prisma.dailyTrainer.create).toHaveBeenCalled()
+    expect(result.canGenerate).toBe(false)
+    expect(result.trainers).toHaveLength(1)
+  })
+
+  it('does not duplicate daily trainers when they already exist', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't1',
+          kind: 'daily',
+          slot: 1,
+          status: 'not_started',
+          sourceLabel: 'Palabras nuevas',
+          words: [
+            {
+              userCard: {
+                id: 'card-1',
+                wordId: 'word-1',
+                progress: 0,
+                word: { spanish: 'hola', russian: 'привет' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        word: {
+          spanish: 'hola',
+          russian: 'привет',
+          wrongRussian: ['a', 'b', 'c'],
+          wrongSpanish: ['x', 'y', 'z'],
+        },
+      },
+    ])
+
+    const result = await service.generateToday('user-1')
+
+    expect(prisma.dailyTrainer.create).not.toHaveBeenCalled()
+    expect(prisma.dailyTrainingDay.create).not.toHaveBeenCalled()
+    expect(result.trainers).toHaveLength(1)
+    expect(result.canGenerate).toBe(false)
   })
 })
 

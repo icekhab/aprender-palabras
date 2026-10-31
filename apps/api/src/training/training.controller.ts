@@ -41,6 +41,13 @@ export class TrainingController {
     return this.trainingService.getToday(request.authUser.id)
   }
 
+  @Post('today/generate')
+  generateToday(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DailyTrainingTodayResponse> {
+    return this.trainingService.generateToday(request.authUser.id)
+  }
+
   @Get('trainers/:id')
   getTrainerSession(
     @Req() request: AuthenticatedRequest,

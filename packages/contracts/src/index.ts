@@ -665,6 +665,7 @@ export interface DailyTrainerItem {
 export interface DailyTrainingTodayResponse {
   date: string
   readyCardCount: number
+  canGenerate: boolean
   trainers: DailyTrainerItem[]
 }
 

@@ -25,6 +25,22 @@ export async function getTodayTraining(
   return response.json() as Promise<DailyTrainingTodayResponse>
 }
 
+export async function generateTodayTraining(): Promise<DailyTrainingTodayResponse> {
+  const response = await fetch('/api/training/today/generate', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw await ApiError.fromResponse(response)
+  }
+
+  return response.json() as Promise<DailyTrainingTodayResponse>
+}
+
 export async function getTrainerSession(
   trainerId: string,
   signal?: AbortSignal,

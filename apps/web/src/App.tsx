@@ -58,7 +58,10 @@ import { generationQuotaToastCopyFromError } from './shared/quota-messages'
 import { SuggestionsErrorMessage } from './shared/suggestions-error'
 import { getSuggestionsQueryError } from './shared/suggestions-query'
 import { useToast } from './shared/toast'
-import { getTodayTraining } from './shared/api/training'
+import {
+  generateTodayTraining,
+  getTodayTraining,
+} from './shared/api/training'
 import {
   addExistingWord,
   createWord,
@@ -546,6 +549,7 @@ function HomePage() {
   const [debouncedDictionaryFilter, setDebouncedDictionaryFilter] =
     useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  const [noWordsModalOpen, setNoWordsModalOpen] = useState(false)
   const logoutMutation = useLogoutMutation()
 
   useEffect(() => {
@@ -605,10 +609,23 @@ function HomePage() {
     queryFn: ({ signal }) => getTodayTraining(signal),
   })
 
+  const generateTrainingMutation = useMutation({
+    mutationFn: generateTodayTraining,
+    onSuccess: (data) => {
+      queryClient.setQueryData(TRAINING_TODAY_QUERY_KEY, data)
+    },
+  })
+
   const dictionaryPages = dictionaryQuery.data?.pages
   const totalCount = dictionaryPages?.[0]?.totalCount ?? 0
   const averageProgress = dictionaryPages?.[0]?.averageProgress ?? 0
   const dictionaryItems = dictionaryPages?.flatMap((page) => page.items) ?? []
+  const canGenerateTraining =
+    trainingQuery.isSuccess && trainingQuery.data.canGenerate
+  const showTrainingSection =
+    trainingQuery.isError ||
+    (trainingQuery.isSuccess &&
+      (trainingQuery.data.trainers.length > 0 || canGenerateTraining))
 
   if (trainingQuery.isPending || dictionaryQuery.isPending) {
     return <AppSplash />
@@ -717,8 +734,7 @@ function HomePage() {
         ) : null}
       </header>
 
-      {trainingQuery.isError ||
-      (trainingQuery.isSuccess && trainingQuery.data.trainers.length > 0) ? (
+      {showTrainingSection ? (
         <section className="mx-auto max-w-5xl px-5 pt-8 sm:px-8">
           <div className="flex items-end justify-between gap-4">
             <h1 className="text-2xl font-bold tracking-tight">
@@ -743,7 +759,27 @@ function HomePage() {
           {trainingQuery.isSuccess && trainingQuery.data.trainers.length > 0 ? (
             <DailyTrainerRow trainers={trainingQuery.data.trainers} />
           ) : null}
+
+          {trainingQuery.isSuccess &&
+          trainingQuery.data.trainers.length === 0 &&
+          canGenerateTraining ? (
+            <GenerateTrainingCard
+              pending={generateTrainingMutation.isPending}
+              error={generateTrainingMutation.isError}
+              onGenerate={() => {
+                if (totalCount === 0) {
+                  setNoWordsModalOpen(true)
+                  return
+                }
+                generateTrainingMutation.mutate()
+              }}
+            />
+          ) : null}
         </section>
+      ) : null}
+
+      {noWordsModalOpen ? (
+        <NoWordsModal onClose={() => setNoWordsModalOpen(false)} />
       ) : null}
 
       <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
@@ -878,6 +914,64 @@ function DailyTrainerRow({ trainers }: { trainers: DailyTrainerItem[] }) {
         )
       })}
     </ul>
+  )
+}
+
+function GenerateTrainingCard({
+  pending,
+  error,
+  onGenerate,
+}: {
+  pending: boolean
+  error: boolean
+  onGenerate: () => void
+}) {
+  return (
+    <div className="-mx-5 mt-5 px-5 sm:-mx-8 sm:px-8">
+      <button
+        type="button"
+        disabled={pending}
+        className={`${TRAINER_CARD_COLORS[0]} flex h-40 w-40 cursor-pointer flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:brightness-105 disabled:cursor-wait disabled:opacity-80`}
+        aria-label="Generar entrenamientos"
+        onClick={onGenerate}
+      >
+        <p className="text-sm leading-snug font-semibold">
+          {pending ? 'Generando…' : 'Generar entrenamientos'}
+        </p>
+        <p className="text-sm font-medium text-white/90">
+          Crear el set de hoy
+        </p>
+      </button>
+      {error ? (
+        <p className="mt-3 text-sm text-red-700" role="alert">
+          No se pudieron generar los entrenamientos. Inténtalo de nuevo.
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function NoWordsModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-orange-950/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sin palabras"
+    >
+      <div className="w-full max-w-md rounded-2xl border border-orange-100 bg-white p-6 shadow-lg">
+        <h2 className="text-xl font-bold tracking-tight">Sin palabras</h2>
+        <p className="mt-3 text-sm text-orange-900/80">
+          No hay palabras añadidas. Añade palabras a tu diccionario para generar
+          entrenamientos.
+        </p>
+        <div className="mt-6 flex justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
