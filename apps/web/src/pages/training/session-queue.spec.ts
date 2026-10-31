@@ -55,7 +55,7 @@ describe('createRetryStep', () => {
 })
 
 describe('typesForWord', () => {
-  it('keeps prefix 1/2 and includes each of 3/4/5 once (identity shuffle)', () => {
+  it('keeps prefix 1/2 for the first two trainings (identity shuffle)', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
 
     expect(
@@ -71,16 +71,16 @@ describe('typesForWord', () => {
     expect(
       typesForWord(
         word({
-          userCardId: '3',
-          spanish: 'c',
-          russian: 'в',
-          completedTrainerCount: 3,
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 1,
         }),
       ),
-    ).toEqual([1, 3, 4, 5])
+    ).toEqual([1, 2, 3, 4, 5])
   })
 
-  it('shuffles the 3/4/5 tail when random is not identity', () => {
+  it('shuffles the 3/4/5 tail when random is not identity (early trainings)', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
 
     expect(
@@ -93,6 +93,47 @@ describe('typesForWord', () => {
         }),
       ),
     ).toEqual([1, 2, 4, 5, 3])
+  })
+
+  it('fully shuffles 1/3/4/5 after two trainings and drops type 2', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 2,
+        }),
+      ),
+    ).toEqual([1, 3, 4, 5])
+    expect(
+      typesForWord(
+        word({
+          userCardId: '3',
+          spanish: 'c',
+          russian: 'в',
+          completedTrainerCount: 3,
+        }),
+      ),
+    ).toEqual([1, 3, 4, 5])
+  })
+
+  it('can put type 1 later when count >= 2 and shuffle is not identity', () => {
+    // Fisher–Yates with random=0 on [1,3,4,5] → [3,4,5,1]
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 2,
+        }),
+      ),
+    ).toEqual([3, 4, 5, 1])
   })
 })
 

@@ -454,8 +454,8 @@ describe('TrainerSessionPage', () => {
 
   it('opens exercise 5 russian prompt typing without answer audio', async () => {
     stubSpeech()
-    // random=0 → chain [1,4,5,3] when type 2 is skipped
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+    // random≈1 → identity chain [1,3,4,5] when type 2 is skipped
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
         showIntro: false,
@@ -474,6 +474,13 @@ describe('TrainerSessionPage', () => {
 
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'лекция' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    // type 3
+    fireEvent.click(screen.getByRole('button', { name: 'lección' }))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
     })
@@ -505,8 +512,8 @@ describe('TrainerSessionPage', () => {
 
   it('opens exercise 4 audio typing with autofocus and accepts a typed answer', async () => {
     stubSpeech()
-    // random=0 → chain [1,4,5,3] when type 2 is skipped
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+    // random≈1 → identity chain [1,3,4,5] when type 2 is skipped
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
         showIntro: false,
@@ -524,6 +531,13 @@ describe('TrainerSessionPage', () => {
 
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'кофе' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    // type 3
+    fireEvent.click(screen.getByRole('button', { name: 'café' }))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
     })

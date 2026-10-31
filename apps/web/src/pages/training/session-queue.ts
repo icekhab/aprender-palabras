@@ -54,14 +54,15 @@ type WordState = {
 
 /**
  * Personal exercise-type chain for a card:
- * prefix 1 (+ 2 if trained ≤2 times), then a random permutation of 3/4/5.
+ * - first two trainings (count 0|1): prefix 1 → 2, then shuffle of 3/4/5;
+ * - after that (count ≥ 2): full shuffle of 1/3/4/5 (no type 2).
  * Call once per word and reuse — shuffle is not stable across calls.
  */
 export function typesForWord(word: TrainerSessionWord): ExerciseType[] {
-  const later = shuffleInPlace([3, 4, 5] as ExerciseType[])
-  return word.completedTrainerCount <= 2
-    ? [1, 2, ...later]
-    : [1, ...later]
+  if (word.completedTrainerCount >= 2) {
+    return shuffleInPlace([1, 3, 4, 5] as ExerciseType[])
+  }
+  return [1, 2, ...shuffleInPlace([3, 4, 5] as ExerciseType[])]
 }
 
 function pickInjectSize(waitingCount: number): number {

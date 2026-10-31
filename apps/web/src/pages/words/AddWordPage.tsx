@@ -227,7 +227,7 @@ function AddWordFormPage({
         await queryClient.invalidateQueries({
           queryKey: ['courses', courseId, 'lessons'],
         })
-        navigate(lessonReturnPath ?? '/', { replace: true })
+        navigate(cancelPath, { replace: true })
         return
       }
 
