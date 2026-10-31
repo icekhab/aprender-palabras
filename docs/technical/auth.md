@@ -13,6 +13,7 @@
 | `icekhab@gmail.com` | `admin` |
 | `karina` | `teacher` |
 | `dinaghalini@gmail.com` | `user` |
+| `smirnova.anim@gmail.com` | `user` |
 | `teacher@local.test` | `teacher` |
 | `user@local.test` | `user` |
 
