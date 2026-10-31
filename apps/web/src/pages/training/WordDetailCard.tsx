@@ -1,4 +1,7 @@
-import type { TrainerSessionWord } from '@aprender-palabras/contracts'
+import {
+  isDisplayablePartOfSpeech,
+  type TrainerSessionWord,
+} from '@aprender-palabras/contracts'
 import { SpeakButton } from '@/components/speak-button'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
 
@@ -83,7 +86,7 @@ export function WordDetailCard({ word }: { word: TrainerSessionWord }) {
 
 function grammarMeta(word: TrainerSessionWord): string | null {
   const parts: string[] = []
-  if (word.partOfSpeech) {
+  if (isDisplayablePartOfSpeech(word.partOfSpeech)) {
     parts.push(word.partOfSpeech)
   }
   if (word.gender === 'masculine') {

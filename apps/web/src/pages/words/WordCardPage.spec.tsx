@@ -84,5 +84,58 @@ describe('WordCardPage', () => {
     expect(screen.queryByText('Lecciones')).not.toBeInTheDocument()
     expect(screen.queryByText('Traducciones adicionales')).not.toBeInTheDocument()
     expect(screen.getByText('Definición')).toBeInTheDocument()
+    expect(screen.getByText('Categoría gramatical')).toBeInTheDocument()
+    expect(screen.getByText('verbo')).toBeInTheDocument()
+  })
+
+  it('hides part of speech when it is undetermined', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url === '/api/words/card-1') {
+          return new Response(
+            JSON.stringify({
+              id: 'card-1',
+              wordId: 'word-1',
+              spanish: 'esperar',
+              russian: 'ждать',
+              additionalTranslations: [],
+              definitionEs: 'Tener esperanza.',
+              examples: ['Espero tu llamada.'],
+              partOfSpeech: 'no determinada',
+              gender: null,
+              wrongRussian: ['a', 'b', 'c'],
+              wrongSpanish: ['x', 'y', 'z'],
+              imageUrl: null,
+              imagePhotographerName: null,
+              imagePhotographerUrl: null,
+              imagePageUrl: null,
+              imageProvider: null,
+              progress: 0,
+              inDictionary: true,
+              source: 'manual',
+              addedAt: '2026-10-18T12:00:00.000Z',
+              ready: true,
+              missingFields: [],
+              canEdit: false,
+              lessons: [],
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          )
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderCard()
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(screen.queryByText('Categoría gramatical')).not.toBeInTheDocument()
+    expect(screen.queryByText('no determinada')).not.toBeInTheDocument()
   })
 })

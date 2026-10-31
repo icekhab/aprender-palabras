@@ -5,6 +5,26 @@ import {
 } from './lesson-readiness.js'
 
 describe('lesson readiness', () => {
+  it('does not require part of speech for trainer readiness', () => {
+    expect(
+      isWordReadyForTrainer({
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+      }),
+    ).toBe(true)
+
+    expect(
+      getMissingTrainerFields({
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+      }),
+    ).toEqual([])
+  })
+
   it('requires at least three distractors in each direction', () => {
     expect(
       isWordReadyForTrainer({

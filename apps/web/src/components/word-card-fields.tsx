@@ -1,4 +1,7 @@
-import type { WordDraft } from '@aprender-palabras/contracts'
+import {
+  isDisplayablePartOfSpeech,
+  type WordDraft,
+} from '@aprender-palabras/contracts'
 import { Pencil } from 'lucide-react'
 import { SpeakButton } from '@/components/speak-button'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
@@ -110,7 +113,12 @@ export function WordCardFields({
           <p className="mt-1 text-sm text-orange-900/40">Sin datos</p>
         )}
       </div>
-      <ReadOnlyField label="Categoría gramatical" value={draft.partOfSpeech} />
+      {isDisplayablePartOfSpeech(draft.partOfSpeech) ? (
+        <ReadOnlyField
+          label="Categoría gramatical"
+          value={draft.partOfSpeech}
+        />
+      ) : null}
       {draft.gender ? (
         <ReadOnlyField
           label="Género"

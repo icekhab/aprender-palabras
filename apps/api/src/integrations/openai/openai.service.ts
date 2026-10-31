@@ -1,3 +1,4 @@
+import { isKnownPartOfSpeech } from '@aprender-palabras/contracts'
 import { Injectable, Logger } from '@nestjs/common'
 import OpenAI from 'openai'
 import { zodTextFormat } from 'openai/helpers/zod'
@@ -250,7 +251,10 @@ function sanitizeWordContent(
   const wrongRussian = uniqueNonEmpty(content.wrongRussian).slice(0, 10)
   const wrongSpanish = uniqueNonEmpty(content.wrongSpanish).slice(0, 10)
   const definitionEs = normalizeOptionalText(content.definitionEs)
-  const partOfSpeech = normalizeOptionalText(content.partOfSpeech)
+  const rawPartOfSpeech = normalizeOptionalText(content.partOfSpeech)
+  const partOfSpeech = isKnownPartOfSpeech(rawPartOfSpeech)
+    ? rawPartOfSpeech
+    : null
   const unsplashQuery =
     normalizeOptionalText(content.unsplashQuery) ?? 'spanish language'
 
@@ -259,7 +263,7 @@ function sanitizeWordContent(
     definitionEs,
     examples,
     partOfSpeech,
-    gender: content.gender,
+    gender: partOfSpeech === 'sustantivo' ? content.gender : null,
     wrongRussian: wrongRussian.length >= 3 ? wrongRussian : [],
     wrongSpanish: wrongSpanish.length >= 3 ? wrongSpanish : [],
     unsplashQuery,

@@ -8,21 +8,23 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import type {
-  AdminWordDetail,
-  AdminWordsListQuery,
-  AdminWordsListResponse,
-  DictionaryListItem,
-  DictionaryListQuery,
-  DictionaryListResponse,
-  RegeneratedWordImage,
-  RegenerateWordImageInput,
-  UpdateWordCardInput,
-  UserCardDetail,
-  UserRole,
-  Word,
-  WordDraft,
-  WordPairInput,
+import {
+  isKnownPartOfSpeech,
+  PART_OF_SPEECH_UNDETERMINED,
+  type AdminWordDetail,
+  type AdminWordsListQuery,
+  type AdminWordsListResponse,
+  type DictionaryListItem,
+  type DictionaryListQuery,
+  type DictionaryListResponse,
+  type RegeneratedWordImage,
+  type RegenerateWordImageInput,
+  type UpdateWordCardInput,
+  type UserCardDetail,
+  type UserRole,
+  type Word,
+  type WordDraft,
+  type WordPairInput,
 } from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
@@ -703,6 +705,11 @@ export class WordsService {
     const russian = draft.russian.trim()
     const normalizedSpanish = normalizeWordKey(spanish)
     const normalizedRussian = normalizeWordKey(russian)
+    const partOfSpeech = isKnownPartOfSpeech(draft.partOfSpeech)
+      ? draft.partOfSpeech
+      : PART_OF_SPEECH_UNDETERMINED
+    const gender =
+      partOfSpeech === 'sustantivo' ? draft.gender : null
 
     try {
       const { word, createdNewWord } = await this.prisma.$transaction(
@@ -728,8 +735,8 @@ export class WordsService {
                   additionalTranslations: draft.additionalTranslations,
                   definitionEs: draft.definitionEs,
                   examples: draft.examples,
-                  partOfSpeech: draft.partOfSpeech,
-                  gender: draft.gender,
+                  partOfSpeech,
+                  gender,
                   wrongRussian: draft.wrongRussian,
                   wrongSpanish: draft.wrongSpanish,
                   imageUrl: draft.imageUrl,

@@ -157,6 +157,25 @@ export const partOfSpeechSchema = z.enum(PART_OF_SPEECH_OPTIONS)
 
 export type PartOfSpeech = z.infer<typeof partOfSpeechSchema>
 
+/** Stored when AI could not determine POS on user auto-add. Not in edit options. */
+export const PART_OF_SPEECH_UNDETERMINED = 'no determinada'
+
+export function isKnownPartOfSpeech(
+  value: string | null | undefined,
+): value is PartOfSpeech {
+  return (
+    value != null &&
+    (PART_OF_SPEECH_OPTIONS as readonly string[]).includes(value)
+  )
+}
+
+/** True when POS should be shown on view / trainer cards. */
+export function isDisplayablePartOfSpeech(
+  value: string | null | undefined,
+): value is PartOfSpeech {
+  return isKnownPartOfSpeech(value)
+}
+
 const imageFieldsSchema = {
   imageUrl: z.string().trim().url().nullable(),
   imagePhotographerName: z.string().trim().min(1).max(200).nullable(),

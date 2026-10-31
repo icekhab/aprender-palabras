@@ -5,7 +5,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { UpdateWordCardInput, WordDraft } from '@aprender-palabras/contracts'
+import {
+  PART_OF_SPEECH_UNDETERMINED,
+  type UpdateWordCardInput,
+  type WordDraft,
+} from '@aprender-palabras/contracts'
 import { OpenAiService } from '../integrations/openai/openai.service.js'
 import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { PrismaService } from '../prisma.service.js'
@@ -253,6 +257,8 @@ describe('WordsService', () => {
       data: expect.objectContaining({
         createdByUserId: 'user-1',
         createdViaLesson: false,
+        partOfSpeech: PART_OF_SPEECH_UNDETERMINED,
+        gender: null,
       }),
     })
     expect(tx.userCard.create).toHaveBeenCalledWith({
@@ -267,6 +273,82 @@ describe('WordsService', () => {
     expect(unsplashService.trackDownload).toHaveBeenCalledWith(
       'https://api.unsplash.com/photos/abc/download',
     )
+  })
+
+  it('stores known part of speech on user create and clears gender when not sustantivo', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    tx.word.findUnique.mockResolvedValue(null)
+    tx.word.create.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: null,
+      examples: [],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({ id: 'card-1' })
+
+    await service.create(
+      'user-1',
+      emptyDraft({ partOfSpeech: 'verbo', gender: 'masculine' }),
+    )
+
+    expect(tx.word.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        partOfSpeech: 'verbo',
+        gender: null,
+      }),
+    })
+  })
+
+  it('maps invalid part of speech to undetermined on user create', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    tx.word.findUnique.mockResolvedValue(null)
+    tx.word.create.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: null,
+      examples: [],
+      partOfSpeech: PART_OF_SPEECH_UNDETERMINED,
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({ id: 'card-1' })
+
+    await service.create(
+      'user-1',
+      emptyDraft({ partOfSpeech: 'artículo', gender: 'masculine' }),
+    )
+
+    expect(tx.word.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        partOfSpeech: PART_OF_SPEECH_UNDETERMINED,
+        gender: null,
+      }),
+    })
   })
 
   it('does not track Unsplash download when reusing an existing word', async () => {
@@ -922,10 +1004,43 @@ describe('WordsService', () => {
       data: expect.objectContaining({
         createdByUserId: 'admin-1',
         createdViaLesson: false,
+        partOfSpeech: 'verbo',
       }),
     })
     expect(prisma.userCard.create).not.toHaveBeenCalled()
     expect(wordAudioService.ensureWordAudio).toHaveBeenCalledWith('word-1')
+  })
+
+  it('does not auto-fill undetermined part of speech on admin catalog create', async () => {
+    const now = new Date('2026-10-18T12:00:00.000Z')
+    prisma.word.findUnique.mockResolvedValue(null)
+    prisma.word.create.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      additionalTranslations: [],
+      definitionEs: null,
+      examples: [],
+      partOfSpeech: null,
+      gender: null,
+      wrongRussian: [],
+      wrongSpanish: [],
+      imageUrl: null,
+      imagePhotographerName: null,
+      imagePhotographerUrl: null,
+      imagePageUrl: null,
+      imageProvider: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await service.createAdminWord('admin-1', emptyDraft())
+
+    expect(prisma.word.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        partOfSpeech: null,
+      }),
+    })
   })
 
   it('rejects admin catalog create when the pair already exists', async () => {

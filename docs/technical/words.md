@@ -32,6 +32,12 @@
 (0..3). При создании новой пары — текущий пользователь; при reuse владельца
 не менять.
 
+Часть речи: при user auto-add, если AI не вернул значение из
+`PART_OF_SPEECH_OPTIONS`, сохраняется sentinel `no determinada`
+(`PART_OF_SPEECH_UNDETERMINED`); на просмотре и в тренажёре поле скрыто.
+Для admin/teacher формы sentinel не предлагается — нужна категория из списка.
+Готовность к тренировке от части речи не зависит.
+
 Backfill: автор = seed-admin; `imageGenerationCount = 0`.
 
 `createdViaLesson` пишется при create из урока (для аудита / курсов);
