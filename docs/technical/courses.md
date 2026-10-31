@@ -5,11 +5,11 @@
 
 ## Доступ по ролям
 
-Все маршруты `/api/courses*` требуют `role ∈ { teacher, admin }` (`403`
-для `user`). UI раздела Cursos скрыт для `user`.
+Create / update / invite / content mutate — `role ∈ { teacher, admin }`
+(`403` для `user`). List / accept / reject / свой current — любой auth.
 
-Invite: целевой пользователь должен существовать и иметь
-`role ∈ { teacher, admin }`, иначе ошибка без создания membership.
+Invite: целевой пользователь должен существовать (любая роль), иначе
+ошибка без создания membership.
 
 ## Эффективная активность
 
@@ -19,8 +19,8 @@ effectivelyActive =
   AND creator.role IN (teacher, admin)
 ```
 
-Мутации current / complete / invite / content — только если
-`effectivelyActive` (и права создателя/участника). Иначе `403`.
+Мутации current / invite / content — только если `effectivelyActive`
+(и права создателя/участника). Иначе `403`.
 
 В списке курсов неэффективные отдавать с флагом `effectivelyActive: false`
 (UI — деактивирован).
@@ -42,14 +42,13 @@ effectivelyActive =
 | Поле | Описание |
 |---|---|
 | `courseId` + `userId` | уникальная пара |
-| `status` | `pending` \| `accepted` \| `completed` |
+| `status` | `pending` \| `accepted` |
 | `currentLessonId` | nullable FK на `Lesson` того же курса |
-| `invitedAt` / `acceptedAt` / `completedAt` | |
+| `invitedAt` / `acceptedAt` | |
 
-- `POST /courses` → self membership `accepted` (только teacher/admin).
+- `POST /courses` → только teacher/admin; создатель видит курс без обязательного membership.
 - Reject → удаление строки membership.
-- `completed`: ручной complete или current = last lesson.
-- Смена current на не-last при `completed` → снова `accepted`.
+- Отдельного статуса `completed` нет; current = last не меняет status.
 
 ### `Lesson`
 
@@ -62,38 +61,40 @@ effectivelyActive =
 
 ## REST API (эскиз)
 
-Префикс `/api`. Сессия + teacher/admin.
+Префикс `/api`. Сессия (auth). Create/update/invite/content — teacher/admin.
 
 | Метод | Путь | Кто | Назначение |
 |---|---|---|---|
-| `POST` | `/courses` | teacher/admin | создать + self accepted |
-| `GET` | `/courses` | teacher/admin | курсы + pending; флаг effectivelyActive |
-| `GET` | `/courses/:id` | создатель или member | детали |
+| `POST` | `/courses` | teacher/admin | создать курс |
+| `GET` | `/courses?view=student\|creator` | любой auth; `creator` → teacher/admin | student: pending + accepted; creator: только createdBy |
+| `GET` | `/courses/:id` | создатель или accepted member | детали |
 | `PATCH` | `/courses/:id` | создатель | title, active (если effectivelyActive или смена active) |
-| `POST` | `/courses/:id/invite` | создатель | login → pending; target teacher/admin |
+| `POST` | `/courses/:id/invite` | создатель | login → pending; self → accepted сразу |
 | `POST` | `/courses/:id/accept` | invitee pending | accepted + sync словаря |
 | `POST` | `/courses/:id/reject` | invitee pending | delete membership |
-| `POST` | `/courses/:id/members/:userId/complete` | self / создатель | completed |
-| `GET` | `/courses/:id/members` | создатель | незавершившие первыми |
+| `DELETE` | `/courses/:id/members/:userId` | self / создатель | удалить membership; словарь не трогаем |
+| `GET` | `/courses/:id/members` | создатель | pending → не на last → на last |
 | `PATCH` | `/courses/:id/members/:userId/current-lesson` | self / создатель | current |
 | `GET` | `/courses/invited-users` | создатель | все приглашённые |
 | `GET` | `/courses/invited-users/:userId` | создатель | мои курсы для user |
 | | `/courses/:id/lessons/...` | создатель write; member read | lessons |
 
 Ошибки: `403` нет роли / курс неэффективен для мутации; `404` user;
-`400` нет уроков / уже member / target не teacher|admin.
+`400` нет уроков / уже member.
 
 ## UI-маршруты
 
-Только если `role` teacher/admin.
+Cursos у всех auth; create/Alumnos — teacher/admin.
 
 | Путь (пример) | Экран |
 |---|---|
-| `/cursos` | invites + список |
-| `/cursos/:id` | уроки / current / complete / invite |
-| `/cursos/:id/participantes` | участники |
-| `/cursos/invitados` | все приглашённые |
-| `/cursos/invitados/:userId` | курсы этого user от меня |
+| `/cursos` | Mis cursos (ученик): invites + accepted |
+| `/cursos/:id` | режим ученика: прогресс / current / Salir |
+| `/cursos/gestion` | Gestión de cursos: список + Nuevo / Alumnos |
+| `/cursos/gestion/:id` | режим создателя: edit / Participantes |
+| `/cursos/gestion/:id/participantes` | участники |
+| `/cursos/alumnos` | все ученики (приглашённые) |
+| `/cursos/alumnos/:userId` | курсы этого user от меня |
 
 ## Тренажёр
 

@@ -10,8 +10,10 @@ export interface SelectionCard {
   showCount: number
   addedAt: Date
   source: 'manual' | 'lesson'
-  /** Lesson positions (1-based) that contain this word for the user. */
-  lessonPositions: number[]
+  /** True if word is in any effectively-active accepted course current lesson. */
+  inCurrentLesson: boolean
+  /** True if word is in positions current-1..current-4 of any such course. */
+  inRecentLessons: boolean
 }
 
 export interface BuiltTrainer {
@@ -119,16 +121,6 @@ function trainedAtLeast28BeforeAnchor(
   return anchor.getTime() - card.lastTrainedAt.getTime() >= 28 * MS_PER_DAY
 }
 
-function inLessonOffsets(
-  card: SelectionCard,
-  currentPosition: number,
-  offsets: number[],
-): boolean {
-  return card.lessonPositions.some((position) =>
-    offsets.some((offset) => position === currentPosition - offset),
-  )
-}
-
 function sortNewestFirst(
   cards: SelectionCard[],
   random: RandomFn,
@@ -232,7 +224,8 @@ export function pickExtraTrainerWords(
 
 export function buildDailyTrainers(input: {
   cards: SelectionCard[]
-  currentLessonPosition: number | null
+  /** True when the user has at least one effectively-active accepted course current. */
+  hasActiveCourseLesson: boolean
   /** Last completed trainer time; windows are relative to this (or now). */
   anchor?: Date
   now?: Date
@@ -264,7 +257,7 @@ export function buildDailyTrainers(input: {
     })
   }
 
-  if (input.currentLessonPosition === null) {
+  if (!input.hasActiveCourseLesson) {
     const started = cards.filter(isStarted)
     const unstarted = cards.filter(isUnstarted)
 
@@ -309,16 +302,11 @@ export function buildDailyTrainers(input: {
     return trainers
   }
 
-  const currentPosition = input.currentLessonPosition
   const started = cards.filter(isStarted)
   const unstarted = cards.filter(isUnstarted)
 
-  const l0Started = started.filter((card) =>
-    inLessonOffsets(card, currentPosition, [0]),
-  )
-  const l1to4Started = started.filter((card) =>
-    inLessonOffsets(card, currentPosition, [1, 2, 3, 4]),
-  )
+  const l0Started = started.filter((card) => card.inCurrentLesson)
+  const l1to4Started = started.filter((card) => card.inRecentLessons)
   const manualRecent14Started = started.filter(
     (card) => isManual(card) && isRecent14(card, anchor),
   )

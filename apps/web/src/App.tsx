@@ -16,7 +16,14 @@ import {
   type SuggestionItem,
   type SuggestionsResponse,
 } from '@aprender-palabras/contracts'
-import { BookOpen, Library, LogOut, Plus, Settings } from 'lucide-react'
+import {
+  BookOpen,
+  ClipboardList,
+  Library,
+  LogOut,
+  Plus,
+  Settings,
+} from 'lucide-react'
 import {
   useEffect,
   useRef,
@@ -35,8 +42,12 @@ import { WordRow } from '@/components/word-row'
 import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
 import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
 import { AdminWordsPage } from './pages/admin/AdminWordsPage'
+import { CourseDetailPage } from './pages/courses/CourseDetailPage'
+import { CourseMembersPage } from './pages/courses/CourseMembersPage'
+import { CoursesPage } from './pages/courses/CoursesPage'
+import { InvitedUserDetailPage } from './pages/courses/InvitedUserDetailPage'
+import { InvitedUsersPage } from './pages/courses/InvitedUsersPage'
 import { LessonDetailPage } from './pages/lessons/LessonDetailPage'
-import { LessonsPage } from './pages/lessons/LessonsPage'
 import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
 import { AddWordPage } from './pages/words/AddWordPage'
 import { WordCardEditPage } from './pages/words/WordCardEditPage'
@@ -146,18 +157,86 @@ function App() {
         }
       />
       <Route
-        path="/lecciones"
+        path="/cursos"
         element={
           <ProtectedRoute>
-            <LessonsRoutePage />
+            <CoursesRoutePage mode="student" />
           </ProtectedRoute>
         }
       />
       <Route
-        path="/lecciones/:id"
+        path="/cursos/gestion"
         element={
           <ProtectedRoute>
-            <LessonDetailRoutePage />
+            <TeacherRoute>
+              <CoursesRoutePage mode="creator" />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/alumnos"
+        element={
+          <ProtectedRoute>
+            <TeacherRoute>
+              <InvitedUsersRoutePage />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/alumnos/:userId"
+        element={
+          <ProtectedRoute>
+            <TeacherRoute>
+              <InvitedUserDetailRoutePage />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/gestion/:courseId"
+        element={
+          <ProtectedRoute>
+            <TeacherRoute>
+              <CourseDetailRoutePage mode="creator" />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/gestion/:courseId/participantes"
+        element={
+          <ProtectedRoute>
+            <TeacherRoute>
+              <CourseMembersRoutePage />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/gestion/:courseId/lecciones/:lessonId"
+        element={
+          <ProtectedRoute>
+            <TeacherRoute>
+              <LessonDetailRoutePage mode="creator" />
+            </TeacherRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/:courseId"
+        element={
+          <ProtectedRoute>
+            <CourseDetailRoutePage mode="student" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cursos/:courseId/lecciones/:lessonId"
+        element={
+          <ProtectedRoute>
+            <LessonDetailRoutePage mode="student" />
           </ProtectedRoute>
         }
       />
@@ -169,18 +248,21 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/lecciones" element={<Navigate replace to="/cursos" />} />
+      <Route path="/lecciones/:id" element={<Navigate replace to="/cursos" />} />
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
   )
 }
 
-function LessonsRoutePage() {
+function CoursesRoutePage({ mode }: { mode: 'student' | 'creator' }) {
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const logoutMutation = useLogoutMutation()
 
   return (
-    <LessonsPage
+    <CoursesPage
+      mode={mode}
       userMenu={
         user ? (
           <UserMenu user={user} logoutMutation={logoutMutation} />
@@ -190,13 +272,79 @@ function LessonsRoutePage() {
   )
 }
 
-function LessonDetailRoutePage() {
+function CourseDetailRoutePage({ mode }: { mode: 'student' | 'creator' }) {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <CourseDetailPage
+      mode={mode}
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function CourseMembersRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <CourseMembersPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function InvitedUsersRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <InvitedUsersPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function InvitedUserDetailRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <InvitedUserDetailPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function LessonDetailRoutePage({ mode }: { mode: 'student' | 'creator' }) {
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const logoutMutation = useLogoutMutation()
 
   return (
     <LessonDetailPage
+      mode={mode}
       userMenu={
         user ? (
           <UserMenu user={user} logoutMutation={logoutMutation} />
@@ -230,6 +378,21 @@ function AdminRoute({ children }: { children: ReactNode }) {
   }
 
   if (currentUser.data?.role !== 'admin') {
+    return <Navigate replace to="/" />
+  }
+
+  return children
+}
+
+function TeacherRoute({ children }: { children: ReactNode }) {
+  const currentUser = useCurrentUser()
+
+  if (currentUser.isPending) {
+    return <AppSplash />
+  }
+
+  const role = currentUser.data?.role
+  if (role !== 'teacher' && role !== 'admin') {
     return <Navigate replace to="/" />
   }
 
@@ -884,12 +1047,26 @@ function UserMenu({
             className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-sm hover:bg-orange-50"
             onClick={() => {
               setOpen(false)
-              navigate('/lecciones')
+              navigate('/cursos')
             }}
           >
             <BookOpen className="size-4 shrink-0" aria-hidden />
-            Lecciones
+            Mis cursos
           </button>
+          {user.role === 'teacher' || user.role === 'admin' ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full cursor-pointer items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm hover:bg-orange-50"
+              onClick={() => {
+                setOpen(false)
+                navigate('/cursos/gestion')
+              }}
+            >
+              <ClipboardList className="size-4 shrink-0" aria-hidden />
+              Gestión de cursos
+            </button>
+          ) : null}
           {user.role === 'admin' ? (
             <button
               type="button"
@@ -946,6 +1123,7 @@ function useLogoutMutation() {
       queryClient.removeQueries({ queryKey: ['suggestions'] })
       queryClient.removeQueries({ queryKey: DICTIONARY_QUERY_KEY })
       queryClient.removeQueries({ queryKey: ['lessons'] })
+      queryClient.removeQueries({ queryKey: ['courses'] })
       navigate('/login', { replace: true })
     },
   })

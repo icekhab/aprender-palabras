@@ -5,6 +5,7 @@ import { AdminModule } from './admin/admin.module.js'
 import { AuthGuard } from './auth/auth.guard.js'
 import { AuthModule } from './auth/auth.module.js'
 import { OriginGuard } from './auth/origin.guard.js'
+import { CoursesModule } from './courses/courses.module.js'
 import { HealthController } from './health.controller.js'
 import { LessonsModule } from './lessons/lessons.module.js'
 import { PrismaModule } from './prisma.module.js'
@@ -20,6 +21,7 @@ import { WordsModule } from './words/words.module.js'
     SuggestionsModule,
     WordsModule,
     AdminModule,
+    CoursesModule,
     LessonsModule,
     TrainingModule,
     SpeechModule,

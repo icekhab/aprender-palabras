@@ -32,8 +32,13 @@ export function AddWordPage() {
   const spanish = searchParams.get('spanish')?.trim() ?? ''
   const russian = searchParams.get('russian')?.trim() ?? ''
   const lessonId = searchParams.get('lessonId')?.trim() || null
+  const courseId = searchParams.get('courseId')?.trim() || null
   const hasPair = spanish.length > 0 && russian.length > 0
-  const cancelPath = lessonId ? `/lecciones/${lessonId}` : '/'
+  const lessonReturnPath =
+    courseId && lessonId
+      ? `/cursos/gestion/${courseId}/lecciones/${lessonId}`
+      : null
+  const cancelPath = lessonReturnPath ?? '/'
   const authUser = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const role = authUser?.role ?? 'user'
   const isSearchAutoAdd = role === 'user' && !lessonId
@@ -56,6 +61,7 @@ export function AddWordPage() {
     <AddWordFormPage
       spanish={spanish}
       russian={russian}
+      courseId={courseId}
       lessonId={lessonId}
       cancelPath={cancelPath}
     />
@@ -167,11 +173,13 @@ function AutoAddWordPage({
 function AddWordFormPage({
   spanish,
   russian,
+  courseId,
   lessonId,
   cancelPath,
 }: {
   spanish: string
   russian: string
+  courseId: string | null
   lessonId: string | null
   cancelPath: string
 }) {
@@ -209,18 +217,17 @@ function AddWordFormPage({
 
   const createMutation = useMutation({
     mutationFn: (draft: WordDraft) => {
-      if (lessonId) {
-        return addNewWordToLesson(lessonId, draft)
+      if (courseId && lessonId) {
+        return addNewWordToLesson(courseId, lessonId, draft)
       }
       return createWord(draft)
     },
     onSuccess: async () => {
-      if (lessonId) {
+      if (courseId && lessonId) {
         await queryClient.invalidateQueries({
-          queryKey: ['lessons', 'detail', lessonId],
+          queryKey: ['courses', courseId, 'lessons'],
         })
-        await queryClient.invalidateQueries({ queryKey: ['lessons', 'list'] })
-        navigate(`/lecciones/${lessonId}`, { replace: true })
+        navigate(lessonReturnPath ?? '/', { replace: true })
         return
       }
 

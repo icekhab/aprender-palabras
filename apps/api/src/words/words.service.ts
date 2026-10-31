@@ -531,11 +531,20 @@ export class WordsService {
     const lessons = await this.prisma.lessonWord.findMany({
       where: {
         wordId: card.wordId,
-        lesson: { userId },
+        lesson: {
+          course: {
+            memberships: {
+              some: {
+                userId,
+                status: 'accepted',
+              },
+            },
+          },
+        },
       },
       select: {
         lesson: {
-          select: { id: true, title: true },
+          select: { id: true, title: true, courseId: true },
         },
       },
       orderBy: { lesson: { position: 'asc' } },
@@ -569,6 +578,7 @@ export class WordsService {
       canEdit: canEditWord(role, userId, card.word),
       lessons: lessons.map((item) => ({
         id: item.lesson.id,
+        courseId: item.lesson.courseId,
         title: item.lesson.title,
       })),
     }

@@ -17,7 +17,7 @@ export function WordRow({
   const mastered = progress >= 100
 
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-3 py-3.5">
+    <li className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 py-3.5">
       <span className="shrink-0" aria-hidden>
         <ProgressDot progress={progress} />
       </span>
@@ -38,13 +38,15 @@ export function WordRow({
           aria-hidden
         />
       </span>
-      <span className="min-w-0 text-orange-900/55">
-        {russian}
-        <span className="sr-only">
-          {mastered ? ', dominada' : `, progreso ${progress}%`}
+      <span className="flex min-w-0 items-center gap-4 text-orange-900/55">
+        <span className="min-w-0">
+          {russian}
+          <span className="sr-only">
+            {mastered ? ', dominada' : `, progreso ${progress}%`}
+          </span>
         </span>
+        {trailing ? <span className="shrink-0">{trailing}</span> : null}
       </span>
-      {trailing ? <span className="shrink-0">{trailing}</span> : null}
     </li>
   )
 }

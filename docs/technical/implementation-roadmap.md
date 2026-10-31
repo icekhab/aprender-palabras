@@ -20,8 +20,8 @@
 
 ## 0. Подготовка
 
-- [ ] Перечитать [05-courses.md](../product/05-courses.md), [quotas.md](./quotas.md), [auth.md](./auth.md).
-- [ ] Решить порядок миграций на prod (бэкап БД перед сменой Lesson → Course).
+- [x] Перечитать [05-courses.md](../product/05-courses.md), [quotas.md](./quotas.md), [auth.md](./auth.md).
+- [x] На prod уроков нет — schema migration без data backfill (бэкап по желанию).
 
 ---
 
@@ -134,14 +134,13 @@
 
 **Цель:** все уроки внутри Course; membership с current на участника.
 
-- [ ] Prisma: `Course`, `CourseMembership`
+- [x] Prisma: `Course`, `CourseMembership`
   (`pending|accepted|completed`, `currentLessonId`).
-- [ ] `Lesson.courseId`; убрать `Lesson.userId` / `User.currentLessonId`.
-- [ ] Миграция данных: личный курс на пользователя с уроками; перенос
-  current; last → `completed`.
-- [ ] Создателям личных курсов выдать `teacher` или `admin`, иначе курсы
-  сразу неэффективны ([05-courses §7, §9](../product/05-courses.md)).
-- [ ] Прогнать миграцию на копии prod.
+- [x] `Lesson.courseId`; убрать `Lesson.userId` / `User.currentLessonId`.
+- [x] Миграция данных: на prod уроков не было — schema-only (wipe локальных
+  Lesson при необходимости); без backfill личных курсов.
+- [x] Создателям личных курсов выдать `teacher` или `admin` — N/A (нет данных).
+- [x] Прогнать миграцию локально (prod без lesson-данных).
 
 **Ссылки:** [courses.md](./courses.md), [05-courses §9](../product/05-courses.md).
 
@@ -149,19 +148,19 @@
 
 ## 8. API курсов (без UI)
 
-**Цель:** CRUD, invite/accept/reject, current, complete, members; только teacher/admin.
+**Цель:** CRUD, invite/accept/reject, current, members; create/edit для teacher/admin, прохождение для любой роли по invite.
 
-- [ ] Guard: все `/courses*` → `403` для `user`.
-- [ ] Create → self `accepted`; invite только на teacher/admin.
-- [ ] Accept / reject (reject = delete membership).
-- [ ] Current lesson + auto `completed` если last; ручной complete.
-- [ ] Создатель меняет current/complete у другого member.
-- [ ] `effectivelyActive = active AND creator.role ∈ {teacher,admin}`.
-- [ ] Мутации на неэффективном курсе → `403`.
-- [ ] Список invited-users / курсы user в контексте создателя.
-- [ ] Перенос lessons API под `/courses/:id/lessons/...`.
-- [ ] Добавление слова в урок: UX с правкой + course-квота (п. 5–6).
-- [ ] E2E/integration тесты API.
+- [x] Guard: create/update/invite/content → `403` для `user`; list/accept/progress — для всех auth.
+- [x] Create только teacher/admin; invite любому существующему логину.
+- [x] Accept / reject (reject = delete membership).
+- [x] Current lesson (без статуса `completed` / complete endpoint).
+- [x] Создатель меняет current у другого member.
+- [x] `effectivelyActive = active AND creator.role ∈ {teacher,admin}`.
+- [x] Мутации на неэффективном курсе → `403`.
+- [x] Список invited-users / курсы user в контексте создателя.
+- [x] Перенос lessons API под `/courses/:id/lessons/...`.
+- [x] Добавление слова в урок: UX с правкой + course-квота (п. 5–6).
+- [ ] E2E/integration тесты API (частично unit; добить отдельно).
 
 **Ссылки:** [05-courses](../product/05-courses.md), [courses.md](./courses.md).
 
@@ -171,13 +170,14 @@
 
 **Цель:** испанский раздел курсов.
 
-- [ ] Меню Cursos только для teacher/admin.
-- [ ] `/cursos`: сверху pending accept/reject; список курсов
-  (незавершённые эффективные сверху; Completado / деактивирован).
-- [ ] `/cursos/:id`: уроки, свой current, complete; создатель — edit/invite.
-- [ ] Деактивированный курс — read-only.
-- [ ] Заменить плоский вход «Lecciones» на курсы → уроки.
-- [ ] Тесты UI (меню, invite block, сортировка).
+- [x] Меню: Mis cursos (все); Gestión de cursos (teacher/admin).
+- [x] `/cursos` (ученик): pending + accepted; `/cursos/gestion` (создатель):
+  свои курсы + Nuevo/Alumnos.
+- [x] Режим ученика: прогресс / Actual / Marcar actual / Salir.
+- [x] Режим создателя: edit без прогресса; Participantes / Desactivar.
+- [x] Деактивированный курс — read-only.
+- [x] Заменить плоский вход «Lecciones» на курсы → уроки.
+- [ ] Тесты UI (меню, invite block, сортировка) — меню Cursos покрыто.
 
 **Ссылки:** [05-courses §10](../product/05-courses.md).
 
@@ -185,11 +185,11 @@
 
 ## 10. UI создателя: участники и приглашённые
 
-- [ ] Участники курса: не завершившие сверху; current/next / pending.
-- [ ] Список всех приглашённых по своим курсам.
-- [ ] Страница пользователя в контексте «мои курсы для него»:
-  смена current / complete.
-- [ ] На неэффективном курсе действия управления скрыты/запрещены.
+- [x] Участники курса: pending → не на last → на last; смена current.
+- [x] Список всех приглашённых по своим курсам.
+- [x] Страница пользователя в контексте «мои курсы для него»:
+  смена current.
+- [x] На неэффективном курсе действия управления скрыты/запрещены.
 
 **Ссылки:** [05-courses §10.3–10.4](../product/05-courses.md).
 
@@ -199,12 +199,10 @@
 
 **Цель:** уроковые окна только с effectivelyActive + accepted.
 
-- [ ] `loadSelectionContext`: окна prev+current+next по всем таким курсам.
-- [ ] Объединение + словарь (в т.ч. слова из деактивированных курсов).
-- [ ] Не включать `completed` / `pending` / неэффективные в **уроковое** окно.
-- [ ] Тесты selection / training.
-
-**Ссылки:** [03-daily-training](../product/03-daily-training.md), [training.md](./training.md), [courses.md](./courses.md) §Тренажёр.
+- [x] `loadSelectionContext`: окна prev+current+next по всем таким курсам.
+- [x] Объединение + словарь (в т.ч. слова из деактивированных курсов).
+- [x] Не включать `pending` / неэффективные в **уроковое** окно.
+- [x] Тесты selection / training.
 
 ---
 

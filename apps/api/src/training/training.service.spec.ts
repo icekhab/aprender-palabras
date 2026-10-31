@@ -51,6 +51,9 @@ function createPrismaMock() {
     lesson: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
     },
+    courseMembership: {
+      findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
   }
 }
 
@@ -470,11 +473,9 @@ describe('TrainingService.completeTrainer', () => {
     prisma.userCard.findMany.mockResolvedValue([])
     prisma.dailyTrainer.count.mockResolvedValue(0)
     prisma.user.findUniqueOrThrow.mockResolvedValue({
-      currentLessonId: null,
       lastCompletedTrainerAt: null,
-      currentLesson: null,
     })
-    prisma.lesson.findMany.mockResolvedValue([])
+    prisma.courseMembership.findMany.mockResolvedValue([])
 
     const result = await service.completeTrainer('user-1', 'trainer-1', [
       { userCardId: 'card-1', errorCount: 0 },

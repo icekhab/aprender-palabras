@@ -312,6 +312,7 @@ export type UserCardSource = 'manual' | 'lesson'
 
 export interface UserCardLessonRef {
   id: string
+  courseId: string
   title: string
 }
 
@@ -400,6 +401,135 @@ export interface AdminWordDetail {
   updatedAt: string
 }
 
+export const courseMembershipStatusSchema = z.enum([
+  'pending',
+  'accepted',
+])
+
+export type CourseMembershipStatus = z.infer<
+  typeof courseMembershipStatusSchema
+>
+
+export const courseListViewSchema = z.enum(['student', 'creator'])
+
+export type CourseListView = z.infer<typeof courseListViewSchema>
+
+export const createCourseSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+})
+
+export type CreateCourseInput = z.infer<typeof createCourseSchema>
+
+export const updateCourseSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    active: z.boolean().optional(),
+  })
+  .refine(
+    (value) => value.title !== undefined || value.active !== undefined,
+    { message: 'At least one field is required' },
+  )
+
+export type UpdateCourseInput = z.infer<typeof updateCourseSchema>
+
+export const inviteToCourseSchema = z.object({
+  login: z.string().trim().min(1).max(320),
+})
+
+export type InviteToCourseInput = z.infer<typeof inviteToCourseSchema>
+
+export const setMemberCurrentLessonSchema = z.object({
+  lessonId: z.string().uuid(),
+})
+
+export type SetMemberCurrentLessonInput = z.infer<
+  typeof setMemberCurrentLessonSchema
+>
+
+export interface CourseListItem {
+  id: string
+  title: string
+  active: boolean
+  effectivelyActive: boolean
+  createdByUserId: string
+  createdByLogin: string
+  isCreator: boolean
+  /** Null when creator views a course they are not a member of. */
+  membershipStatus: CourseMembershipStatus | null
+  currentLessonId: string | null
+  currentLessonTitle: string | null
+  currentLessonPosition: number | null
+  lessonCount: number
+  createdAt: string
+}
+
+export interface CoursePendingInvite {
+  id: string
+  title: string
+  createdByLogin: string
+  invitedAt: string
+}
+
+export interface CourseListResponse {
+  pending: CoursePendingInvite[]
+  items: CourseListItem[]
+}
+
+export interface CourseDetail {
+  id: string
+  title: string
+  active: boolean
+  effectivelyActive: boolean
+  createdByUserId: string
+  createdByLogin: string
+  isCreator: boolean
+  /** Null when creator views a course they are not a member of. */
+  membershipStatus: CourseMembershipStatus | null
+  currentLessonId: string | null
+  currentLessonTitle: string | null
+  currentLessonPosition: number | null
+  lessonCount: number
+  createdAt: string
+}
+
+export interface CourseMemberItem {
+  userId: string
+  login: string
+  status: CourseMembershipStatus
+  currentLessonId: string | null
+  currentLessonTitle: string | null
+  currentLessonPosition: number | null
+  nextLessonId: string | null
+  nextLessonTitle: string | null
+  invitedAt: string
+  acceptedAt: string | null
+}
+
+export interface InvitedUserItem {
+  userId: string
+  login: string
+  courseCount: number
+}
+
+export interface InvitedUserCourseItem {
+  courseId: string
+  title: string
+  effectivelyActive: boolean
+  status: CourseMembershipStatus
+  currentLessonId: string | null
+  currentLessonTitle: string | null
+  currentLessonPosition: number | null
+  nextLessonId: string | null
+  nextLessonTitle: string | null
+  lessonCount: number
+}
+
+export interface InvitedUserDetail {
+  userId: string
+  login: string
+  courses: InvitedUserCourseItem[]
+}
+
 export const lessonListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
@@ -446,6 +576,7 @@ export type LessonStatus =
 
 export interface LessonListItem {
   id: string
+  courseId: string
   title: string
   position: number
   status: LessonStatus
@@ -458,7 +589,9 @@ export interface LessonListItem {
 export interface LessonListResponse {
   totalCount: number
   hasMore: boolean
+  courseId: string
   currentLessonId: string | null
+  canEdit: boolean
   items: LessonListItem[]
 }
 
@@ -477,6 +610,7 @@ export interface LessonWordItem {
 
 export interface LessonDetail {
   id: string
+  courseId: string
   title: string
   position: number
   status: LessonStatus
@@ -484,6 +618,7 @@ export interface LessonDetail {
   readyCount: number
   averageProgress: number
   createdAt: string
+  canEdit: boolean
   words: LessonWordItem[]
 }
 

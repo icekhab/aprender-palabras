@@ -20,7 +20,8 @@ function card(
     showCount: 0,
     addedAt: new Date('2026-10-01T12:00:00.000Z'),
     source: 'manual',
-    lessonPositions: [],
+    inCurrentLesson: false,
+    inRecentLessons: false,
     ...overrides,
   }
 }
@@ -64,14 +65,14 @@ describe('buildDailyTrainers with current lesson', () => {
       card({
         userCardId: 'l0-new',
         source: 'lesson',
-        lessonPositions: [2],
+        inCurrentLesson: true,
         completedTrainerCount: 0,
         addedAt: new Date('2026-10-18T12:00:00.000Z'),
       }),
       card({
         userCardId: 'l0-old',
         source: 'lesson',
-        lessonPositions: [2],
+        inCurrentLesson: true,
         completedTrainerCount: 1,
         lastTrainedAt: new Date('2026-10-10T12:00:00.000Z'),
         progress: 50,
@@ -81,7 +82,7 @@ describe('buildDailyTrainers with current lesson', () => {
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 2,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -100,7 +101,7 @@ describe('buildDailyTrainers with current lesson', () => {
       card({
         userCardId: `s${index}`,
         source: 'lesson',
-        lessonPositions: [3],
+        inCurrentLesson: true,
         completedTrainerCount: 1,
         lastTrainedAt: new Date('2026-10-05T12:00:00.000Z'),
         progress: index,
@@ -110,7 +111,7 @@ describe('buildDailyTrainers with current lesson', () => {
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 3,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -128,7 +129,7 @@ describe('buildDailyTrainers with current lesson', () => {
       card({
         userCardId: 'current',
         source: 'lesson',
-        lessonPositions: [1],
+        inCurrentLesson: true,
         completedTrainerCount: 1,
         lastTrainedAt: new Date('2026-10-10T12:00:00.000Z'),
         addedAt: new Date('2026-01-01T12:00:00.000Z'),
@@ -142,7 +143,7 @@ describe('buildDailyTrainers with current lesson', () => {
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 1,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -160,14 +161,14 @@ describe('buildDailyTrainers with current lesson', () => {
         completedTrainerCount: 2,
         lastTrainedAt: new Date('2026-10-10T12:00:00.000Z'),
         addedAt: new Date('2026-01-01T12:00:00.000Z'),
-        lessonPositions: [1],
+        inCurrentLesson: true,
         source: 'lesson',
       }),
     ]
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 1,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -187,7 +188,6 @@ describe('buildDailyTrainers with current lesson', () => {
         progress: 80,
         // Age ≥ 28 and not in L0/L1–L4 for current position 10
         addedAt: new Date('2026-07-01T12:00:00.000Z'),
-        lessonPositions: [1],
         source: 'lesson',
       }),
       card({
@@ -196,14 +196,13 @@ describe('buildDailyTrainers with current lesson', () => {
         lastTrainedAt: new Date('2026-08-01T12:00:00.000Z'),
         progress: 10,
         addedAt: new Date('2026-07-01T12:00:00.000Z'),
-        lessonPositions: [1],
         source: 'lesson',
       }),
     ]
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 10,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -231,7 +230,7 @@ describe('buildDailyTrainers with current lesson', () => {
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 1,
+      hasActiveCourseLesson: true,
       anchor: anchorFrozen,
       now: nowLater,
       random: () => 0.2,
@@ -246,7 +245,7 @@ describe('buildDailyTrainers with current lesson', () => {
       card({
         userCardId: 'only-started',
         source: 'lesson',
-        lessonPositions: [1],
+        inCurrentLesson: true,
         completedTrainerCount: 1,
         lastTrainedAt: new Date('2026-10-01T12:00:00.000Z'),
         addedAt: new Date('2026-09-01T12:00:00.000Z'),
@@ -255,7 +254,7 @@ describe('buildDailyTrainers with current lesson', () => {
 
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: 1,
+      hasActiveCourseLesson: true,
       anchor,
       now,
       random: () => 0.2,
@@ -278,7 +277,7 @@ describe('buildDailyTrainers without current lesson', () => {
     ]
     const trainers = buildDailyTrainers({
       cards,
-      currentLessonPosition: null,
+      hasActiveCourseLesson: false,
       now: new Date('2026-10-19T12:00:00.000Z'),
       random: () => 0.1,
     })

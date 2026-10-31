@@ -1,9 +1,10 @@
-/* Position rewrites must run sequentially to satisfy unique (userId, position)
+/* Position rewrites must run sequentially to satisfy unique (courseId, position)
    / (lessonId, position) constraints. */
 /* oxlint-disable no-await-in-loop */
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
@@ -17,11 +18,12 @@ import type {
   LessonWordItem,
   MoveLessonInput,
   RemoveLessonWordInput,
-  SetCurrentLessonPreview,
   TrainingReadiness,
   Word,
   WordDraft,
 } from '@aprender-palabras/contracts'
+import { isEffectivelyActive } from '../courses/course-access.js'
+import { CoursesService } from '../courses/courses.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
@@ -36,21 +38,20 @@ export class LessonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wordAudioService: WordAudioService,
+    private readonly coursesService: CoursesService,
   ) {}
 
   async list(
     userId: string,
+    courseId: string,
     query: LessonListQuery,
   ): Promise<LessonListResponse> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
-    })
+    const ctx = await this.requireCourseAccess(userId, courseId)
 
     const [totalCount, lessons] = await Promise.all([
-      this.prisma.lesson.count({ where: { userId } }),
+      this.prisma.lesson.count({ where: { courseId } }),
       this.prisma.lesson.findMany({
-        where: { userId },
+        where: { courseId },
         orderBy: { position: 'asc' },
         skip: query.offset,
         take: query.limit,
@@ -66,103 +67,137 @@ export class LessonsService {
       ...new Set(lessons.flatMap((lesson) => lesson.words.map((w) => w.wordId))),
     ]
     const cards = await this.loadUserCards(userId, wordIds)
-    const currentPosition = await this.getCurrentPosition(
-      userId,
-      user.currentLessonId,
-    )
+    const currentPosition = ctx.membership?.currentLesson?.position ?? null
+    const currentLessonId = ctx.membership?.currentLessonId ?? null
 
     return {
       totalCount,
       hasMore: query.offset + lessons.length < totalCount,
-      currentLessonId: user.currentLessonId,
+      courseId,
+      currentLessonId,
+      canEdit: ctx.canEdit,
       items: lessons.map((lesson) =>
-        this.toListItem(lesson, cards, currentPosition, user.currentLessonId),
+        this.toListItem(
+          lesson,
+          courseId,
+          cards,
+          currentPosition,
+          currentLessonId,
+        ),
       ),
     }
   }
 
   async create(
     userId: string,
+    courseId: string,
     input: CreateLessonInput,
   ): Promise<LessonDetail> {
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+
     const title = input.title.trim()
     const aggregate = await this.prisma.lesson.aggregate({
-      where: { userId },
+      where: { courseId },
       _max: { position: true },
     })
-    const { _max: maxPosition } = aggregate
-    const position = (maxPosition.position ?? 0) + 1
+    const position = (aggregate._max.position ?? 0) + 1
 
-    const lesson = await this.prisma.lesson.create({
-      data: {
-        userId,
-        title,
-        position,
-      },
-      include: {
-        words: {
-          include: { word: true },
-          orderBy: { position: 'asc' },
+    const lesson = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.lesson.create({
+        data: {
+          courseId,
+          title,
+          position,
         },
-      },
+        include: {
+          words: {
+            include: { word: true },
+            orderBy: { position: 'asc' },
+          },
+        },
+      })
+
+      if (position === 1) {
+        await this.coursesService.ensureFirstLessonCurrent(
+          tx,
+          courseId,
+          created.id,
+        )
+      }
+
+      return created
     })
 
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
-    })
-    const currentPosition = await this.getCurrentPosition(
-      userId,
-      user.currentLessonId,
+    const refreshed = await this.requireCourseAccess(userId, courseId)
+    const currentPosition =
+      refreshed.membership?.currentLesson?.position ?? null
+
+    return this.toDetail(
+      lesson,
+      courseId,
+      new Map(),
+      currentPosition,
+      refreshed.membership?.currentLessonId ?? null,
+      refreshed.canEdit,
     )
-
-    return this.toDetail(lesson, new Map(), currentPosition, user.currentLessonId)
   }
 
-  async getById(userId: string, lessonId: string): Promise<LessonDetail> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
+  async getById(
+    userId: string,
+    courseId: string,
+    lessonId: string,
+  ): Promise<LessonDetail> {
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
     const cards = await this.loadUserCards(
       userId,
       lesson.words.map((item) => item.wordId),
     )
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
-    })
-    const currentPosition = await this.getCurrentPosition(
-      userId,
-      user.currentLessonId,
-    )
+    const currentPosition = ctx.membership?.currentLesson?.position ?? null
 
-    return this.toDetail(lesson, cards, currentPosition, user.currentLessonId)
+    return this.toDetail(
+      lesson,
+      courseId,
+      cards,
+      currentPosition,
+      ctx.membership?.currentLessonId ?? null,
+      ctx.canEdit,
+    )
   }
 
   async rename(
     userId: string,
+    courseId: string,
     lessonId: string,
     title: string,
   ): Promise<LessonDetail> {
-    await this.findOwnedLesson(userId, lessonId)
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    await this.findCourseLesson(courseId, lessonId)
     await this.prisma.lesson.update({
       where: { id: lessonId },
       data: { title: title.trim() },
     })
-    return this.getById(userId, lessonId)
+    return this.getById(userId, courseId, lessonId)
   }
 
   async move(
     userId: string,
+    courseId: string,
     lessonId: string,
     input: MoveLessonInput,
   ): Promise<LessonDetail> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
     const swapPosition =
       input.direction === 'up' ? lesson.position - 1 : lesson.position + 1
 
     const neighbor = await this.prisma.lesson.findUnique({
       where: {
-        userId_position: {
-          userId,
+        courseId_position: {
+          courseId,
           position: swapPosition,
         },
       },
@@ -188,113 +223,27 @@ export class LessonsService {
       })
     })
 
-    return this.getById(userId, lessonId)
+    return this.getById(userId, courseId, lessonId)
   }
 
-  async previewSetCurrent(
+  async delete(
     userId: string,
+    courseId: string,
     lessonId: string,
-  ): Promise<SetCurrentLessonPreview> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
-    const next = await this.prisma.lesson.findUnique({
-      where: {
-        userId_position: {
-          userId,
-          position: lesson.position + 1,
-        },
-      },
+  ): Promise<void> {
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
+
+    const membershipsOnLesson = await this.prisma.courseMembership.findMany({
+      where: { courseId, currentLessonId: lessonId },
     })
-
-    const rangeLessons = await this.prisma.lesson.findMany({
-      where: {
-        userId,
-        position: {
-          lte: next ? next.position : lesson.position,
-        },
-      },
-      include: {
-        words: true,
-      },
-    })
-
-    const wordIds = [
-      ...new Set(
-        rangeLessons.flatMap((item) => item.words.map((word) => word.wordId)),
-      ),
-    ]
-    const cards = await this.loadUserCards(userId, wordIds)
-
-    let wordsToAdd = 0
-    let wordsAlreadyInDictionary = 0
-
-    for (const wordId of wordIds) {
-      const card = cards.get(wordId)
-      if (card?.inDictionary) {
-        wordsAlreadyInDictionary += 1
-      } else {
-        wordsToAdd += 1
-      }
-    }
-
-    return {
-      lessonId: lesson.id,
-      lessonTitle: lesson.title,
-      nextLessonId: next?.id ?? null,
-      nextLessonTitle: next?.title ?? null,
-      wordsToAdd,
-      wordsAlreadyInDictionary,
-    }
-  }
-
-  async setCurrent(userId: string, lessonId: string): Promise<LessonDetail> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
-    })
-
-    if (user.currentLessonId === lessonId) {
-      return this.getById(userId, lessonId)
-    }
-
-    const lesson = await this.findOwnedLesson(userId, lessonId)
-    const next = await this.prisma.lesson.findUnique({
-      where: {
-        userId_position: {
-          userId,
-          position: lesson.position + 1,
-        },
-      },
-    })
-
-    await this.prisma.$transaction(async (tx) => {
-      await this.transferRangeToDictionary(
-        tx,
-        userId,
-        next ? next.position : lesson.position,
-      )
-      await tx.user.update({
-        where: { id: userId },
-        data: { currentLessonId: lessonId },
-      })
-    })
-
-    return this.getById(userId, lessonId)
-  }
-
-  async delete(userId: string, lessonId: string): Promise<void> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
-    })
-
-    const wasCurrent = user.currentLessonId === lessonId
-    const previous =
-      wasCurrent && lesson.position > 1
+    const previousLesson =
+      lesson.position > 1
         ? await this.prisma.lesson.findUnique({
             where: {
-              userId_position: {
-                userId,
+              courseId_position: {
+                courseId,
                 position: lesson.position - 1,
               },
             },
@@ -302,17 +251,15 @@ export class LessonsService {
         : null
 
     await this.prisma.$transaction(async (tx) => {
-      if (wasCurrent) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { currentLessonId: null },
-        })
-      }
+      await tx.courseMembership.updateMany({
+        where: { courseId, currentLessonId: lessonId },
+        data: { currentLessonId: null },
+      })
 
       await tx.lesson.delete({ where: { id: lessonId } })
 
       const remaining = await tx.lesson.findMany({
-        where: { userId },
+        where: { courseId },
         orderBy: { position: 'asc' },
       })
 
@@ -330,40 +277,52 @@ export class LessonsService {
         })
       }
 
-      if (wasCurrent && previous) {
+      if (previousLesson) {
         const updatedPrevious = await tx.lesson.findUniqueOrThrow({
-          where: { id: previous.id },
+          where: { id: previousLesson.id },
         })
         const nextAfterPrevious = await tx.lesson.findUnique({
           where: {
-            userId_position: {
-              userId,
+            courseId_position: {
+              courseId,
               position: updatedPrevious.position + 1,
             },
           },
         })
-        await this.transferRangeToDictionary(
-          tx,
-          userId,
-          nextAfterPrevious
-            ? nextAfterPrevious.position
-            : updatedPrevious.position,
-        )
-        await tx.user.update({
-          where: { id: userId },
-          data: { currentLessonId: previous.id },
-        })
+        const maxPosition = nextAfterPrevious
+          ? nextAfterPrevious.position
+          : updatedPrevious.position
+
+        for (const membership of membershipsOnLesson) {
+          await this.coursesService.transferCourseWindowToDictionary(
+            tx,
+            membership.userId,
+            courseId,
+            maxPosition,
+          )
+          await tx.courseMembership.update({
+            where: { id: membership.id },
+            data: { currentLessonId: previousLesson.id },
+          })
+        }
       }
     })
   }
 
   async addExistingWord(
     userId: string,
+    courseId: string,
     lessonId: string,
     wordId: string,
   ): Promise<LessonWordItem> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
-    const addToDictionary = await this.isNextLesson(userId, lesson.position)
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
+    const addToDictionary = await this.isNextLessonForUser(
+      userId,
+      courseId,
+      lesson.position,
+    )
 
     const word = await this.prisma.word.findUnique({ where: { id: wordId } })
     if (!word) {
@@ -372,10 +331,7 @@ export class LessonsService {
 
     const existingLink = await this.prisma.lessonWord.findUnique({
       where: {
-        lessonId_wordId: {
-          lessonId,
-          wordId,
-        },
+        lessonId_wordId: { lessonId, wordId },
       },
     })
     if (existingLink) {
@@ -386,15 +342,11 @@ export class LessonsService {
       where: { lessonId },
       _max: { position: true },
     })
-    const { _max: maxWordPosition } = aggregate
-    const position = (maxWordPosition.position ?? 0) + 1
+    const position = (aggregate._max.position ?? 0) + 1
 
     const card = await this.prisma.userCard.findUnique({
       where: {
-        userId_wordId: {
-          userId,
-          wordId,
-        },
+        userId_wordId: { userId, wordId },
       },
     })
 
@@ -419,19 +371,12 @@ export class LessonsService {
           }
 
           const created = await tx.lessonWord.create({
-            data: {
-              lessonId,
-              wordId,
-              position,
-            },
+            data: { lessonId, wordId, position },
           })
 
           const userCard = await tx.userCard.findUniqueOrThrow({
             where: {
-              userId_wordId: {
-                userId,
-                wordId,
-              },
+              userId_wordId: { userId, wordId },
             },
           })
 
@@ -458,18 +403,24 @@ export class LessonsService {
       ) {
         throw new ConflictException('Word already in lesson')
       }
-
       throw error
     }
   }
 
   async addNewWord(
     userId: string,
+    courseId: string,
     lessonId: string,
     draft: WordDraft,
   ): Promise<Word> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
-    const addToDictionary = await this.isNextLesson(userId, lesson.position)
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
+    const addToDictionary = await this.isNextLessonForUser(
+      userId,
+      courseId,
+      lesson.position,
+    )
 
     const spanish = draft.spanish.trim()
     const russian = draft.russian.trim()
@@ -576,13 +527,12 @@ export class LessonsService {
             where: { lessonId },
             _max: { position: true },
           })
-          const { _max: maxNewWordPosition } = aggregate
 
           await tx.lessonWord.create({
             data: {
               lessonId,
               wordId: existing.id,
-              position: (maxNewWordPosition.position ?? 0) + 1,
+              position: (aggregate._max.position ?? 0) + 1,
             },
           })
 
@@ -631,18 +581,18 @@ export class LessonsService {
 
   async removeWord(
     userId: string,
+    courseId: string,
     lessonId: string,
     wordId: string,
     input: RemoveLessonWordInput,
   ): Promise<{ requiresDisposition: boolean }> {
-    await this.findOwnedLesson(userId, lessonId)
+    const ctx = await this.requireCourseAccess(userId, courseId)
+    this.assertCanEdit(ctx)
+    await this.findCourseLesson(courseId, lessonId)
 
     const link = await this.prisma.lessonWord.findUnique({
       where: {
-        lessonId_wordId: {
-          lessonId,
-          wordId,
-        },
+        lessonId_wordId: { lessonId, wordId },
       },
     })
     if (!link) {
@@ -651,17 +601,23 @@ export class LessonsService {
 
     const card = await this.prisma.userCard.findUnique({
       where: {
-        userId_wordId: {
-          userId,
-          wordId,
-        },
+        userId_wordId: { userId, wordId },
       },
     })
 
     const otherLinks = await this.prisma.lessonWord.count({
       where: {
         wordId,
-        lesson: { userId },
+        lesson: {
+          course: {
+            memberships: {
+              some: {
+                userId,
+                status: 'accepted',
+              },
+            },
+          },
+        },
         NOT: { lessonId },
       },
     })
@@ -729,9 +685,11 @@ export class LessonsService {
 
   async trainingReadiness(
     userId: string,
+    courseId: string,
     lessonId: string,
   ): Promise<TrainingReadiness> {
-    const lesson = await this.findOwnedLesson(userId, lessonId)
+    await this.requireCourseAccess(userId, courseId)
+    const lesson = await this.findCourseLesson(courseId, lessonId)
     const missingByWord = lesson.words
       .map((item) => {
         const missingFields = getMissingTrainerFields(item.word)
@@ -748,65 +706,67 @@ export class LessonsService {
 
     return {
       readyCount,
-      canStart: readyCount >= 4,
+      canStart: readyCount >= 1,
       missingByWord,
       trainerAvailable: false,
     }
   }
 
-  private async transferRangeToDictionary(
-    tx: Prisma.TransactionClient,
-    userId: string,
-    maxPositionInclusive: number,
-  ): Promise<void> {
-    const lessons = await tx.lesson.findMany({
-      where: {
-        userId,
-        position: { lte: maxPositionInclusive },
+  private async requireCourseAccess(userId: string, courseId: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        createdBy: { select: { id: true, role: true } },
       },
-      include: { words: true },
     })
 
-    const wordIds = [
-      ...new Set(
-        lessons.flatMap((lesson) => lesson.words.map((word) => word.wordId)),
-      ),
-    ]
+    if (!course) {
+      throw new NotFoundException('Course not found')
+    }
 
-    for (const wordId of wordIds) {
-      const card = await tx.userCard.findUnique({
-        where: {
-          userId_wordId: {
-            userId,
-            wordId,
-          },
-        },
-      })
+    const membership = await this.prisma.courseMembership.findUnique({
+      where: {
+        courseId_userId: { courseId, userId },
+      },
+      include: {
+        currentLesson: { select: { id: true, title: true, position: true } },
+      },
+    })
 
-      if (card) {
-        if (!card.inDictionary) {
-          await tx.userCard.update({
-            where: { id: card.id },
-            data: { inDictionary: true },
-          })
-        }
-      } else {
-        await tx.userCard.create({
-          data: {
-            userId,
-            wordId,
-            source: 'lesson',
-            inDictionary: true,
-            progress: 0,
-          },
-        })
-      }
+    const isCreator = course.createdByUserId === userId
+    const hasMemberAccess =
+      membership !== null && membership.status === 'accepted'
+    const effectivelyActive = isEffectivelyActive({
+      active: course.active,
+      creatorRole: course.createdBy.role,
+    })
+
+    if (!isCreator && !hasMemberAccess) {
+      throw new NotFoundException('Course not found')
+    }
+
+    if (!isCreator && !effectivelyActive) {
+      throw new NotFoundException('Course not found')
+    }
+
+    return {
+      course,
+      membership: hasMemberAccess ? membership : null,
+      isCreator,
+      effectivelyActive,
+      canEdit: isCreator && effectivelyActive,
     }
   }
 
-  private async findOwnedLesson(userId: string, lessonId: string) {
+  private assertCanEdit(ctx: { canEdit: boolean }): void {
+    if (!ctx.canEdit) {
+      throw new ForbiddenException('Cannot edit course content')
+    }
+  }
+
+  private async findCourseLesson(courseId: string, lessonId: string) {
     const lesson = await this.prisma.lesson.findFirst({
-      where: { id: lessonId, userId },
+      where: { id: lessonId, courseId },
       include: {
         words: {
           include: { word: true },
@@ -858,42 +818,28 @@ export class LessonsService {
     )
   }
 
-  private async isNextLesson(
+  private async isNextLessonForUser(
     userId: string,
+    courseId: string,
     lessonPosition: number,
   ): Promise<boolean> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { currentLessonId: true },
+    const membership = await this.prisma.courseMembership.findUnique({
+      where: {
+        courseId_userId: { courseId, userId },
+      },
+      include: {
+        currentLesson: { select: { position: true } },
+      },
     })
-    const currentPosition = await this.getCurrentPosition(
-      userId,
-      user.currentLessonId,
-    )
 
+    const currentPosition = membership?.currentLesson?.position ?? null
     return (
       this.resolveStatus(
         lessonPosition,
         currentPosition,
-        user.currentLessonId,
+        membership?.currentLessonId ?? null,
       ) === 'next'
     )
-  }
-
-  private async getCurrentPosition(
-    userId: string,
-    currentLessonId: string | null,
-  ): Promise<number | null> {
-    if (!currentLessonId) {
-      return null
-    }
-
-    const current = await this.prisma.lesson.findFirst({
-      where: { id: currentLessonId, userId },
-      select: { position: true },
-    })
-
-    return current?.position ?? null
   }
 
   private resolveStatus(
@@ -936,6 +882,7 @@ export class LessonsService {
         }
       }>
     },
+    courseId: string,
     cards: Map<string, { id: string; progress: number; inDictionary: boolean }>,
     currentPosition: number | null,
     currentLessonId: string | null,
@@ -956,6 +903,7 @@ export class LessonsService {
 
     return {
       id: lesson.id,
+      courseId,
       title: lesson.title,
       position: lesson.position,
       status: this.resolveStatus(
@@ -988,12 +936,15 @@ export class LessonsService {
         }
       }>
     },
+    courseId: string,
     cards: Map<string, { id: string; progress: number; inDictionary: boolean }>,
     currentPosition: number | null,
     currentLessonId: string | null,
+    canEdit: boolean,
   ): LessonDetail {
     const listItem = this.toListItem(
       lesson,
+      courseId,
       cards,
       currentPosition,
       currentLessonId,
@@ -1001,6 +952,7 @@ export class LessonsService {
 
     return {
       ...listItem,
+      canEdit,
       words: lesson.words.map((item) => {
         const card = cards.get(item.wordId)
         const missingFields = getMissingTrainerFields(item.word)

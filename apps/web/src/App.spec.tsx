@@ -555,6 +555,7 @@ describe('App', () => {
           addedAt: '2026-10-18T12:00:00.000Z',
           ready: true,
           missingFields: [],
+          canEdit: true,
           lessons: [],
         })
       }
@@ -607,7 +608,7 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
-  it('opens account menu and navigates to lessons', async () => {
+  it('opens account menu and navigates to created courses', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>(async (input) => {
@@ -624,11 +625,9 @@ describe('App', () => {
           return emptyTrainingResponse()
         }
 
-        if (url.startsWith('/api/lessons?')) {
+        if (url.startsWith('/api/courses?')) {
           return jsonResponse({
-            totalCount: 0,
-            hasMore: false,
-            currentLessonId: null,
+            pending: [],
             items: [],
           })
         }
@@ -640,14 +639,72 @@ describe('App', () => {
     renderApp()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Lecciones' }))
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Gestión de cursos' }),
+    )
 
     expect(
-      await screen.findByRole('heading', { name: 'Lecciones' }),
+      await screen.findByRole('heading', { name: 'Gestión de cursos' }),
     ).toBeInTheDocument()
+    expect(await screen.findByText('Aún no hay cursos')).toBeInTheDocument()
     expect(
-      await screen.findByText('Aún no hay lecciones. Crea la primera.'),
+      screen.getByRole('button', { name: 'Nuevo curso' }),
     ).toBeInTheDocument()
+  })
+
+  it('shows Mis cursos for role user without creator menu', async () => {
+    const regularUser = {
+      ...user,
+      id: '0199f98d-83c0-7bde-a537-b74cf7e9ea35',
+      login: 'user@local.test',
+      role: 'user' as const,
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url === '/api/auth/me') {
+          return jsonResponse(regularUser)
+        }
+
+        if (isDictionaryListRequest(url)) {
+          return emptyDictionaryResponse()
+        }
+
+        if (isTrainingTodayRequest(url)) {
+          return emptyTrainingResponse()
+        }
+
+        if (url.startsWith('/api/courses?')) {
+          return jsonResponse({
+            pending: [],
+            items: [],
+          })
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    expect(
+      screen.queryByRole('menuitem', { name: 'Gestión de cursos' }),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mis cursos' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Mis cursos' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Aún no hay cursos')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Nuevo curso' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Alumnos' }),
+    ).not.toBeInTheDocument()
   })
 
   it('logs out from the account menu', async () => {

@@ -7,15 +7,18 @@ import type {
   MoveLessonInput,
   RemoveLessonWordInput,
   RenameLessonInput,
-  SetCurrentLessonInput,
-  SetCurrentLessonPreview,
   TrainingReadiness,
   Word,
   WordDraft,
 } from '@aprender-palabras/contracts'
 import { ApiError } from './auth'
 
+function lessonsBase(courseId: string): string {
+  return `/api/courses/${courseId}/lessons`
+}
+
 export async function listLessons(
+  courseId: string,
   query: LessonListQuery,
   signal?: AbortSignal,
 ): Promise<LessonListResponse> {
@@ -24,16 +27,17 @@ export async function listLessons(
     offset: String(query.offset),
   })
 
-  return request<LessonListResponse>(`/api/lessons?${params}`, {
+  return request<LessonListResponse>(`${lessonsBase(courseId)}?${params}`, {
     method: 'GET',
     signal,
   })
 }
 
 export async function createLesson(
+  courseId: string,
   input: CreateLessonInput,
 ): Promise<LessonDetail> {
-  return request<LessonDetail>('/api/lessons', {
+  return request<LessonDetail>(lessonsBase(courseId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -41,20 +45,22 @@ export async function createLesson(
 }
 
 export async function getLesson(
+  courseId: string,
   lessonId: string,
   signal?: AbortSignal,
 ): Promise<LessonDetail> {
-  return request<LessonDetail>(`/api/lessons/${lessonId}`, {
+  return request<LessonDetail>(`${lessonsBase(courseId)}/${lessonId}`, {
     method: 'GET',
     signal,
   })
 }
 
 export async function renameLesson(
+  courseId: string,
   lessonId: string,
   input: RenameLessonInput,
 ): Promise<LessonDetail> {
-  return request<LessonDetail>(`/api/lessons/${lessonId}`, {
+  return request<LessonDetail>(`${lessonsBase(courseId)}/${lessonId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -62,58 +68,47 @@ export async function renameLesson(
 }
 
 export async function moveLesson(
+  courseId: string,
   lessonId: string,
   input: MoveLessonInput,
 ): Promise<LessonDetail> {
-  return request<LessonDetail>(`/api/lessons/${lessonId}/move`, {
+  return request<LessonDetail>(`${lessonsBase(courseId)}/${lessonId}/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
 }
 
-export async function deleteLesson(lessonId: string): Promise<void> {
-  await request(`/api/lessons/${lessonId}`, {
+export async function deleteLesson(
+  courseId: string,
+  lessonId: string,
+): Promise<void> {
+  await request(`${lessonsBase(courseId)}/${lessonId}`, {
     method: 'DELETE',
   })
 }
 
-export async function previewSetCurrentLesson(
-  input: SetCurrentLessonInput,
-): Promise<SetCurrentLessonPreview> {
-  return request<SetCurrentLessonPreview>('/api/lessons/current/preview', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-}
-
-export async function setCurrentLesson(
-  input: SetCurrentLessonInput,
-): Promise<LessonDetail> {
-  return request<LessonDetail>('/api/lessons/current', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-}
-
 export async function addExistingWordToLesson(
+  courseId: string,
   lessonId: string,
   wordId: string,
 ): Promise<LessonWordItem> {
-  return request<LessonWordItem>(`/api/lessons/${lessonId}/words`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ wordId }),
-  })
+  return request<LessonWordItem>(
+    `${lessonsBase(courseId)}/${lessonId}/words`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wordId }),
+    },
+  )
 }
 
 export async function addNewWordToLesson(
+  courseId: string,
   lessonId: string,
   draft: WordDraft,
 ): Promise<Word> {
-  return request<Word>(`/api/lessons/${lessonId}/words/new`, {
+  return request<Word>(`${lessonsBase(courseId)}/${lessonId}/words/new`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(draft),
@@ -121,12 +116,13 @@ export async function addNewWordToLesson(
 }
 
 export async function removeWordFromLesson(
+  courseId: string,
   lessonId: string,
   wordId: string,
   input: RemoveLessonWordInput = {},
 ): Promise<{ requiresDisposition: boolean }> {
   return request<{ requiresDisposition: boolean }>(
-    `/api/lessons/${lessonId}/words/${wordId}`,
+    `${lessonsBase(courseId)}/${lessonId}/words/${wordId}`,
     {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -136,11 +132,12 @@ export async function removeWordFromLesson(
 }
 
 export async function getLessonTrainingReadiness(
+  courseId: string,
   lessonId: string,
   signal?: AbortSignal,
 ): Promise<TrainingReadiness> {
   return request<TrainingReadiness>(
-    `/api/lessons/${lessonId}/training/readiness`,
+    `${lessonsBase(courseId)}/${lessonId}/training/readiness`,
     {
       method: 'GET',
       signal,

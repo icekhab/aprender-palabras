@@ -20,7 +20,6 @@ model User {
   passwordHash           String
   role                   UserRole           @default(user)
   createdAt              DateTime           @default(now()) @db.Timestamptz(3)
-  currentLessonId        String?            @db.Uuid
   lastCompletedTrainerAt DateTime?          @db.Timestamptz(3)
   dailyGenerationLimit   Int?
   dailySuggestionsLimit  Int?
@@ -30,9 +29,45 @@ model User {
   sessions               Session[]
   cards                  UserCard[]
   createdWords           Word[]             @relation("WordCreator")
-  lessons                Lesson[]           @relation("UserLessons")
-  currentLesson          Lesson?            @relation("CurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  createdCourses         Course[]           @relation("CourseCreator")
+  courseMemberships      CourseMembership[]
   trainingDays           DailyTrainingDay[]
+}
+
+enum CourseMembershipStatus {
+  pending
+  accepted
+}
+
+model Course {
+  id              String             @id @default(uuid()) @db.Uuid
+  title           String
+  createdByUserId String             @db.Uuid
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  createdBy       User               @relation("CourseCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  memberships     CourseMembership[]
+  lessons         Lesson[]
+
+  @@index([createdByUserId])
+}
+
+model CourseMembership {
+  id              String                 @id @default(uuid()) @db.Uuid
+  courseId        String                 @db.Uuid
+  userId          String                 @db.Uuid
+  status          CourseMembershipStatus
+  currentLessonId String?                @db.Uuid
+  invitedAt       DateTime               @default(now()) @db.Timestamptz(3)
+  acceptedAt      DateTime?              @db.Timestamptz(3)
+  course          Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentLesson   Lesson?                @relation("MembershipCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+
+  @@unique([courseId, userId])
+  @@index([userId])
+  @@index([courseId])
+  @@index([currentLessonId])
 }
 
 model Session {
@@ -175,17 +210,17 @@ model DailyTrainerWord {
 }
 
 model Lesson {
-  id         String       @id @default(uuid()) @db.Uuid
-  userId     String       @db.Uuid
-  title      String
-  position   Int
-  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
-  user       User         @relation("UserLessons", fields: [userId], references: [id], onDelete: Cascade)
-  currentFor User[]       @relation("CurrentLesson")
-  words      LessonWord[]
+  id           String             @id @default(uuid()) @db.Uuid
+  courseId     String             @db.Uuid
+  title        String
+  position     Int
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  course       Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentFor   CourseMembership[] @relation("MembershipCurrentLesson")
+  words        LessonWord[]
 
-  @@unique([userId, position])
-  @@index([userId])
+  @@unique([courseId, position])
+  @@index([courseId])
 }
 
 model LessonWord {

@@ -19,36 +19,42 @@ import { ApiError } from '../../shared/api/auth'
 import {
   addExistingWordToLesson,
   getLesson,
-  getLessonTrainingReadiness,
   removeWordFromLesson,
   renameLesson,
 } from '../../shared/api/lessons'
 import { getSuggestions } from '../../shared/api/suggestions'
 import { SuggestionsErrorMessage } from '../../shared/suggestions-error'
 import { getSuggestionsQueryError } from '../../shared/suggestions-query'
+import { courseLessonsQueryKey } from '../courses/query-keys'
 import { ProgressRing } from './progress-ring'
-import { LESSONS_QUERY_KEY } from './query-keys'
 import { lessonStatusLabel } from './status-label'
 
 const SEARCH_DEBOUNCE_MS = 300
 const MIN_QUERY_LENGTH = 2
-const LESSON_QUERY_KEY = (id: string) => ['lessons', 'detail', id] as const
+const LESSON_QUERY_KEY = (courseId: string, id: string) =>
+  ['courses', courseId, 'lessons', 'detail', id] as const
 
 export function LessonDetailPage({
+  mode,
   userMenu,
 }: {
+  mode: 'student' | 'creator'
   userMenu: React.ReactNode
 }) {
-  const { id = '' } = useParams()
+  const { courseId = '', lessonId = '' } = useParams()
+  const id = lessonId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isCreatorMode = mode === 'creator'
+  const coursePath = isCreatorMode
+    ? `/cursos/gestion/${courseId}`
+    : `/cursos/${courseId}`
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameTitle, setRenameTitle] = useState('')
   const [removeTarget, setRemoveTarget] = useState<LessonWordItem | null>(null)
   const [dispositionNeeded, setDispositionNeeded] = useState(false)
-  const [trainInfoOpen, setTrainInfoOpen] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -59,37 +65,46 @@ export function LessonDetailPage({
   }, [query])
 
   const lessonQuery = useQuery({
-    queryKey: LESSON_QUERY_KEY(id),
-    queryFn: ({ signal }) => getLesson(id, signal),
-    enabled: Boolean(id),
+    queryKey: LESSON_QUERY_KEY(courseId, id),
+    queryFn: ({ signal }) => getLesson(courseId, id, signal),
+    enabled: Boolean(courseId) && Boolean(id),
   })
 
   const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
   const suggestionsEnabled =
     debouncedQuery.length >= MIN_QUERY_LENGTH && !suggestionsValidationError
   const suggestionsQuery = useQuery({
-    queryKey: ['suggestions', 'lesson', id, debouncedQuery],
+    queryKey: ['suggestions', 'lesson', courseId, id, debouncedQuery],
     queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
     enabled: suggestionsEnabled && Boolean(id),
     retry: false,
   })
 
   const renameMutation = useMutation({
-    mutationFn: (title: string) => renameLesson(id, { title }),
+    mutationFn: (title: string) => renameLesson(courseId, id, { title }),
     onSuccess: async () => {
       setRenameOpen(false)
-      await queryClient.invalidateQueries({ queryKey: LESSON_QUERY_KEY(id) })
-      await queryClient.invalidateQueries({ queryKey: LESSONS_QUERY_KEY })
+      await queryClient.invalidateQueries({
+        queryKey: LESSON_QUERY_KEY(courseId, id),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: courseLessonsQueryKey(courseId),
+      })
     },
   })
 
   const addMutation = useMutation({
-    mutationFn: (wordId: string) => addExistingWordToLesson(id, wordId),
+    mutationFn: (wordId: string) =>
+      addExistingWordToLesson(courseId, id, wordId),
     onSuccess: async () => {
       setQuery('')
       setDebouncedQuery('')
-      await queryClient.invalidateQueries({ queryKey: LESSON_QUERY_KEY(id) })
-      await queryClient.invalidateQueries({ queryKey: LESSONS_QUERY_KEY })
+      await queryClient.invalidateQueries({
+        queryKey: LESSON_QUERY_KEY(courseId, id),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: courseLessonsQueryKey(courseId),
+      })
     },
   })
 
@@ -100,7 +115,7 @@ export function LessonDetailPage({
     }: {
       wordId: string
       disposition?: 'keep_dictionary' | 'delete_card'
-    }) => removeWordFromLesson(id, wordId, { disposition }),
+    }) => removeWordFromLesson(courseId, id, wordId, { disposition }),
     onSuccess: async (result) => {
       if (result.requiresDisposition) {
         setDispositionNeeded(true)
@@ -109,16 +124,14 @@ export function LessonDetailPage({
 
       setRemoveTarget(null)
       setDispositionNeeded(false)
-      await queryClient.invalidateQueries({ queryKey: LESSON_QUERY_KEY(id) })
-      await queryClient.invalidateQueries({ queryKey: LESSONS_QUERY_KEY })
+      await queryClient.invalidateQueries({
+        queryKey: LESSON_QUERY_KEY(courseId, id),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: courseLessonsQueryKey(courseId),
+      })
       await queryClient.invalidateQueries({ queryKey: ['words', 'dictionary'] })
     },
-  })
-
-  const readinessQuery = useQuery({
-    queryKey: ['lessons', 'readiness', id],
-    queryFn: ({ signal }) => getLessonTrainingReadiness(id, signal),
-    enabled: trainInfoOpen && Boolean(id),
   })
 
   if (lessonQuery.isPending) {
@@ -134,8 +147,11 @@ export function LessonDetailPage({
       <main className="grid min-h-svh place-items-center bg-orange-50 p-8 text-center text-orange-950">
         <div role="alert">
           <p>No se pudo cargar la lección.</p>
-          <Button className="mt-4" onClick={() => navigate('/lecciones')}>
-            Volver a lecciones
+          <Button
+            className="mt-4"
+            onClick={() => navigate(coursePath)}
+          >
+            Volver al curso
           </Button>
         </div>
       </main>
@@ -143,7 +159,12 @@ export function LessonDetailPage({
   }
 
   const lesson = lessonQuery.data
+  const canEdit = isCreatorMode && lesson.canEdit
+  const statusLabel = isCreatorMode
+    ? null
+    : lessonStatusLabel(lesson.status)
   const showSuggestions =
+    canEdit &&
     debouncedQuery.length >= MIN_QUERY_LENGTH &&
     (Boolean(suggestionsValidationError) ||
       suggestionsQuery.isFetching ||
@@ -160,24 +181,29 @@ export function LessonDetailPage({
               <h1 className="truncate text-xl font-bold tracking-tight">
                 {lesson.position}. {lesson.title}
               </h1>
-              <button
-                type="button"
-                aria-label="Renombrar"
-                className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-orange-700 hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
-                onClick={() => {
-                  setRenameTitle(lesson.title)
-                  setRenameOpen(true)
-                }}
-              >
-                <Pencil className="size-4" aria-hidden />
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  aria-label="Renombrar"
+                  className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-orange-700 hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200"
+                  onClick={() => {
+                    setRenameTitle(lesson.title)
+                    setRenameOpen(true)
+                  }}
+                >
+                  <Pencil className="size-4" aria-hidden />
+                </button>
+              ) : null}
             </div>
-            <p className="mt-1 text-sm text-orange-900/60">
-              {lessonStatusLabel(lesson.status)}
-            </p>
+            {statusLabel ? (
+              <p className="mt-1 text-sm text-orange-900/60">{statusLabel}</p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => navigate('/lecciones')}>
+            <Button
+              variant="outline"
+              onClick={() => navigate(coursePath)}
+            >
               Volver
             </Button>
             {userMenu}
@@ -188,26 +214,20 @@ export function LessonDetailPage({
       <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <ProgressRing value={lesson.averageProgress} />
+            {!isCreatorMode ? (
+              <ProgressRing value={lesson.averageProgress} />
+            ) : null}
             <div>
               <p className="text-sm text-orange-900/60">
                 {lesson.wordCount === 1
                   ? '1 palabra'
                   : `${lesson.wordCount} palabras`}
               </p>
-              <div className="mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTrainInfoOpen(true)}
-                >
-                  Entrenar
-                </Button>
-              </div>
             </div>
           </div>
         </div>
 
+        {canEdit ? (
         <div className="relative mt-8 max-w-xl">
           <label className="sr-only" htmlFor="lesson-search">
             Añadir palabra
@@ -266,6 +286,7 @@ export function LessonDetailPage({
                       <LessonSuggestionRow
                         key={`${item.spanish}|${item.russian}`}
                         item={item}
+                        courseId={courseId}
                         lessonId={id}
                         lessonProgress={lessonWord?.progress ?? null}
                         isAdding={addMutation.isPending}
@@ -278,8 +299,9 @@ export function LessonDetailPage({
             </div>
           ) : null}
         </div>
+        ) : null}
 
-        {addMutation.isError ? (
+        {canEdit && addMutation.isError ? (
           <p className="mt-3 text-sm text-red-700" role="alert">
             {isConflict(addMutation.error)
               ? 'La palabra ya está en la lección.'
@@ -289,7 +311,9 @@ export function LessonDetailPage({
 
         {lesson.words.length === 0 ? (
           <p className="mt-8 text-sm text-orange-900/70">
-            Aún no hay palabras. Busca arriba para añadirlas.
+            {canEdit
+              ? 'Aún no hay palabras. Busca arriba para añadirlas.'
+              : 'Aún no hay palabras en esta lección.'}
           </p>
         ) : (
           <ul className="mt-8">
@@ -307,6 +331,7 @@ export function LessonDetailPage({
                     : undefined
                 }
                 trailing={
+                  canEdit ? (
                   <button
                     type="button"
                     className="inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-red-700 hover:bg-red-50"
@@ -318,6 +343,7 @@ export function LessonDetailPage({
                   >
                     <Trash2 className="size-3.5" />
                   </button>
+                  ) : undefined
                 }
               />
             ))}
@@ -438,66 +464,20 @@ export function LessonDetailPage({
         </div>
       ) : null}
 
-      {trainInfoOpen ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-orange-950/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Entrenar"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-orange-100 bg-white p-6 shadow-lg">
-            <h2 className="text-xl font-bold">Entrenar</h2>
-            {readinessQuery.isPending ? (
-              <p className="mt-3 text-sm text-orange-900/70">Comprobando…</p>
-            ) : null}
-            {readinessQuery.isSuccess ? (
-              <>
-                <p className="mt-3 text-sm text-orange-900/80">
-                  {readinessQuery.data.readyCount} palabras listas.
-                </p>
-                {!readinessQuery.data.canStart ? (
-                  <div className="mt-3">
-                    <p className="text-sm text-red-700">
-                      Se necesitan al menos 4 palabras listas.
-                    </p>
-                    {readinessQuery.data.missingByWord.length > 0 ? (
-                      <ul className="mt-2 max-h-40 overflow-auto text-sm text-orange-900/70">
-                        {readinessQuery.data.missingByWord.map((item) => (
-                          <li key={item.wordId}>
-                            {item.spanish}: faltan {item.missingFields.join(', ')}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-orange-900/80">
-                    El entrenador de lecciones estará disponible en la próxima
-                    etapa.
-                  </p>
-                )}
-              </>
-            ) : null}
-            <div className="mt-6 flex justify-end">
-              <Button variant="outline" onClick={() => setTrainInfoOpen(false)}>
-                Cerrar
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   )
 }
 
 function LessonSuggestionRow({
   item,
+  courseId,
   lessonId,
   lessonProgress,
   isAdding,
   onAddExisting,
 }: {
   item: SuggestionItem
+  courseId: string
   lessonId: string
   lessonProgress: number | null
   isAdding: boolean
@@ -508,6 +488,7 @@ function LessonSuggestionRow({
   const params = new URLSearchParams({
     spanish: item.spanish,
     russian: item.russian,
+    courseId,
     lessonId,
   })
   const alreadyInLesson = lessonProgress !== null

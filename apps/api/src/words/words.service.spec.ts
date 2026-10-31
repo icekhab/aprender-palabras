@@ -398,7 +398,7 @@ describe('WordsService', () => {
       },
     })
     prisma.lessonWord.findMany.mockResolvedValue([
-      { lesson: { id: 'lesson-1', title: 'Uno' } },
+      { lesson: { id: 'lesson-1', courseId: 'course-1', title: 'Uno' } },
     ])
 
     await expect(
@@ -412,7 +412,7 @@ describe('WordsService', () => {
       ready: true,
       missingFields: [],
       canEdit: false,
-      lessons: [{ id: 'lesson-1', title: 'Uno' }],
+      lessons: [{ id: 'lesson-1', courseId: 'course-1', title: 'Uno' }],
     })
   })
 

@@ -252,11 +252,11 @@ export class TrainingService {
   }
 
   private async createDay(userId: string, dayDate: Date) {
-    const { cards, currentLessonPosition, lastCompletedTrainerAt } =
+    const { cards, hasActiveCourseLesson, lastCompletedTrainerAt } =
       await this.loadSelectionContext(userId)
     const built = buildDailyTrainers({
       cards,
-      currentLessonPosition,
+      hasActiveCourseLesson,
       anchor: resolveAnchor(lastCompletedTrainerAt),
     })
 
@@ -344,16 +344,14 @@ export class TrainingService {
 
   private async loadSelectionContext(userId: string): Promise<{
     cards: SelectionCard[]
-    currentLessonPosition: number | null
+    hasActiveCourseLesson: boolean
     lastCompletedTrainerAt: Date | null
   }> {
-    const [user, userCards, lessons] = await Promise.all([
+    const [user, userCards, memberships] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: {
-          currentLessonId: true,
           lastCompletedTrainerAt: true,
-          currentLesson: { select: { position: true } },
         },
       }),
       this.prisma.userCard.findMany({
@@ -377,21 +375,53 @@ export class TrainingService {
           },
         },
       }),
-      this.prisma.lesson.findMany({
-        where: { userId },
+      this.prisma.courseMembership.findMany({
+        where: {
+          userId,
+          status: 'accepted',
+          course: {
+            active: true,
+            createdBy: { role: { in: ['teacher', 'admin'] } },
+          },
+          currentLessonId: { not: null },
+        },
         select: {
-          position: true,
-          words: { select: { wordId: true } },
+          currentLesson: { select: { id: true, position: true, courseId: true } },
+          course: {
+            select: {
+              lessons: {
+                select: {
+                  position: true,
+                  words: { select: { wordId: true } },
+                },
+              },
+            },
+          },
         },
       }),
     ])
 
-    const lessonPositionsByWord = new Map<string, number[]>()
-    for (const lesson of lessons) {
-      for (const lessonWord of lesson.words) {
-        const positions = lessonPositionsByWord.get(lessonWord.wordId) ?? []
-        positions.push(lesson.position)
-        lessonPositionsByWord.set(lessonWord.wordId, positions)
+    const inCurrent = new Set<string>()
+    const inRecent = new Set<string>()
+    let hasActiveCourseLesson = false
+
+    for (const membership of memberships) {
+      const current = membership.currentLesson
+      if (!current) {
+        continue
+      }
+      hasActiveCourseLesson = true
+      for (const lesson of membership.course.lessons) {
+        for (const lessonWord of lesson.words) {
+          if (lesson.position === current.position) {
+            inCurrent.add(lessonWord.wordId)
+          } else if (
+            lesson.position < current.position &&
+            lesson.position >= current.position - 4
+          ) {
+            inRecent.add(lessonWord.wordId)
+          }
+        }
       }
     }
 
@@ -406,12 +436,13 @@ export class TrainingService {
         showCount: item.showCount,
         addedAt: item.addedAt,
         source: item.source,
-        lessonPositions: lessonPositionsByWord.get(item.wordId) ?? [],
+        inCurrentLesson: inCurrent.has(item.wordId),
+        inRecentLessons: inRecent.has(item.wordId),
       }))
 
     return {
       cards,
-      currentLessonPosition: user.currentLesson?.position ?? null,
+      hasActiveCourseLesson,
       lastCompletedTrainerAt: user.lastCompletedTrainerAt,
     }
   }

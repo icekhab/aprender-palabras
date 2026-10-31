@@ -57,7 +57,9 @@ describe('WordCardPage', () => {
               ready: true,
               missingFields: [],
               canEdit: true,
-              lessons: [{ id: 'lesson-1', title: 'Uno' }],
+              lessons: [
+                { id: 'lesson-1', courseId: 'course-1', title: 'Uno' },
+              ],
             }),
             {
               status: 200,
