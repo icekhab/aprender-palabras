@@ -70,7 +70,7 @@ export class OpenAiService {
     }
 
     const formRules =
-      'Use dictionary/lemma forms only: Russian verbs in infinitive; Russian nouns in nominative singular; Russian adjectives in the dictionary form. Spanish verbs in infinitive; Spanish nouns in singular dictionary form. Never list separate suggestions for gender, number, case, person, tense, or other inflected forms of the same lemma. Separate items only for different lemmas or different meanings. Each spanish and russian field must be a single primary wording (no semicolon lists).'
+      'Use dictionary/lemma forms only: Russian verbs in infinitive; Russian nouns in nominative singular; Russian adjectives in the dictionary form. Spanish verbs in infinitive. For Spanish nouns, use the learner dictionary headword with the definite article (el/la, or los/las when the query targets a plural) whenever that article belongs in the natural dictionary form (e.g. "el libro", "la casa"). Do not use indefinite un/una as the headword. Do not emit a bare-noun duplicate of the same meaning; a bare noun is a separate item only when meaning or usage differs without the article. Leave the article off for names, fixed expressions, and other cases where it is not part of the natural lemma. Never list separate suggestions for gender, number, case, person, tense, or other inflected forms of the same lemma. Separate items only for different lemmas or different meanings. Each spanish and russian field must be a single primary wording (no semicolon lists).'
 
     const prompt =
       direction === 'ru-to-es'
@@ -199,9 +199,9 @@ Guiding principle: the learner should pick the right translation by knowing the 
 Rules:
 - additionalTranslations: other Russian wordings of the SAME meaning only (not other senses). May be empty.
 - definitionEs: a short definition in Spanish for this meaning, or null if unsure.
-- examples: REQUIRED. Exactly 2 or 3 short natural Spanish example sentences for this meaning. Each sentence must use "${spanish}". Never return an empty list or fewer than 2 examples.
+- examples: REQUIRED. Exactly 2 or 3 short natural Spanish example sentences for this meaning. Each sentence must use the Spanish expression exactly as given in "${spanish}" (including its definite article when present). Never return an empty list or fewer than 2 examples.
 - partOfSpeech: Spanish part of speech label (e.g. verbo, sustantivo, adjetivo, expresión), or null.
-- gender: masculine or feminine only for nouns when known; otherwise null.
+- gender: masculine or feminine only for nouns when known; otherwise null. When "${spanish}" begins with el/los use masculine; with la/las use feminine, unless the noun is a known exception.
 - wrongRussian: exactly 10 Russian distractors. Apply the distractor rules below relative to "${russian}" / "${spanish}".
 - wrongSpanish: exactly 10 Spanish distractors. Apply the distractor rules below relative to "${spanish}".
 - unsplashQuery: a short English search phrase that visually represents this meaning for a stock photo.
