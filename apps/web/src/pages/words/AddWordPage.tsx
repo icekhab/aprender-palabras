@@ -225,14 +225,16 @@ function AddWordFormPage({
   ])
 
   const createMutation = useMutation({
-    mutationFn: (draft: WordDraft) => {
+    mutationFn: async (draft: WordDraft): Promise<void> => {
       if (courseId && lessonId) {
-        return addNewWordToLesson(courseId, lessonId, draft)
+        await addNewWordToLesson(courseId, lessonId, draft)
+        return
       }
       if (collectionId) {
-        return addNewWordToCollection(collectionId, draft)
+        await addNewWordToCollection(collectionId, draft)
+        return
       }
-      return createWord(draft)
+      await createWord(draft)
     },
     onSuccess: async () => {
       if (courseId && lessonId) {
