@@ -14,6 +14,7 @@
 - [Квоты платных API](./quotas.md) — gen / suggestions / реген картинки.
 - [Ежедневные подборки](./training.md).
 - [Курсы](./courses.md) — целевая схема (продукт: [05-courses.md](../product/05-courses.md)).
+- [Colecciones](./collections.md) — целевая схема (продукт: [06-collections.md](../product/06-collections.md)).
 - [Дорожная карта реализации](./implementation-roadmap.md) — чеклист multi-user / курсы / квоты по порядку.
 
 ## 2. Общая архитектура
