@@ -801,6 +801,46 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
+  it('opens Colecciones from the account menu', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url === '/api/auth/me') {
+          return jsonResponse(user)
+        }
+
+        if (isDictionaryListRequest(url)) {
+          return emptyDictionaryResponse()
+        }
+
+        if (isTrainingTodayRequest(url)) {
+          return emptyTrainingResponse()
+        }
+
+        if (url.startsWith('/api/collections')) {
+          return jsonResponse({
+            mine: [],
+            catalog: [],
+            adminDrafts: [],
+          })
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderApp()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Colecciones' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Colecciones' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Aún no hay colecciones.')).toBeInTheDocument()
+  })
+
   it('shows Mis cursos for role user without creator menu', async () => {
     const regularUser = {
       ...user,

@@ -19,6 +19,7 @@ import {
 import {
   BookOpen,
   ClipboardList,
+  FolderOpen,
   Library,
   LogOut,
   Plus,
@@ -42,6 +43,8 @@ import { WordRow } from '@/components/word-row'
 import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
 import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
 import { AdminWordsPage } from './pages/admin/AdminWordsPage'
+import { CollectionDetailPage } from './pages/collections/CollectionDetailPage'
+import { CollectionsPage } from './pages/collections/CollectionsPage'
 import { CourseDetailPage } from './pages/courses/CourseDetailPage'
 import { CourseMembersPage } from './pages/courses/CourseMembersPage'
 import { CoursesPage } from './pages/courses/CoursesPage'
@@ -160,6 +163,22 @@ function App() {
         }
       />
       <Route
+        path="/colecciones"
+        element={
+          <ProtectedRoute>
+            <CollectionsRoutePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/colecciones/:collectionId"
+        element={
+          <ProtectedRoute>
+            <CollectionDetailRoutePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/cursos"
         element={
           <ProtectedRoute>
@@ -255,6 +274,38 @@ function App() {
       <Route path="/lecciones/:id" element={<Navigate replace to="/cursos" />} />
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
+  )
+}
+
+function CollectionsRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <CollectionsPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
+  )
+}
+
+function CollectionDetailRoutePage() {
+  const queryClient = useQueryClient()
+  const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+  const logoutMutation = useLogoutMutation()
+
+  return (
+    <CollectionDetailPage
+      userMenu={
+        user ? (
+          <UserMenu user={user} logoutMutation={logoutMutation} />
+        ) : null
+      }
+    />
   )
 }
 
@@ -1146,6 +1197,18 @@ function UserMenu({
           >
             <BookOpen className="size-4 shrink-0" aria-hidden />
             Mis cursos
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full cursor-pointer items-center gap-2 border-t border-orange-100 px-4 py-3 text-left text-sm hover:bg-orange-50"
+            onClick={() => {
+              setOpen(false)
+              navigate('/colecciones')
+            }}
+          >
+            <FolderOpen className="size-4 shrink-0" aria-hidden />
+            Colecciones
           </button>
           {user.role === 'teacher' || user.role === 'admin' ? (
             <button

@@ -26,12 +26,15 @@ model User {
   quotaDate              DateTime?          @db.Date
   generationsCount       Int                @default(0)
   suggestionsCount       Int                @default(0)
-  sessions               Session[]
-  cards                  UserCard[]
-  createdWords           Word[]             @relation("WordCreator")
-  createdCourses         Course[]           @relation("CourseCreator")
-  courseMemberships      CourseMembership[]
-  trainingDays           DailyTrainingDay[]
+  sessions                     Session[]
+  cards                        UserCard[]
+  createdWords                 Word[]                        @relation("WordCreator")
+  createdCourses               Course[]                      @relation("CourseCreator")
+  courseMemberships            CourseMembership[]
+  trainingDays                 DailyTrainingDay[]
+  createdWordCollections       WordCollection[]              @relation("WordCollectionCreator")
+  wordCollectionMemberships    UserCollection[]
+  collectionIntroducedWords    UserCollectionIntroducedWord[]
 }
 
 enum CourseMembershipStatus {
@@ -122,6 +125,8 @@ model Word {
   createdBy              User?          @relation("WordCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   cards                  UserCard[]
   lessonWords            LessonWord[]
+  collectionItems        WordCollectionItem[]
+  collectionIntroduced   UserCollectionIntroducedWord[]
   audio                  WordAudio?
 
   @@unique([normalizedSpanish, normalizedRussian])
@@ -160,6 +165,7 @@ model UserCard {
 enum DailyTrainerKind {
   daily
   extra
+  collection
 }
 
 enum DailyTrainerStatus {
@@ -235,4 +241,69 @@ model LessonWord {
   @@unique([lessonId, wordId])
   @@unique([lessonId, position])
   @@index([wordId])
+}
+
+enum WordCollectionStatus {
+  created
+  ready
+  inactive
+}
+
+model WordCollection {
+  id              String                        @id @default(uuid()) @db.Uuid
+  title           String
+  status          WordCollectionStatus          @default(created)
+  createdByUserId String                        @db.Uuid
+  createdAt       DateTime                      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                      @updatedAt @db.Timestamptz(3)
+  createdBy       User                          @relation("WordCollectionCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  items           WordCollectionItem[]
+  memberships     UserCollection[]
+  introducedWords UserCollectionIntroducedWord[]
+
+  @@index([createdByUserId])
+  @@index([title])
+  @@index([status])
+}
+
+model WordCollectionItem {
+  id           String         @id @default(uuid()) @db.Uuid
+  collectionId String         @db.Uuid
+  wordId       String         @db.Uuid
+  position     Int
+  addedAt      DateTime       @default(now()) @db.Timestamptz(3)
+  collection   WordCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  word         Word           @relation(fields: [wordId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, wordId])
+  @@unique([collectionId, position])
+  @@index([wordId])
+}
+
+model UserCollection {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  collectionId String         @db.Uuid
+  addedAt      DateTime       @default(now()) @db.Timestamptz(3)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection   WordCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, collectionId])
+  @@index([userId])
+  @@index([collectionId])
+}
+
+model UserCollectionIntroducedWord {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  collectionId String         @db.Uuid
+  wordId       String         @db.Uuid
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection   WordCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  word         Word           @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, collectionId, wordId])
+  @@index([userId, wordId])
+  @@index([collectionId])
 }

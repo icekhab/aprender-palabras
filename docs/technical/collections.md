@@ -7,10 +7,14 @@
 
 | Действие | Кто |
 |---|---|
-| List / search / get / add / remove / train | любой auth |
-| Create / rename / add word / remove word / delete collection | только `admin` (`403` иначе) |
+| List / search / get / add / remove / train (`ready`) | любой auth |
+| Create / rename / status / add word / remove word / delete | только `admin` (`403` иначе) |
 
 ## Модели
+
+### `WordCollectionStatus`
+
+`created` | `ready` | `inactive`. Default при create: `created`.
 
 ### `WordCollection`
 
@@ -18,8 +22,13 @@
 |---|---|
 | `id` | UUID |
 | `title` | название (trim, обязателен) |
+| `status` | `WordCollectionStatus` |
 | `createdByUserId` | admin-создатель |
 | `createdAt` / `updatedAt` | |
+
+`ready` требует ≥1 item; нельзя remove last item while `ready`.
+Переход в `inactive` → delete memberships + introduced rows; `UserCard` не трогать.
+Non-admin list/get/add/train — только `ready`.
 
 ### `WordCollectionItem`
 
@@ -91,8 +100,10 @@ avg(UserCard.progress)
 | `POST` | `/collections` | admin | создать `{ title }` |
 | `GET` | `/collections/:id` | auth | детали + words + progress (если mine) |
 | `PATCH` | `/collections/:id` | admin | `{ title }` |
+| `PATCH` | `/collections/:id/status` | admin | `{ status: ready \| inactive }`; ready требует ≥1 слово; inactive снимает membership + provenance |
 | `DELETE` | `/collections/:id` | admin | удалить коллекцию; membership cascade; словарь не чистить |
 | `POST` | `/collections/:id/words` | admin | `{ wordId }` → item; sync add подписчикам |
+| `POST` | `/collections/:id/words/new` | admin | `WordDraft` → create/reuse catalog Word + item; sync подписчикам |
 | `DELETE` | `/collections/:id/words/:wordId` | admin | убрать из состава; словарь не чистить |
 | `POST` | `/collections/:id/add` | auth | membership + ensure cards |
 | `DELETE` | `/collections/:id/add` | auth | remove membership + purge introduced untrained |
@@ -117,9 +128,11 @@ avg(UserCard.progress)
 Переиспользовать `compareByPriority` из
 [`apps/api/src/training/selection.ts`](../../apps/api/src/training/selection.ts)
 (`MAX_TRAINER_WORDS = 12`). Готовность — `isWordReadyForTrainer`.
-Сессия / complete — тот же путь, что daily/lesson trainers (вид
-`DailyTrainer` или отдельный kind — решение реализации; прогресс через
-существующий complete).
+
+Сессия хранится как `DailyTrainer` с `kind = collection` в дне Madrid
+пользователя; `GET|POST /training/trainers/:id` без изменений. В
+`GET /training/today` и в `nextTrainerId` после complete kind
+`collection` **не** показывается.
 
 ## Ежедневный пул
 

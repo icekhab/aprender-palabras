@@ -182,7 +182,10 @@ export class TrainingService {
 
     const dailyAfter = dayTrainers.filter((item) => item.kind === 'daily')
     const nextTrainer = dayTrainers
-      .filter((item) => item.status === 'not_started')
+      .filter(
+        (item) =>
+          item.status === 'not_started' && item.kind !== 'collection',
+      )
       .sort((a, b) => {
         if (a.kind !== b.kind) {
           return a.kind === 'daily' ? -1 : 1
@@ -280,7 +283,10 @@ export class TrainingService {
     }
 
     const visible = current.trainers
-      .filter((item) => item.status === 'not_started')
+      .filter(
+        (item) =>
+          item.status === 'not_started' && item.kind !== 'collection',
+      )
       .sort((a, b) => {
         if (a.kind !== b.kind) {
           return a.kind === 'daily' ? -1 : 1

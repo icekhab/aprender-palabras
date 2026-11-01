@@ -12,6 +12,7 @@
 | Слова, edit, admin-каталог | [01-words.md](../product/01-words.md) | [words.md](./words.md) |
 | Квоты, TTS | [01-words §12](../product/01-words.md) | [quotas.md](./quotas.md) |
 | Курсы | [05-courses.md](../product/05-courses.md) | [courses.md](./courses.md) |
+| Colecciones | [06-collections.md](../product/06-collections.md) | [collections.md](./collections.md) |
 | Тренажёр / пул | [03-daily-training.md](../product/03-daily-training.md) | [training.md](./training.md) |
 
 Отмечай выполнение в этом файле (`[ ]` → `[x]`).
@@ -221,13 +222,35 @@
 
 ---
 
-## 13. Финальная приёмка
+## 13. Colecciones
+
+**Цель:** админские наборы слов; пользователь add/remove, прогресс, trainer до 12.
+
+- [x] Prisma: `WordCollection`, `WordCollectionItem`, `UserCollection`,
+  `UserCollectionIntroducedWord`; `DailyTrainerKind.collection`.
+- [x] API module + contracts: list/search, admin CRUD состава, add/remove,
+  ensure/purge карточек, `POST /collections/:id/trainers`.
+- [x] UI: меню Colecciones, `/colecciones`, деталка, admin compose.
+- [x] Trainer → `/entrenamiento/:id`; не показывать collection в today.
+- [x] Daily: новые карточки = `manual`; `lesson` не понижается.
+- [ ] Приёмка COLL-01 … COLL-12 (ручной смоук).
+
+**Ссылки:** [06-collections](../product/06-collections.md),
+[collections.md](./collections.md).
+
+**Готово когда:** admin наполняет наборы; user добавляет к себе и тренирует;
+снятие чистит только принесённые без тренировок.
+
+---
+
+## 14. Финальная приёмка
 
 Пройти критерии:
 
 - [ ] WORD-08, WORD-17, WORD-18, WORD-19 ([01-words](../product/01-words.md)).
 - [ ] COURSE-01 … COURSE-17 ([05-courses §12](../product/05-courses.md)).
-- [ ] DAILY-17 ([03-daily-training](../product/03-daily-training.md)).
+- [ ] DAILY-17, DAILY-18 ([03-daily-training](../product/03-daily-training.md)).
+- [ ] COLL-01 … COLL-12 ([06-collections](../product/06-collections.md)).
 - [ ] Lint / typecheck / test / build перед деплоем.
 
 ---
@@ -237,7 +260,7 @@
 - Self-registration, email verify, password reset, magic link.
 - Invite пользователей без аккаунта / без teacher|admin.
 - Отдельная квота TTS (покрыта квотой add).
-- Полноценная админ-панель кроме каталога слов.
+- Полноценная админ-панель кроме каталога слов и Colecciones.
 - CI/CD (как и раньше — локальные проверки перед push).
 
 ---
@@ -250,4 +273,6 @@
 | 2 | §4–6 (TTS, квоты, search UX) |
 | 3 | §7–8 (схема + API курсов) |
 | 4 | §9–10 (UI курсов) |
-| 5 | §11–13 (training + demotion + приёмка) |
+| 5 | §11–12 (training + demotion) |
+| 6 | §13 (Colecciones) |
+| 7 | §14 (приёмка) |

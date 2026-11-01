@@ -10,8 +10,10 @@ import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { ApiError, isGenerationQuotaError } from '@/shared/api/auth'
+import { addNewWordToCollection } from '@/shared/api/collections'
 import { addNewWordToLesson } from '@/shared/api/lessons'
 import { createWord, previewWord } from '@/shared/api/words'
+import { COLLECTIONS_QUERY_KEY } from '../collections/query-keys'
 import {
   generationQuotaScreenCopyFromError,
   generationQuotaToastCopyFromError,
@@ -33,15 +35,19 @@ export function AddWordPage() {
   const russian = searchParams.get('russian')?.trim() ?? ''
   const lessonId = searchParams.get('lessonId')?.trim() || null
   const courseId = searchParams.get('courseId')?.trim() || null
+  const collectionId = searchParams.get('collectionId')?.trim() || null
   const hasPair = spanish.length > 0 && russian.length > 0
   const lessonReturnPath =
     courseId && lessonId
       ? `/cursos/gestion/${courseId}/lecciones/${lessonId}`
       : null
-  const cancelPath = lessonReturnPath ?? '/'
+  const collectionReturnPath = collectionId
+    ? `/colecciones/${collectionId}`
+    : null
+  const cancelPath = lessonReturnPath ?? collectionReturnPath ?? '/'
   const authUser = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const role = authUser?.role ?? 'user'
-  const isSearchAutoAdd = role === 'user' && !lessonId
+  const isSearchAutoAdd = role === 'user' && !lessonId && !collectionId
 
   if (!hasPair) {
     return <Navigate replace to={cancelPath} />
@@ -63,6 +69,7 @@ export function AddWordPage() {
       russian={russian}
       courseId={courseId}
       lessonId={lessonId}
+      collectionId={collectionId}
       cancelPath={cancelPath}
     />
   )
@@ -175,12 +182,14 @@ function AddWordFormPage({
   russian,
   courseId,
   lessonId,
+  collectionId,
   cancelPath,
 }: {
   spanish: string
   russian: string
   courseId: string | null
   lessonId: string | null
+  collectionId: string | null
   cancelPath: string
 }) {
   const navigate = useNavigate()
@@ -220,6 +229,9 @@ function AddWordFormPage({
       if (courseId && lessonId) {
         return addNewWordToLesson(courseId, lessonId, draft)
       }
+      if (collectionId) {
+        return addNewWordToCollection(collectionId, draft)
+      }
       return createWord(draft)
     },
     onSuccess: async () => {
@@ -227,6 +239,12 @@ function AddWordFormPage({
         await queryClient.invalidateQueries({
           queryKey: ['courses', courseId, 'lessons'],
         })
+        navigate(cancelPath, { replace: true })
+        return
+      }
+
+      if (collectionId) {
+        await queryClient.invalidateQueries({ queryKey: COLLECTIONS_QUERY_KEY })
         navigate(cancelPath, { replace: true })
         return
       }
@@ -243,6 +261,11 @@ function AddWordFormPage({
     : previewQuery.isError && !quotaBlocked
       ? emptyInitial
       : null
+  const title = lessonId
+    ? 'Añadir a la lección'
+    : collectionId
+      ? 'Añadir a la colección'
+      : 'Añadir palabra'
 
   return (
     <main className="flex min-h-svh flex-col bg-orange-50 text-orange-950">
@@ -250,9 +273,7 @@ function AddWordFormPage({
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
             <BrandLink />
-            <h1 className="mt-1 text-xl font-bold tracking-tight">
-              {lessonId ? 'Añadir a la lección' : 'Añadir palabra'}
-            </h1>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">{title}</h1>
           </div>
           <Button variant="outline" onClick={() => navigate(cancelPath)}>
             Cancelar

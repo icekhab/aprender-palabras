@@ -662,7 +662,7 @@ export interface TrainingReadiness {
   trainerAvailable: false
 }
 
-export type DailyTrainerKind = 'daily' | 'extra'
+export type DailyTrainerKind = 'daily' | 'extra' | 'collection'
 
 export interface DailyTrainerWordItem {
   userCardId: string
@@ -751,4 +751,100 @@ export interface CompleteTrainerResponse {
   dailyCompleted: number
   /** Next open trainer for Continuar, or null when the day has none left. */
   nextTrainerId: string | null
+}
+
+export const wordCollectionStatusSchema = z.enum([
+  'created',
+  'ready',
+  'inactive',
+])
+
+export type WordCollectionStatus = z.infer<typeof wordCollectionStatusSchema>
+
+export const createWordCollectionSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+})
+
+export type CreateWordCollectionInput = z.infer<
+  typeof createWordCollectionSchema
+>
+
+export const updateWordCollectionSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+})
+
+export type UpdateWordCollectionInput = z.infer<
+  typeof updateWordCollectionSchema
+>
+
+export const setWordCollectionStatusSchema = z.object({
+  status: z.enum(['ready', 'inactive']),
+})
+
+export type SetWordCollectionStatusInput = z.infer<
+  typeof setWordCollectionStatusSchema
+>
+
+export const addWordToCollectionSchema = z.object({
+  wordId: z.string().uuid(),
+})
+
+export type AddWordToCollectionInput = z.infer<
+  typeof addWordToCollectionSchema
+>
+
+export const collectionsListQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+})
+
+export type CollectionsListQuery = z.infer<typeof collectionsListQuerySchema>
+
+export interface WordCollectionListItem {
+  id: string
+  title: string
+  status: WordCollectionStatus
+  wordCount: number
+  /** Present only for collections the user has added. */
+  progress: number | null
+  added: boolean
+  canTrain: boolean
+  addedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WordCollectionListResponse {
+  mine: WordCollectionListItem[]
+  catalog: WordCollectionListItem[]
+  /** Admin-only: created + inactive collections. */
+  adminDrafts: WordCollectionListItem[]
+}
+
+export interface WordCollectionWordItem {
+  wordId: string
+  spanish: string
+  russian: string
+  position: number
+  /** Null when the viewer has no dictionary card for this word. */
+  userCardId: string | null
+  progress: number | null
+  readyForTrainer: boolean
+}
+
+export interface WordCollectionDetail {
+  id: string
+  title: string
+  status: WordCollectionStatus
+  wordCount: number
+  progress: number | null
+  added: boolean
+  canTrain: boolean
+  addedAt: string | null
+  createdAt: string
+  updatedAt: string
+  words: WordCollectionWordItem[]
+}
+
+export interface CreateCollectionTrainerResponse {
+  trainerId: string
 }

@@ -214,6 +214,65 @@ describe('buildDailyTrainers with current lesson', () => {
     expect(repaso?.userCardIds).toEqual(['low', 'high'])
   })
 
+  it('treats collection-introduced manual cards like search in Lección actual', () => {
+    const cards = [
+      card({
+        userCardId: 'from-collection',
+        source: 'manual',
+        completedTrainerCount: 1,
+        lastTrainedAt: new Date('2026-10-01T12:00:00.000Z'),
+        addedAt: new Date('2026-10-15T12:00:00.000Z'),
+      }),
+      card({
+        userCardId: 'lesson-current',
+        source: 'lesson',
+        inCurrentLesson: true,
+        completedTrainerCount: 1,
+        lastTrainedAt: new Date('2026-10-01T12:00:00.000Z'),
+        addedAt: new Date('2026-09-01T12:00:00.000Z'),
+      }),
+    ]
+
+    const trainers = buildDailyTrainers({
+      cards,
+      hasActiveCourseLesson: true,
+      anchor,
+      now,
+      random: () => 0.2,
+    })
+
+    const slot1 = trainers.find((item) => item.slot === 1)
+    expect(slot1?.sourceLabel).toBe('Lección actual')
+    expect(slot1?.userCardIds).toEqual(
+      expect.arrayContaining(['from-collection', 'lesson-current']),
+    )
+  })
+
+  it('does not demote lesson source when the same word is also available as manual', () => {
+    const cards = [
+      card({
+        userCardId: 'lesson-kept',
+        source: 'lesson',
+        inCurrentLesson: true,
+        completedTrainerCount: 1,
+        progress: 80,
+        lastTrainedAt: new Date('2026-10-01T12:00:00.000Z'),
+        addedAt: new Date('2026-09-01T12:00:00.000Z'),
+      }),
+    ]
+
+    const trainers = buildDailyTrainers({
+      cards,
+      hasActiveCourseLesson: true,
+      anchor,
+      now,
+      random: () => 0.2,
+    })
+
+    const slot1 = trainers.find((item) => item.slot === 1)
+    expect(slot1?.userCardIds).toContain('lesson-kept')
+  })
+
   it('keeps age windows relative to frozen anchor after a long absence', () => {
     const anchorFrozen = new Date('2026-09-01T12:00:00.000Z')
     const nowLater = new Date('2026-10-19T12:00:00.000Z')
