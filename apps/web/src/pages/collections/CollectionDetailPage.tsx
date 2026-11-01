@@ -27,6 +27,7 @@ import {
   updateCollection,
 } from '@/shared/api/collections'
 import { getSuggestions } from '@/shared/api/suggestions'
+import { withReturnTo } from '@/shared/return-to'
 import { SuggestionsErrorMessage } from '@/shared/suggestions-error'
 import { getSuggestionsQueryError } from '@/shared/suggestions-query'
 import { ProgressRing } from '../lessons/progress-ring'
@@ -402,11 +403,25 @@ export function CollectionDetailPage({
                     russian={word.russian}
                     progress={word.progress ?? 0}
                     onSelect={
-                      word.userCardId
+                      isAdmin
                         ? () => {
-                            void navigate(`/words/${word.userCardId}`)
+                            void navigate(
+                              withReturnTo(
+                                `/admin/words/${word.wordId}/edit`,
+                                `/colecciones/${collection.id}`,
+                              ),
+                            )
                           }
-                        : undefined
+                        : word.userCardId
+                          ? () => {
+                              void navigate(
+                                withReturnTo(
+                                  `/words/${word.userCardId}`,
+                                  `/colecciones/${collection.id}`,
+                                ),
+                              )
+                            }
+                          : undefined
                     }
                     trailing={
                       isAdmin ||

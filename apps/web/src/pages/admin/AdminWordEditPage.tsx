@@ -3,11 +3,12 @@ import type {
   UpdateWordCardInput,
 } from '@aprender-palabras/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { getAdminWord, updateAdminWord } from '@/shared/api/admin-words'
 import { ApiError } from '@/shared/api/auth'
+import { readReturnTo } from '@/shared/return-to'
 import { WordCardForm } from '../words/WordCardForm'
 
 const ADMIN_WORDS_QUERY_KEY = ['admin', 'words'] as const
@@ -15,6 +16,8 @@ const ADMIN_WORDS_QUERY_KEY = ['admin', 'words'] as const
 export function AdminWordEditPage() {
   const { wordId = '' } = useParams<{ wordId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const returnTo = readReturnTo(searchParams) ?? '/admin/words'
 
   const wordQuery = useQuery({
     queryKey: ['admin', 'words', wordId],
@@ -33,10 +36,7 @@ export function AdminWordEditPage() {
               Editar palabra
             </h1>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => navigate('/admin/words')}
-          >
+          <Button variant="outline" onClick={() => navigate(returnTo)}>
             Cancelar
           </Button>
         </div>
@@ -67,14 +67,20 @@ export function AdminWordEditPage() {
         ) : null}
 
         {wordQuery.isSuccess ? (
-          <AdminWordEditForm word={wordQuery.data} />
+          <AdminWordEditForm word={wordQuery.data} returnTo={returnTo} />
         ) : null}
       </div>
     </main>
   )
 }
 
-function AdminWordEditForm({ word }: { word: AdminWordDetail }) {
+function AdminWordEditForm({
+  word,
+  returnTo,
+}: {
+  word: AdminWordDetail
+  returnTo: string
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -84,7 +90,7 @@ function AdminWordEditForm({ word }: { word: AdminWordDetail }) {
     onSuccess: async (updated) => {
       queryClient.setQueryData(['admin', 'words', word.id], updated)
       await queryClient.invalidateQueries({ queryKey: ADMIN_WORDS_QUERY_KEY })
-      navigate('/admin/words', { replace: true })
+      navigate(returnTo, { replace: true })
     },
   })
 
@@ -98,7 +104,7 @@ function AdminWordEditForm({ word }: { word: AdminWordDetail }) {
       isSubmitting={saveMutation.isPending}
       saveError={saveMutation.error}
       onSubmit={(payload) => saveMutation.mutate(payload)}
-      onCancel={() => navigate('/admin/words')}
+      onCancel={() => navigate(returnTo)}
     />
   )
 }

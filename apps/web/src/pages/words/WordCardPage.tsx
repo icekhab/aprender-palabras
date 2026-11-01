@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserCardDetail } from '@aprender-palabras/contracts'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordCardFields } from '@/components/word-card-fields'
 import { ApiError } from '@/shared/api/auth'
+import { readReturnTo } from '@/shared/return-to'
 import {
   deleteWordCard,
   getWordCard,
@@ -17,6 +18,8 @@ const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
 export function WordCardPage() {
   const { cardId = '' } = useParams<{ cardId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const returnTo = readReturnTo(searchParams)
 
   const cardQuery = useQuery({
     queryKey: ['words', 'card', cardId],
@@ -33,7 +36,16 @@ export function WordCardPage() {
             <BrandLink />
             <h1 className="mt-1 text-xl font-bold tracking-tight">Palabra</h1>
           </div>
-          <Button variant="outline" onClick={() => navigate(-1)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (returnTo) {
+                void navigate(returnTo)
+                return
+              }
+              void navigate(-1)
+            }}
+          >
             Atrás
           </Button>
         </div>
