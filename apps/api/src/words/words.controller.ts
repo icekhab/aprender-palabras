@@ -15,6 +15,7 @@ import {
 import {
   addExistingWordSchema,
   dictionaryListQuerySchema,
+  createWordSchema,
   regenerateWordImageSchema,
   updateWordCardSchema,
   wordPairSchema,
@@ -89,7 +90,7 @@ export class WordsController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<Word> {
-    const result = updateWordCardSchema.safeParse(body)
+    const result = createWordSchema.safeParse(body)
     if (!result.success) {
       throw new BadRequestException('Invalid word draft')
     }

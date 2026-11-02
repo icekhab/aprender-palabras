@@ -219,9 +219,12 @@ progress, addedAt).
 
 ### `POST /words`
 
-Тело: полный draft по правилам `updateWordCardSchema` (обязательные поля
-как при редактировании) + на сервере `additionalTranslations` обнуляется;
-включая `imageDownloadLocation` для tracking Unsplash.
+Тело: draft по правилам `createWordSchema` (как `updateWordCardSchema`, но
+`partOfSpeech` может быть `null` — тогда сохраняется sentinel
+`no determinada`) + на сервере `additionalTranslations` обнуляется;
+включая `imageDownloadLocation` для tracking Unsplash. PATCH карточки и
+формы admin/teacher по-прежнему требуют `updateWordCardSchema` (POS из
+списка обязателен).
 
 Поведение:
 

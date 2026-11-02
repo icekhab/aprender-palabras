@@ -200,57 +200,84 @@ export const wordDraftSchema = z.object({
 
 export type WordDraft = z.infer<typeof wordDraftSchema>
 
+const wordCardContentFields = {
+  spanish: spanishFieldSchema,
+  russian: russianFieldSchema,
+  definitionEs: z.string().trim().min(1).max(2000),
+  examples: z.array(z.string().trim().min(1).max(500)).min(2).max(3),
+  gender: wordGenderSchema.nullable(),
+  wrongRussian: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
+  wrongSpanish: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
+  ...imageFieldsSchema,
+}
+
+function refineWordCardContent(
+  value: {
+    spanish: string
+    russian: string
+    partOfSpeech: PartOfSpeech | null
+    gender: WordGender | null
+    wrongRussian: string[]
+    wrongSpanish: string[]
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.partOfSpeech === 'sustantivo' && value.gender === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['gender'],
+      message: 'Gender is required for sustantivo',
+    })
+  }
+
+  if (value.partOfSpeech !== 'sustantivo' && value.gender !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['gender'],
+      message: 'Gender is only allowed for sustantivo',
+    })
+  }
+
+  const russianKey = value.russian.trim().toLocaleLowerCase()
+  for (const [index, option] of value.wrongRussian.entries()) {
+    if (option.trim().toLocaleLowerCase() === russianKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['wrongRussian', index],
+        message: 'Must not match primary translation',
+      })
+    }
+  }
+
+  const spanishKey = value.spanish.trim().toLocaleLowerCase()
+  for (const [index, option] of value.wrongSpanish.entries()) {
+    if (option.trim().toLocaleLowerCase() === spanishKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['wrongSpanish', index],
+        message: 'Must not match Spanish word',
+      })
+    }
+  }
+}
+
+/** Create word (incl. user auto-add): POS may be null → stored as undetermined. */
+export const createWordSchema = z
+  .object({
+    ...wordCardContentFields,
+    partOfSpeech: partOfSpeechSchema.nullable(),
+  })
+  .superRefine(refineWordCardContent)
+
+export type CreateWordInput = z.infer<typeof createWordSchema>
+
+/** Edit word / teacher-admin form: POS required from known options. */
 export const updateWordCardSchema = z
   .object({
-    spanish: spanishFieldSchema,
-    russian: russianFieldSchema,
-    definitionEs: z.string().trim().min(1).max(2000),
-    examples: z.array(z.string().trim().min(1).max(500)).min(2).max(3),
+    ...wordCardContentFields,
     partOfSpeech: partOfSpeechSchema,
-    gender: wordGenderSchema.nullable(),
-    wrongRussian: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
-    wrongSpanish: z.array(z.string().trim().min(1).max(200)).min(3).max(10),
-    ...imageFieldsSchema,
   })
-  .superRefine((value, ctx) => {
-    if (value.partOfSpeech === 'sustantivo' && value.gender === null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['gender'],
-        message: 'Gender is required for sustantivo',
-      })
-    }
-
-    if (value.partOfSpeech !== 'sustantivo' && value.gender !== null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['gender'],
-        message: 'Gender is only allowed for sustantivo',
-      })
-    }
-
-    const russianKey = value.russian.trim().toLocaleLowerCase()
-    for (const [index, option] of value.wrongRussian.entries()) {
-      if (option.trim().toLocaleLowerCase() === russianKey) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['wrongRussian', index],
-          message: 'Must not match primary translation',
-        })
-      }
-    }
-
-    const spanishKey = value.spanish.trim().toLocaleLowerCase()
-    for (const [index, option] of value.wrongSpanish.entries()) {
-      if (option.trim().toLocaleLowerCase() === spanishKey) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['wrongSpanish', index],
-          message: 'Must not match Spanish word',
-        })
-      }
-    }
-  })
+  .superRefine(refineWordCardContent)
 
 export type UpdateWordCardInput = z.infer<typeof updateWordCardSchema>
 
