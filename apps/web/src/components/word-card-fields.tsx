@@ -15,8 +15,6 @@ export type WordCardFieldsData = Pick<
   | 'examples'
   | 'partOfSpeech'
   | 'gender'
-  | 'wrongRussian'
-  | 'wrongSpanish'
   | 'imageUrl'
   | 'imagePhotographerName'
   | 'imagePhotographerUrl'
@@ -127,18 +125,6 @@ export function WordCardFields({
           }
         />
       ) : null}
-      <ReadOnlyField
-        label="Opciones incorrectas (ruso)"
-        value={
-          draft.wrongRussian.length > 0 ? draft.wrongRussian.join(', ') : null
-        }
-      />
-      <ReadOnlyField
-        label="Opciones incorrectas (español)"
-        value={
-          draft.wrongSpanish.length > 0 ? draft.wrongSpanish.join(', ') : null
-        }
-      />
     </section>
   )
 }
