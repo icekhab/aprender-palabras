@@ -132,7 +132,8 @@ export function resetSpeechAudioGraph(): void {
   stopSpeech()
   const context = audioContext
   audioContext = null
-  buffers.clear()
+  // AudioBuffers are context-independent; retain preloaded clips so the
+  // post-microphone card can play immediately through the fresh context.
   loading.clear()
   if (context && typeof context.close === 'function') {
     void context.close().catch(() => {
@@ -144,6 +145,7 @@ export function resetSpeechAudioGraph(): void {
 /** Clears cached audio state between unit tests. */
 export function resetSpeechForTests(): void {
   resetSpeechAudioGraph()
+  buffers.clear()
 }
 
 export function speakWord(wordId: string): void {

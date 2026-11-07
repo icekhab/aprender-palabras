@@ -3,7 +3,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { Button } from '@/components/ui/button'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
-import { playFeedbackSound } from '../../shared/feedback-sound'
+import {
+  playFeedbackSound,
+  stopFeedbackSound,
+} from '../../shared/feedback-sound'
+import {
+  micReleaseSettleMs,
+  prepareAudioSessionForMicrophone,
+  releaseMicToPlayback,
+} from '../../shared/audio-session'
+import { resetPlaybackAudioGraph } from '../../shared/reset-playback-audio'
 import {
   createSpeechRecognition,
   ensureMicrophonePermission,
@@ -53,6 +62,16 @@ function isMicrophoneAccessError(message: string): boolean {
   )
 }
 
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
 export function SpeakExerciseScreen({
   word,
   onRevealResult,
@@ -65,6 +84,9 @@ export function SpeakExerciseScreen({
   const sessionRef = useRef<SpeechRecognitionSession | null>(null)
   const submittedRef = useRef(false)
   const lastInterimRef = useRef('')
+  const pendingOutcomeRef = useRef<SpeakOutcome | null>(null)
+  const resultFlowStartedRef = useRef(false)
+  const lifecycleRef = useRef(0)
   const [submitted, setSubmitted] = useState(false)
   const [listenState, setListenState] = useState<ListenState>('idle')
   const [transcript, setTranscript] = useState('')
@@ -74,24 +96,62 @@ export function SpeakExerciseScreen({
 
   useEffect(() => {
     return () => {
-      sessionRef.current?.abort()
+      lifecycleRef.current += 1
+      const session = sessionRef.current
       sessionRef.current = null
+      if (session) {
+        session.abort()
+        releaseMicToPlayback()
+        resetPlaybackAudioGraph()
+      }
+      stopFeedbackSound()
     }
   }, [])
 
-  useEffect(() => {
-    if (outcome === null) {
+  function restorePlaybackAfterMicrophone() {
+    releaseMicToPlayback()
+    resetPlaybackAudioGraph()
+  }
+
+  function abortRecognition() {
+    const session = sessionRef.current
+    sessionRef.current = null
+    if (!session) {
       return
     }
 
-    const timer = window.setTimeout(() => {
-      onRevealResult(outcome)
-    }, FEEDBACK_HOLD_MS)
+    session.abort()
+    restorePlaybackAfterMicrophone()
+  }
 
-    return () => {
-      window.clearTimeout(timer)
+  function completeResultAfterMicrophone() {
+    const result = pendingOutcomeRef.current
+    if (!result || resultFlowStartedRef.current) {
+      return
     }
-  }, [outcome, onRevealResult])
+
+    resultFlowStartedRef.current = true
+    restorePlaybackAfterMicrophone()
+    const lifecycle = lifecycleRef.current
+
+    void (async () => {
+      await delay(micReleaseSettleMs())
+      if (lifecycle !== lifecycleRef.current) {
+        return
+      }
+
+      playFeedbackSound(result.correct ? 'correct' : 'incorrect')
+      await delay(FEEDBACK_HOLD_MS)
+      if (lifecycle !== lifecycleRef.current) {
+        return
+      }
+
+      // The result card speaks immediately on mount, so do not let the
+      // feedback clip or a delayed feedback load overlap with the word.
+      stopFeedbackSound()
+      onRevealResult(result)
+    })()
+  }
 
   function finishWithResult(result: SpeakOutcome, heard: string) {
     if (submittedRef.current) {
@@ -104,9 +164,15 @@ export function SpeakExerciseScreen({
     setErrorMessage('')
     setListenState('processing')
     setOutcome(result)
-    playFeedbackSound(result.correct ? 'correct' : 'incorrect')
-    sessionRef.current?.stop()
-    sessionRef.current = null
+    pendingOutcomeRef.current = result
+
+    const session = sessionRef.current
+    if (session) {
+      session.stop()
+      return
+    }
+
+    completeResultAfterMicrophone()
   }
 
   function acceptTranscript(value: string) {
@@ -131,8 +197,7 @@ export function SpeakExerciseScreen({
       return
     }
     lastInterimRef.current = ''
-    sessionRef.current?.abort()
-    sessionRef.current = null
+    abortRecognition()
     setTranscript('')
     setListenState('idle')
     setErrorMessage(message)
@@ -153,8 +218,7 @@ export function SpeakExerciseScreen({
       return
     }
 
-    sessionRef.current?.abort()
-    sessionRef.current = null
+    abortRecognition()
     setTranscript('')
     setListenState('idle')
     setErrorMessage('')
@@ -179,8 +243,7 @@ export function SpeakExerciseScreen({
     setErrorMessage('')
     setTranscript('')
     lastInterimRef.current = ''
-    sessionRef.current?.abort()
-    sessionRef.current = null
+    abortRecognition()
 
     const session = createSpeechRecognition({
       lang: 'es-ES',
@@ -218,14 +281,16 @@ export function SpeakExerciseScreen({
           rejectForRetry(message)
           return
         }
-        sessionRef.current?.abort()
-        sessionRef.current = null
+        abortRecognition()
         setListenState('idle')
       },
       onEnd: () => {
+        sessionRef.current = null
         if (submittedRef.current) {
+          completeResultAfterMicrophone()
           return
         }
+        restorePlaybackAfterMicrophone()
         if (lastInterimRef.current) {
           rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
           return
@@ -240,11 +305,12 @@ export function SpeakExerciseScreen({
     }
 
     sessionRef.current = session
+    prepareAudioSessionForMicrophone()
     try {
       session.start()
       setListenState('listening')
     } catch {
-      sessionRef.current = null
+      abortRecognition()
       setErrorMessage(MIC_START_FAILED_MESSAGE)
       setListenState('idle')
     }
@@ -320,9 +386,7 @@ export function SpeakExerciseScreen({
 
           <button
             type="button"
-            aria-label={
-              listenState === 'listening' ? 'Escuchando…' : 'Hablar'
-            }
+            aria-label={listenState === 'listening' ? 'Escuchando…' : 'Hablar'}
             disabled={disabled}
             className={`inline-flex size-28 cursor-pointer items-center justify-center rounded-full shadow-md transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 disabled:cursor-default sm:size-32 ${micTone}`}
             onClick={onMicClick}
@@ -369,8 +433,7 @@ export function SpeakExerciseScreen({
           onCancel={() => setSkipOpen(false)}
           onConfirm={() => {
             setSkipOpen(false)
-            sessionRef.current?.abort()
-            sessionRef.current = null
+            abortRecognition()
             onSkipSpeak()
           }}
         />
@@ -394,10 +457,7 @@ function SkipSpeakModal({
       aria-labelledby="skip-speak-title"
     >
       <div className="w-full max-w-md rounded-2xl border border-orange-100 bg-white p-6 shadow-lg">
-        <h2
-          id="skip-speak-title"
-          className="text-xl font-bold tracking-tight"
-        >
+        <h2 id="skip-speak-title" className="text-xl font-bold tracking-tight">
           ¿Saltar ejercicios de voz?
         </h2>
         <p className="mt-3 text-sm text-orange-950/80">

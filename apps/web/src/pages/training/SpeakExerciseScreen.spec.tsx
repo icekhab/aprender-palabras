@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import * as feedbackSound from '../../shared/feedback-sound'
@@ -28,6 +34,8 @@ function word(): TrainerSessionWord {
     imageProvider: null,
   }
 }
+
+function noop(): void {}
 
 type MockRecognitionInstance = {
   onresult: ((event: unknown) => void) | null
@@ -68,19 +76,22 @@ function stubRecognition(options?: {
   }
 }
 
-function stubNavigator(getUserMedia?: ReturnType<typeof vi.fn>) {
+function stubNavigator(
+  getUserMedia?: ReturnType<typeof vi.fn>,
+  audioSession?: { type: string },
+) {
   const media =
     getUserMedia ??
-    vi.fn<
-      (constraints: MediaStreamConstraints) => Promise<MediaStream>
-    >(async () =>
-      ({
-        getTracks: () => [{ stop: vi.fn<() => void>() }],
-      }) as unknown as MediaStream,
+    vi.fn<(constraints: MediaStreamConstraints) => Promise<MediaStream>>(
+      async () =>
+        ({
+          getTracks: () => [{ stop: vi.fn<() => void>() }],
+        }) as unknown as MediaStream,
     )
   vi.stubGlobal('navigator', {
     ...navigator,
     mediaDevices: { getUserMedia: media },
+    ...(audioSession ? { audioSession } : {}),
   })
   return media
 }
@@ -100,8 +111,8 @@ describe('SpeakExerciseScreen', () => {
     render(
       <SpeakExerciseScreen
         word={word()}
-        onRevealResult={vi.fn()}
-        onSkipSpeak={vi.fn()}
+        onRevealResult={noop}
+        onSkipSpeak={noop}
       />,
     )
 
@@ -138,8 +149,8 @@ describe('SpeakExerciseScreen', () => {
     render(
       <SpeakExerciseScreen
         word={word()}
-        onRevealResult={vi.fn()}
-        onSkipSpeak={vi.fn()}
+        onRevealResult={noop}
+        onSkipSpeak={noop}
       />,
     )
 
@@ -165,25 +176,36 @@ describe('SpeakExerciseScreen', () => {
     })
   })
 
-  it('plays feedback immediately on correct final transcript', () => {
+  it('waits for recognition to end before playing feedback', async () => {
     const feedbackSpy = vi.spyOn(feedbackSound, 'playFeedbackSound')
     const recognition = stubRecognition()
-    stubNavigator()
+    const audioSession = { type: 'playback' }
+    stubNavigator(undefined, audioSession)
 
     render(
       <SpeakExerciseScreen
         word={word()}
-        onRevealResult={vi.fn()}
-        onSkipSpeak={vi.fn()}
+        onRevealResult={noop}
+        onSkipSpeak={noop}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    expect(audioSession.type).toBe('auto')
     recognition.latest()?.onresult?.({
       results: [{ isFinal: true, 0: { transcript: 'hola' } }],
     })
 
-    expect(feedbackSpy).toHaveBeenCalledWith('correct')
+    expect(recognition.latest()?.stop).toHaveBeenCalledOnce()
+    expect(feedbackSpy).not.toHaveBeenCalled()
+    expect(audioSession.type).toBe('auto')
+
+    recognition.latest()?.onend?.()
+
+    await waitFor(() => {
+      expect(feedbackSpy).toHaveBeenCalledWith('correct')
+    })
+    expect(audioSession.type).toBe('playback')
   })
 
   it('second click without interim stops listening and allows start again', () => {
@@ -193,8 +215,8 @@ describe('SpeakExerciseScreen', () => {
     render(
       <SpeakExerciseScreen
         word={word()}
-        onRevealResult={vi.fn()}
-        onSkipSpeak={vi.fn()}
+        onRevealResult={noop}
+        onSkipSpeak={noop}
       />,
     )
 
@@ -211,7 +233,7 @@ describe('SpeakExerciseScreen', () => {
     expect(recognition.latest()).not.toBe(first)
   })
 
-  it('second click with wrong interim scores incorrect', () => {
+  it('second click with wrong interim scores incorrect', async () => {
     const feedbackSpy = vi.spyOn(feedbackSound, 'playFeedbackSound')
     const recognition = stubRecognition()
     stubNavigator()
@@ -219,8 +241,8 @@ describe('SpeakExerciseScreen', () => {
     render(
       <SpeakExerciseScreen
         word={word()}
-        onRevealResult={vi.fn()}
-        onSkipSpeak={vi.fn()}
+        onRevealResult={noop}
+        onSkipSpeak={noop}
       />,
     )
 
@@ -231,6 +253,11 @@ describe('SpeakExerciseScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Escuchando…' }))
 
-    expect(feedbackSpy).toHaveBeenCalledWith('incorrect')
+    expect(feedbackSpy).not.toHaveBeenCalled()
+    recognition.latest()?.onend?.()
+
+    await waitFor(() => {
+      expect(feedbackSpy).toHaveBeenCalledWith('incorrect')
+    })
   })
 })

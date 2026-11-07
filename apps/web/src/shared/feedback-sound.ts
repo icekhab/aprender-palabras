@@ -15,6 +15,7 @@ let audioContext: AudioContext | null = null
 const buffers = new Map<FeedbackSoundKind, AudioBuffer>()
 const loading = new Map<FeedbackSoundKind, Promise<AudioBuffer | null>>()
 let currentSource: AudioBufferSourceNode | null = null
+let playbackRequest = 0
 
 function getAudioContextConstructor(): AudioContextConstructor | null {
   if (typeof window === 'undefined') {
@@ -95,7 +96,7 @@ async function loadBuffer(
   return task
 }
 
-export function stopFeedbackSound(): void {
+function stopCurrentSource(): void {
   if (!currentSource) {
     return
   }
@@ -111,6 +112,11 @@ export function stopFeedbackSound(): void {
     // Ignore.
   }
   currentSource = null
+}
+
+export function stopFeedbackSound(): void {
+  playbackRequest += 1
+  stopCurrentSource()
 }
 
 /**
@@ -145,17 +151,17 @@ export function playFeedbackSound(kind: FeedbackSoundKind): void {
     return
   }
 
-  stopFeedbackSound()
+  const request = ++playbackRequest
+  stopCurrentSource()
 
   void (async () => {
     await ensureRunning(context)
     const buffer = await loadBuffer(kind)
-    if (!buffer) {
+    if (!buffer || request !== playbackRequest) {
       return
     }
 
-    // Drop stale plays if a newer sound was requested while loading.
-    stopFeedbackSound()
+    stopCurrentSource()
 
     const source = context.createBufferSource()
     source.buffer = buffer

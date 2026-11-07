@@ -20,8 +20,7 @@ function stubWebAudio(options?: {
   const start = options?.start ?? vi.fn<() => void>()
   const stop = options?.stop ?? vi.fn<() => void>()
   const resume =
-    options?.resume ??
-    vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    options?.resume ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
   const connect = vi.fn<() => void>()
   const disconnect = vi.fn<() => void>()
   const decodeAudioData = vi
@@ -125,6 +124,32 @@ describe('playFeedbackSound', () => {
 
     stopFeedbackSound()
     expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('does not start a pending sound after it was stopped', async () => {
+    const { start, decodeAudioData } = stubWebAudio()
+    let resolveFetch: ((response: Response) => void) | undefined
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+    const fetchMock = vi.fn<typeof fetch>(() => fetchPromise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    playFeedbackSound('correct')
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    stopFeedbackSound()
+    resolveFetch?.({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as Response)
+
+    await vi.waitFor(() => {
+      expect(decodeAudioData).toHaveBeenCalledOnce()
+    })
+    expect(start).not.toHaveBeenCalled()
   })
 
   it('resumes a suspended audio context', async () => {

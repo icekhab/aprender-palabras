@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   preloadWordAudio,
+  resetSpeechAudioGraph,
   resetSpeechForTests,
   speakWord,
   wordAudioUrl,
@@ -29,9 +30,9 @@ describe('word speech', () => {
       onended: null as (() => void) | null,
     }
 
-    const decodeAudioData = vi.fn<
-      (data: ArrayBuffer) => Promise<AudioBuffer>
-    >(async () => ({ duration: 0.5 }) as AudioBuffer)
+    const decodeAudioData = vi.fn<(data: ArrayBuffer) => Promise<AudioBuffer>>(
+      async () => ({ duration: 0.5 }) as AudioBuffer,
+    )
     const resume = vi.fn<() => Promise<void>>(async () => undefined)
     const createBufferSource = vi.fn<() => typeof source>(() => source)
 
@@ -62,10 +63,12 @@ describe('word speech', () => {
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
+    resetSpeechAudioGraph()
     speakWord('word-1')
     await vi.waitFor(() => {
       expect(start).toHaveBeenCalled()
     })
     expect(connect).toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
