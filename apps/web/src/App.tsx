@@ -614,8 +614,16 @@ function HomePage() {
     useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [noWordsModalOpen, setNoWordsModalOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const logoutMutation = useLogoutMutation()
   const canAutoAddNewWords = user?.role === 'user'
+
+  const dismissSearch = () => {
+    setSearchInput('')
+    setDebouncedQuery('')
+    setSearchFocused(false)
+    searchInputRef.current?.blur()
+  }
 
   const [autoAddingKeys, setAutoAddingKeys] = useState(() => new Set<string>())
 
@@ -640,6 +648,7 @@ function HomePage() {
     },
     onSuccess: async (card) => {
       markSuggestionAddedInCache(queryClient, card)
+      dismissSearch()
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
     },
     onError: (error) => {
@@ -776,6 +785,7 @@ function HomePage() {
                 Buscar palabra
               </label>
               <ClearableSearchField
+                ref={searchInputRef}
                 id="word-search"
                 value={searchInput}
                 onChange={setSearchInput}
@@ -837,6 +847,7 @@ function HomePage() {
                             onAutoAdd={(pair) => {
                               autoAddMutation.mutate(pair)
                             }}
+                            onAdded={dismissSearch}
                           />
                         ))}
                       </ul>
@@ -1499,11 +1510,13 @@ function SuggestionRow({
   canAutoAdd,
   autoAddPending,
   onAutoAdd,
+  onAdded,
 }: {
   item: SuggestionItem
   canAutoAdd: boolean
   autoAddPending: boolean
   onAutoAdd: (pair: { spanish: string; russian: string }) => void
+  onAdded: () => void
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -1522,6 +1535,7 @@ function SuggestionRow({
     },
     onSuccess: async (card) => {
       markSuggestionAddedInCache(queryClient, card)
+      onAdded()
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
     },
   })

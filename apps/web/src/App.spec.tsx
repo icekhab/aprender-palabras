@@ -1406,11 +1406,8 @@ describe('App', () => {
     expect(
       screen.queryByRole('status', { name: 'Generando la tarjeta…' }),
     ).not.toBeInTheDocument()
-
-    fireEvent.focus(searchInput)
-    expect(
-      await screen.findByLabelText(/esperar — ждать, progreso 0%/i),
-    ).toBeInTheDocument()
+    expect(searchInput).toHaveValue('')
+    expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
 
     const aiCalls = fetchMock.mock.calls.filter((call) =>
       String(call[0]).startsWith('/api/suggestions/ai?'),
@@ -1645,16 +1642,17 @@ describe('App', () => {
       await screen.findByRole('button', { name: /Añadir esperar/i }),
     )
 
-    expect(
-      await screen.findByLabelText(/esperar — ждать, progreso 0%/i),
-    ).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/words/existing',
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'same-origin',
-      }),
-    )
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/words/existing',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'same-origin',
+        }),
+      )
+    })
+    expect(searchInput).toHaveValue('')
+    expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: 'Añadir palabra' }),
     ).not.toBeInTheDocument()

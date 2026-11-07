@@ -1,5 +1,10 @@
 import { X } from 'lucide-react'
-import { useRef, type InputHTMLAttributes } from 'react'
+import {
+  forwardRef,
+  useRef,
+  type InputHTMLAttributes,
+  type Ref,
+} from 'react'
 
 type ClearableSearchFieldProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -13,20 +18,35 @@ type ClearableSearchFieldProps = Omit<
 const INPUT_CLASS =
   'h-10 w-full rounded-lg border border-orange-200 bg-white py-2 pr-10 pl-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200'
 
-export function ClearableSearchField({
-  value,
-  onChange,
-  className,
-  ...inputProps
-}: ClearableSearchFieldProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
+  if (typeof ref === 'function') {
+    ref(value)
+    return
+  }
+
+  if (ref) {
+    ref.current = value
+  }
+}
+
+export const ClearableSearchField = forwardRef<
+  HTMLInputElement,
+  ClearableSearchFieldProps
+>(function ClearableSearchField(
+  { value, onChange, className, ...inputProps },
+  forwardedRef,
+) {
+  const localRef = useRef<HTMLInputElement | null>(null)
   const showClear = value.length > 0
 
   return (
     <div className={className ? `relative ${className}` : 'relative'}>
       <input
         {...inputProps}
-        ref={inputRef}
+        ref={(node) => {
+          localRef.current = node
+          assignRef(forwardedRef, node)
+        }}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className={INPUT_CLASS}
@@ -41,7 +61,7 @@ export function ClearableSearchField({
           }}
           onClick={() => {
             onChange('')
-            inputRef.current?.focus()
+            localRef.current?.focus()
           }}
         >
           <X className="size-4" aria-hidden />
@@ -49,4 +69,4 @@ export function ClearableSearchField({
       ) : null}
     </div>
   )
-}
+})
