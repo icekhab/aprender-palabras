@@ -33,6 +33,23 @@ export function unlockPlaybackAudioSession(): void {
 }
 
 /**
+ * Leave exclusive playback before getUserMedia / SpeechRecognition.
+ * iOS rejects capture while audioSession.type is `playback`.
+ */
+export function prepareAudioSessionForMicrophone(): void {
+  const session = getAudioSession()
+  if (!session) {
+    return
+  }
+
+  try {
+    session.type = 'auto'
+  } catch {
+    // Older / unsupported AudioSession implementations.
+  }
+}
+
+/**
  * After microphone / SpeechRecognition, force iOS out of capture routing
  * so word TTS is not muffled (play-and-record ducking).
  */

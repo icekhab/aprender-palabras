@@ -23,17 +23,49 @@ describe('ensureMicrophonePermission', () => {
         getTracks: () => [{ stop }],
       }) as unknown as MediaStream,
     )
+    const audioSession = { type: 'playback' }
 
     vi.stubGlobal('navigator', {
       ...navigator,
       mediaDevices: { getUserMedia },
-      audioSession: { type: 'play-and-record' },
+      audioSession,
     })
 
     await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
     await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
     expect(getUserMedia).toHaveBeenCalledOnce()
     expect(stop).toHaveBeenCalledOnce()
+    expect(audioSession.type).toBe('playback')
+  })
+
+  it('leaves playback before getUserMedia', async () => {
+    const types: string[] = []
+    const audioSession = { type: 'playback' }
+    Object.defineProperty(audioSession, 'type', {
+      get: () => types[types.length - 1] ?? 'playback',
+      set: (value: string) => {
+        types.push(value)
+      },
+      configurable: true,
+    })
+
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () => {
+      expect(types.at(-1)).toBe('auto')
+      return {
+        getTracks: () => [{ stop: vi.fn<() => void>() }],
+      } as unknown as MediaStream
+    })
+
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia },
+      audioSession,
+    })
+
+    await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
+    expect(types[0]).toBe('auto')
   })
 
   it('maps denial to denied', async () => {
@@ -46,12 +78,32 @@ describe('ensureMicrophonePermission', () => {
     vi.stubGlobal('navigator', {
       ...navigator,
       mediaDevices: { getUserMedia },
+      audioSession: { type: 'playback' },
     })
 
     await expect(ensureMicrophonePermission()).resolves.toEqual({
       ok: false,
       reason: 'denied',
     })
+  })
+
+  it('falls through to SpeechRecognition on non-denied priming errors', async () => {
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () => {
+      throw new DOMException(
+        'AudioSession category is not compatible with audio capture',
+        'InvalidStateError',
+      )
+    })
+
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia },
+      audioSession: { type: 'playback' },
+    })
+
+    await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
   })
 })
 

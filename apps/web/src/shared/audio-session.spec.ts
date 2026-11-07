@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   IOS_MIC_RELEASE_MS,
   micReleaseSettleMs,
+  prepareAudioSessionForMicrophone,
   releaseMicToPlayback,
   unlockPlaybackAudioSession,
 } from './audio-session'
@@ -27,6 +28,20 @@ describe('unlockPlaybackAudioSession', () => {
   it('no-ops when audioSession is missing', () => {
     vi.stubGlobal('navigator', { ...navigator })
     expect(() => unlockPlaybackAudioSession()).not.toThrow()
+  })
+})
+
+describe('prepareAudioSessionForMicrophone', () => {
+  it('sets audioSession type to auto', () => {
+    const audioSession = { type: 'playback' }
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      audioSession,
+    })
+
+    prepareAudioSessionForMicrophone()
+
+    expect(audioSession.type).toBe('auto')
   })
 })
 

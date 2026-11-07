@@ -1,4 +1,7 @@
-import { releaseMicToPlayback } from './audio-session'
+import {
+  prepareAudioSessionForMicrophone,
+  releaseMicToPlayback,
+} from './audio-session'
 
 /** Minimal Web Speech Recognition surface we use (Chrome/Safari prefixes). */
 
@@ -12,6 +15,9 @@ export type MicrophonePermissionResult =
 /**
  * Ask for mic via getUserMedia once, then release tracks immediately.
  * Helps iOS Safari remember Allow more reliably than SpeechRecognition alone.
+ *
+ * Must leave audioSession `playback` first — iOS rejects capture otherwise.
+ * Non-denied priming failures fall through so SpeechRecognition can still run.
  */
 export async function ensureMicrophonePermission(): Promise<MicrophonePermissionResult> {
   if (microphonePermissionGranted) {
@@ -26,6 +32,8 @@ export async function ensureMicrophonePermission(): Promise<MicrophonePermission
     return { ok: true }
   }
 
+  prepareAudioSessionForMicrophone()
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     for (const track of stream.getTracks()) {
@@ -39,7 +47,8 @@ export async function ensureMicrophonePermission(): Promise<MicrophonePermission
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
       return { ok: false, reason: 'denied' }
     }
-    return { ok: false, reason: 'unavailable' }
+    // e.g. InvalidStateError while session was playback — let STT try.
+    return { ok: true }
   }
 }
 
