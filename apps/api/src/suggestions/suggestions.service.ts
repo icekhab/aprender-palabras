@@ -10,7 +10,16 @@ import {
 } from '../integrations/openai/openai.service.js'
 import { PrismaService } from '../prisma.service.js'
 import { QuotaService } from '../quotas/quota.service.js'
-import { normalizeWordKey } from '../words/word-normalize.js'
+import {
+  normalizeSearchKey,
+  normalizeWordKey,
+} from '../words/word-normalize.js'
+import {
+  rankDbSuggestionMatches,
+  splitWords,
+} from './word-prefix-match.js'
+
+const DB_CANDIDATE_POOL = 100
 
 @Injectable()
 export class SuggestionsService {
@@ -20,13 +29,86 @@ export class SuggestionsService {
     private readonly quotaService: QuotaService,
   ) {}
 
-  async suggest(userId: string, query: string): Promise<SuggestionsResponse> {
+  async suggestFromDb(
+    userId: string,
+    query: string,
+  ): Promise<SuggestionsResponse> {
+    const searchQuery = normalizeSearchKey(query)
+    const tokens = splitWords(searchQuery)
+    if (tokens.length === 0) {
+      return { suggestions: [] }
+    }
+
+    const firstToken = tokens[0]!
+    const direction = detectDirection(query)
+
+    const candidates = await this.prisma.word.findMany({
+      where: {
+        OR: [
+          { searchSpanish: { startsWith: firstToken } },
+          { searchSpanish: { contains: ` ${firstToken}` } },
+          { searchRussian: { startsWith: firstToken } },
+          { searchRussian: { contains: ` ${firstToken}` } },
+        ],
+      },
+      select: {
+        id: true,
+        spanish: true,
+        russian: true,
+        searchSpanish: true,
+        searchRussian: true,
+      },
+      take: DB_CANDIDATE_POOL,
+    })
+
+    const ranked = rankDbSuggestionMatches(
+      searchQuery,
+      candidates,
+      direction,
+    )
+
+    if (ranked.length === 0) {
+      return { suggestions: [] }
+    }
+
+    const wordIds = ranked.map((word) => word.id)
+    const cards = await this.prisma.userCard.findMany({
+      where: {
+        userId,
+        wordId: { in: wordIds },
+        inDictionary: true,
+      },
+      select: {
+        wordId: true,
+        progress: true,
+      },
+    })
+
+    const progressByWordId = new Map(
+      cards.map((card) => [card.wordId, card.progress]),
+    )
+
+    return {
+      suggestions: ranked.map((word) => ({
+        spanish: word.spanish,
+        russian: word.russian,
+        wordId: word.id,
+        progress: progressByWordId.get(word.id) ?? null,
+      })),
+    }
+  }
+
+  async suggestFromAi(
+    userId: string,
+    query: string,
+  ): Promise<SuggestionsResponse> {
     if (!this.openAiService.isConfigured()) {
       throw new ServiceUnavailableException(
         'Translation suggestions are unavailable',
       )
     }
 
+    await this.quotaService.assertGenerationAvailable(userId)
     await this.quotaService.consumeSuggestions(userId)
 
     let suggestions: TranslationSuggestion[]

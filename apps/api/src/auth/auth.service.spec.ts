@@ -7,6 +7,11 @@ const USER = {
   login: 'icekhab@gmail.com',
   role: 'admin' as const,
   enabledExerciseTypes: [1, 3, 4, 5],
+  dailyGenerationLimit: null,
+  dailySuggestionsLimit: null,
+  quotaDate: null,
+  generationsCount: 0,
+  suggestionsCount: 0,
   passwordHash:
     '$argon2id$v=19$m=65536,p=4,t=3$wTLVO0Cauibw5R0IToCucA$yHJsCfkeaFsmmTing4GbW+UhACxdLSYFcuw4gmaV+Kw',
 }
@@ -67,6 +72,7 @@ describe('AuthService', () => {
       login: USER.login,
       role: USER.role,
       enabledExerciseTypes: [1, 3, 4, 5],
+      canUseAiSuggestions: true,
     })
     expect(session?.token).toMatch(/^[\w-]{43}$/)
 
@@ -98,6 +104,11 @@ describe('AuthService', () => {
       login: USER.login,
       role: USER.role,
       enabledExerciseTypes: [1, 3, 5],
+      dailyGenerationLimit: null,
+      dailySuggestionsLimit: null,
+      quotaDate: null,
+      generationsCount: 0,
+      suggestionsCount: 0,
     })
     const service = new AuthService(prisma as unknown as PrismaService)
 
@@ -110,6 +121,7 @@ describe('AuthService', () => {
       login: USER.login,
       role: USER.role,
       enabledExerciseTypes: [1, 3, 5],
+      canUseAiSuggestions: true,
     })
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: USER.id },
@@ -119,6 +131,11 @@ describe('AuthService', () => {
         login: true,
         role: true,
         enabledExerciseTypes: true,
+        dailyGenerationLimit: true,
+        dailySuggestionsLimit: true,
+        quotaDate: true,
+        generationsCount: true,
+        suggestionsCount: true,
       },
     })
   })
@@ -133,6 +150,11 @@ describe('AuthService', () => {
         login: USER.login,
         role: USER.role,
         enabledExerciseTypes: [1, 3, 4, 5],
+        dailyGenerationLimit: null,
+        dailySuggestionsLimit: null,
+        quotaDate: null,
+        generationsCount: 0,
+        suggestionsCount: 0,
       },
     })
     const service = new AuthService(prisma as unknown as PrismaService)

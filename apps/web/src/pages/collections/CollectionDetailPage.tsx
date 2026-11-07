@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
+import { ClearableSearchField } from '@/components/clearable-search-field'
 import { Button } from '@/components/ui/button'
 import { WordRow } from '@/components/word-row'
 import { ApiError } from '@/shared/api/auth'
@@ -26,10 +27,13 @@ import {
   setCollectionStatus,
   updateCollection,
 } from '@/shared/api/collections'
-import { getSuggestions } from '@/shared/api/suggestions'
 import { withReturnTo } from '@/shared/return-to'
 import { SuggestionsErrorMessage } from '@/shared/suggestions-error'
-import { getSuggestionsQueryError } from '@/shared/suggestions-query'
+import {
+  DB_ONLY_QUOTA_HINT,
+  MIN_QUERY_LENGTH,
+  useWordSuggestions,
+} from '@/shared/use-word-suggestions'
 import { ProgressRing } from '../lessons/progress-ring'
 import {
   COLLECTIONS_QUERY_KEY,
@@ -37,7 +41,6 @@ import {
 } from './query-keys'
 
 const SEARCH_DEBOUNCE_MS = 300
-const MIN_QUERY_LENGTH = 2
 
 export function CollectionDetailPage({
   userMenu,
@@ -69,16 +72,12 @@ export function CollectionDetailPage({
     enabled: Boolean(collectionId),
   })
 
-  const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
-  const suggestionsEnabled =
-    isAdmin &&
-    debouncedQuery.length >= MIN_QUERY_LENGTH &&
-    !suggestionsValidationError
-  const suggestionsQuery = useQuery({
-    queryKey: ['suggestions', 'collection', collectionId, debouncedQuery],
-    queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
-    enabled: suggestionsEnabled && Boolean(collectionId),
-    retry: false,
+  const liveQuery = query.trim()
+  const wordSuggestions = useWordSuggestions(debouncedQuery, {
+    enabled: Boolean(isAdmin && collectionId),
+    canUseAiSuggestions: authUser?.canUseAiSuggestions !== false,
+    queryKeyPrefix: ['suggestions', 'collection', collectionId],
+    liveQuery,
   })
 
   const invalidate = async () => {
@@ -172,11 +171,15 @@ export function CollectionDetailPage({
     collection?.status === 'ready' && collection.wordCount <= 1
   const showSuggestions =
     isAdmin &&
-    debouncedQuery.length >= MIN_QUERY_LENGTH &&
-    (Boolean(suggestionsValidationError) ||
-      suggestionsQuery.isFetching ||
-      suggestionsQuery.isError ||
-      suggestionsQuery.isSuccess)
+    liveQuery.length >= MIN_QUERY_LENGTH &&
+    (Boolean(wordSuggestions.validationError) ||
+      wordSuggestions.isInitialLoading ||
+      wordSuggestions.isSearchingAi ||
+      Boolean(wordSuggestions.dbError) ||
+      wordSuggestions.suggestions.length > 0 ||
+      (wordSuggestions.isInputSynced &&
+        !wordSuggestions.isInitialLoading &&
+        !wordSuggestions.dbError))
 
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
@@ -304,14 +307,13 @@ export function CollectionDetailPage({
                 <label className="sr-only" htmlFor="collection-search">
                   Añadir palabra
                 </label>
-                <input
+                <ClearableSearchField
                   id="collection-search"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={setQuery}
                   placeholder="Buscar palabra para la colección…"
                   autoComplete="off"
                   maxLength={RUSSIAN_MAX_CHARS}
-                  className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
                 />
 
                 {showSuggestions ? (
@@ -320,14 +322,14 @@ export function CollectionDetailPage({
                     role="listbox"
                     aria-label="Sugerencias"
                   >
-                    {suggestionsValidationError ? (
+                    {wordSuggestions.validationError ? (
                       <SuggestionsErrorMessage
-                        message={suggestionsValidationError}
+                        message={wordSuggestions.validationError}
                       />
                     ) : null}
 
-                    {!suggestionsValidationError &&
-                    suggestionsQuery.isFetching ? (
+                    {!wordSuggestions.validationError &&
+                    wordSuggestions.isInitialLoading ? (
                       <p
                         className="px-4 py-3 text-sm text-orange-900/70"
                         role="status"
@@ -336,24 +338,27 @@ export function CollectionDetailPage({
                       </p>
                     ) : null}
 
-                    {!suggestionsValidationError &&
-                    suggestionsQuery.isError ? (
-                      <SuggestionsErrorMessage error={suggestionsQuery.error} />
+                    {!wordSuggestions.validationError &&
+                    wordSuggestions.dbError ? (
+                      <SuggestionsErrorMessage
+                        error={wordSuggestions.dbError}
+                      />
                     ) : null}
 
-                    {!suggestionsValidationError &&
-                    suggestionsQuery.isSuccess &&
-                    suggestionsQuery.data.suggestions.length === 0 ? (
+                    {!wordSuggestions.validationError &&
+                    !wordSuggestions.isInitialLoading &&
+                    !wordSuggestions.dbError &&
+                    wordSuggestions.suggestions.length === 0 &&
+                    !wordSuggestions.isSearchingAi ? (
                       <p className="px-4 py-3 text-sm text-orange-900/70">
                         No hay sugerencias.
                       </p>
                     ) : null}
 
-                    {!suggestionsValidationError &&
-                    suggestionsQuery.isSuccess &&
-                    suggestionsQuery.data.suggestions.length > 0 ? (
+                    {!wordSuggestions.validationError &&
+                    wordSuggestions.suggestions.length > 0 ? (
                       <ul>
-                        {suggestionsQuery.data.suggestions.map((item) => {
+                        {wordSuggestions.suggestions.map((item) => {
                           const alreadyInCollection =
                             item.wordId !== null &&
                             collection.words.some(
@@ -374,6 +379,25 @@ export function CollectionDetailPage({
                           )
                         })}
                       </ul>
+                    ) : null}
+
+                    {!wordSuggestions.validationError &&
+                    wordSuggestions.isSearchingAi ? (
+                      <p
+                        className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                        role="status"
+                      >
+                        Buscando con IA…
+                      </p>
+                    ) : null}
+
+                    {wordSuggestions.showDbOnlyQuotaHint ? (
+                      <p
+                        className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                        role="status"
+                      >
+                        {DB_ONLY_QUOTA_HINT}
+                      </p>
                     ) : null}
                   </div>
                 ) : null}

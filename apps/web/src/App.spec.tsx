@@ -10,12 +10,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { ToastProvider } from './shared/toast'
+import { DB_ONLY_QUOTA_HINT } from './shared/use-word-suggestions'
 
 const user = {
   id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
   login: 'icekhab@gmail.com',
   role: 'admin' as const,
   enabledExerciseTypes: [1, 3, 4, 5] as const,
+  canUseAiSuggestions: true,
 }
 
 function renderApp(initialPath = '/') {
@@ -1000,7 +1002,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1026,14 +1031,77 @@ describe('App', () => {
     expect(await screen.findByText('esperar')).toBeInTheDocument()
     expect(screen.getByText('ждать')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/suggestions?q=esperar',
+      '/api/suggestions/db?q=esperar',
+      expect.objectContaining({
+        credentials: 'same-origin',
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/suggestions/ai?q=esperar',
       expect.objectContaining({
         credentials: 'same-origin',
       }),
     )
   })
 
-  it('hides suggestions on blur and shows them again on focus', async () => {
+  it('shows db-only quota hint when AI suggestions are unavailable', async () => {
+    const limitedUser = {
+      ...user,
+      canUseAiSuggestions: false,
+    }
+
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(limitedUser)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url.startsWith('/api/suggestions/db?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: 'word-1',
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      if (url.startsWith('/api/suggestions/ai?')) {
+        throw new Error(`Unexpected AI request: ${url}`)
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(await screen.findByText(DB_ONLY_QUOTA_HINT)).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).startsWith('/api/suggestions/ai?'),
+      ),
+    ).toBe(false)
+  })
+
+  it('clears the search field with the clear button', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)
 
@@ -1049,7 +1117,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1072,7 +1143,154 @@ describe('App', () => {
     fireEvent.focus(searchInput)
     fireEvent.change(searchInput, { target: { value: 'esperar' } })
 
-    expect(await screen.findByLabelText('Sugerencias')).toBeInTheDocument()
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(searchInput).toHaveValue('esperar')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda' }))
+
+    expect(searchInput).toHaveValue('')
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
+    })
+  })
+
+  it('refetches db but reuses ai cache after clear and retype', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url.startsWith('/api/suggestions/db?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: 'word-db',
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      if (url.startsWith('/api/suggestions/ai?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+            {
+              spanish: 'esperanza',
+              russian: 'надежда',
+              wordId: null,
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByText('esperanza')).toBeInTheDocument()
+
+    const dbCallsAfterFirst = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).startsWith('/api/suggestions/db?q=esperar'),
+    ).length
+    const aiCallsAfterFirst = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).startsWith('/api/suggestions/ai?q=esperar'),
+    ).length
+    expect(dbCallsAfterFirst).toBeGreaterThanOrEqual(1)
+    expect(aiCallsAfterFirst).toBe(1)
+
+    fireEvent.change(searchInput, { target: { value: '' } })
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Sugerencias')).not.toBeInTheDocument()
+    })
+
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByText('esperanza')).toBeInTheDocument()
+    expect(screen.queryByText('Buscando con IA…')).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      const dbCalls = fetchMock.mock.calls.filter((call) =>
+        String(call[0]).startsWith('/api/suggestions/db?q=esperar'),
+      ).length
+      expect(dbCalls).toBeGreaterThan(dbCallsAfterFirst)
+    })
+
+    const aiCallsAfterSecond = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).startsWith('/api/suggestions/ai?q=esperar'),
+    ).length
+    expect(aiCallsAfterSecond).toBe(1)
+  })
+
+  it('hides suggestions on blur and shows them again on focus', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(user)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(screen.getByLabelText('Sugerencias')).toBeInTheDocument()
 
     fireEvent.blur(searchInput)
 
@@ -1083,7 +1301,7 @@ describe('App', () => {
     fireEvent.focus(searchInput)
 
     expect(await screen.findByLabelText('Sugerencias')).toBeInTheDocument()
-    expect(screen.getByText('esperar')).toBeInTheDocument()
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
   })
 
   it('shows generate loader overlay when a user adds a new suggestion', async () => {
@@ -1109,7 +1327,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1170,7 +1391,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1250,7 +1474,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1326,7 +1553,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {
@@ -1395,7 +1625,10 @@ describe('App', () => {
         return emptyTrainingResponse()
       }
 
-      if (url.startsWith('/api/suggestions?')) {
+      if (
+        url.startsWith('/api/suggestions/db?') ||
+        url.startsWith('/api/suggestions/ai?')
+      ) {
         return jsonResponse({
           suggestions: [
             {

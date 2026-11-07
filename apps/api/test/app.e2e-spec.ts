@@ -13,6 +13,8 @@ describe('AppController (e2e)', () => {
     id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
     login: 'icekhab@gmail.com',
     role: 'admin' as const,
+    enabledExerciseTypes: [1, 3, 4, 5],
+    canUseAiSuggestions: true,
   }
   const authService = {
     login: vi.fn(async (input: { login: string; password: string }) =>
@@ -36,6 +38,15 @@ describe('AppController (e2e)', () => {
     ]),
   }
 
+  const quotaUser = {
+    role: 'admin' as const,
+    dailyGenerationLimit: null,
+    dailySuggestionsLimit: null,
+    quotaDate: null,
+    generationsCount: 0,
+    suggestionsCount: 0,
+  }
+
   const prismaService = {
     word: {
       findMany: vi.fn(async () => []),
@@ -43,6 +54,17 @@ describe('AppController (e2e)', () => {
     userCard: {
       findMany: vi.fn(async () => []),
     },
+    user: {
+      findUniqueOrThrow: vi.fn(async () => quotaUser),
+    },
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        user: {
+          findUniqueOrThrow: vi.fn(async () => quotaUser),
+          update: vi.fn(async () => quotaUser),
+        },
+      }),
+    ),
   }
 
   beforeEach(async () => {
@@ -111,13 +133,13 @@ describe('AppController (e2e)', () => {
 
   it('protects API routes without a session', () => {
     return request(app.getHttpServer())
-      .get('/api/suggestions?q=hola')
+      .get('/api/suggestions/db?q=hola')
       .expect(401)
   })
 
-  it('returns suggestions for an authenticated session', async () => {
+  it('returns AI suggestions for an authenticated session', async () => {
     await request(app.getHttpServer())
-      .get('/api/suggestions?q=esperar')
+      .get('/api/suggestions/ai?q=esperar')
       .set('Cookie', 'aprender_palabras_session=session-token')
       .expect(200)
       .expect({
@@ -137,9 +159,19 @@ describe('AppController (e2e)', () => {
     )
   })
 
+  it('returns DB suggestions for an authenticated session', async () => {
+    await request(app.getHttpServer())
+      .get('/api/suggestions/db?q=esperar')
+      .set('Cookie', 'aprender_palabras_session=session-token')
+      .expect(200)
+      .expect({ suggestions: [] })
+
+    expect(openAiService.getTranslationSuggestions).not.toHaveBeenCalled()
+  })
+
   it('rejects invalid suggestion queries', () => {
     return request(app.getHttpServer())
-      .get('/api/suggestions?q=a')
+      .get('/api/suggestions/ai?q=')
       .set('Cookie', 'aprender_palabras_session=session-token')
       .expect(400)
   })

@@ -34,7 +34,7 @@ import { PrismaService } from '../prisma.service.js'
 import { QuotaService } from '../quotas/quota.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
 import { canEditWord } from './word-edit-access.js'
-import { normalizeWordKey } from './word-normalize.js'
+import { normalizeSearchKey, normalizeWordKey } from './word-normalize.js'
 
 @Injectable()
 export class WordsService {
@@ -208,6 +208,7 @@ export class WordsService {
         data: {
           russian,
           normalizedRussian,
+          searchRussian: normalizeSearchKey(russian),
           definitionEs: input.definitionEs,
           examples: input.examples,
           partOfSpeech: input.partOfSpeech,
@@ -306,6 +307,8 @@ export class WordsService {
     const russian = draft.russian.trim()
     const normalizedSpanish = normalizeWordKey(spanish)
     const normalizedRussian = normalizeWordKey(russian)
+    const searchSpanish = normalizeSearchKey(spanish)
+    const searchRussian = normalizeSearchKey(russian)
 
     const existing = await this.prisma.word.findUnique({
       where: {
@@ -331,6 +334,8 @@ export class WordsService {
           russian,
           normalizedSpanish,
           normalizedRussian,
+          searchSpanish,
+          searchRussian,
           additionalTranslations: draft.additionalTranslations,
           definitionEs: draft.definitionEs,
           examples: draft.examples,
@@ -426,6 +431,7 @@ export class WordsService {
         data: {
           russian,
           normalizedRussian,
+          searchRussian: normalizeSearchKey(russian),
           definitionEs: input.definitionEs,
           examples: input.examples,
           partOfSpeech: input.partOfSpeech,
@@ -705,6 +711,8 @@ export class WordsService {
     const russian = draft.russian.trim()
     const normalizedSpanish = normalizeWordKey(spanish)
     const normalizedRussian = normalizeWordKey(russian)
+    const searchSpanish = normalizeSearchKey(spanish)
+    const searchRussian = normalizeSearchKey(russian)
     const partOfSpeech = isKnownPartOfSpeech(draft.partOfSpeech)
       ? draft.partOfSpeech
       : PART_OF_SPEECH_UNDETERMINED
@@ -732,6 +740,8 @@ export class WordsService {
                   russian,
                   normalizedSpanish,
                   normalizedRussian,
+                  searchSpanish,
+                  searchRussian,
                   additionalTranslations: draft.additionalTranslations,
                   definitionEs: draft.definitionEs,
                   examples: draft.examples,

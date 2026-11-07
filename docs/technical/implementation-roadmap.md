@@ -105,7 +105,8 @@
 - [x] Сервис квот: сброс по дате Madrid; дефолты по роли
   (user gen 30 / sug 300; teacher gen 100 / sug 600); admin без дневных.
 - [x] Генерация (поиск или урок): один счётчик `generations`.
-- [x] `GET /suggestions` → счётчик suggestions; `429` при лимите.
+- [x] `GET /suggestions/ai` → счётчик suggestions (+ check generation);
+  `GET /suggestions/db` без квоты; `429` при лимите AI.
 - [x] Картинка (create + regen): отказ после 3; инкремент при успехе.
 - [x] Лимиты полей: ES ≤100 / ≤10 слов; RU ≤120; suggestions `q` по направлению.
 - [x] Тесты квот, override в БД, лимитов полей.

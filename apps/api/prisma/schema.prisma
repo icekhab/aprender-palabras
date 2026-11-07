@@ -107,6 +107,10 @@ model Word {
   russian                String
   normalizedSpanish      String
   normalizedRussian      String
+  /** Accent-folded search key (see normalizeSearchKey). */
+  searchSpanish          String
+  /** Accent-folded search key (see normalizeSearchKey). */
+  searchRussian          String
   additionalTranslations String[]       @default([])
   definitionEs           String?
   examples               String[]       @default([])
@@ -134,6 +138,8 @@ model Word {
   @@unique([normalizedSpanish, normalizedRussian])
   @@index([createdByUserId])
   @@index([createdAt])
+  @@index([searchSpanish])
+  @@index([searchRussian])
 }
 
 model WordAudio {

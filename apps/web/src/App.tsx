@@ -41,6 +41,7 @@ import { useForm } from 'react-hook-form'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { AppSplash } from '@/components/app-splash'
 import { BrandLink } from '@/components/brand-link'
+import { ClearableSearchField } from '@/components/clearable-search-field'
 import { Button } from '@/components/ui/button'
 import { ProgressDot } from '@/components/progress-dot'
 import { WordGenerateLoader } from '@/components/word-generate-loader'
@@ -67,11 +68,14 @@ import {
   logout,
   updatePreferences,
 } from './shared/api/auth'
-import { getSuggestions } from './shared/api/suggestions'
 import { generationQuotaToastCopyFromError } from './shared/quota-messages'
 import { SuggestionsErrorMessage } from './shared/suggestions-error'
-import { getSuggestionsQueryError } from './shared/suggestions-query'
 import { useToast } from './shared/toast'
+import {
+  DB_ONLY_QUOTA_HINT,
+  MIN_QUERY_LENGTH,
+  useWordSuggestions,
+} from './shared/use-word-suggestions'
 import {
   generateTodayTraining,
   getTodayTraining,
@@ -87,7 +91,6 @@ const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const DICTIONARY_QUERY_KEY = ['words', 'dictionary'] as const
 const TRAINING_TODAY_QUERY_KEY = ['training', 'today'] as const
 const SEARCH_DEBOUNCE_MS = 300
-const MIN_QUERY_LENGTH = 2
 const DICTIONARY_PAGE_SIZE = 20
 
 const TRAINER_CARD_COLORS = [
@@ -629,6 +632,11 @@ function HomePage() {
       const quotaCopy = generationQuotaToastCopyFromError(error)
       if (quotaCopy) {
         showToast(quotaCopy)
+        queryClient.setQueryData(
+          AUTH_QUERY_KEY,
+          (current: AuthUser | undefined) =>
+            current ? { ...current, canUseAiSuggestions: false } : current,
+        )
         return
       }
       showToast({
@@ -660,18 +668,15 @@ function HomePage() {
     }
   }, [dictionaryFilterInput])
 
-  const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
-
-  const suggestionsQuery = useQuery({
-    queryKey: ['suggestions', debouncedQuery],
-    queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
-    enabled:
-      debouncedQuery.length >= MIN_QUERY_LENGTH && !suggestionsValidationError,
-    retry: false,
+  const liveSearchQuery = searchInput.trim()
+  const wordSuggestions = useWordSuggestions(debouncedQuery, {
+    enabled: true,
+    canUseAiSuggestions: user?.canUseAiSuggestions !== false,
+    liveQuery: liveSearchQuery,
   })
 
   const showSuggestionsPanel =
-    searchFocused && debouncedQuery.length >= MIN_QUERY_LENGTH
+    searchFocused && liveSearchQuery.length >= MIN_QUERY_LENGTH
 
   const dictionaryQuery = useInfiniteQuery({
     queryKey: [...DICTIONARY_QUERY_KEY, debouncedDictionaryFilter],
@@ -750,14 +755,13 @@ function HomePage() {
               <label className="sr-only" htmlFor="word-search">
                 Buscar palabra
               </label>
-              <input
+              <ClearableSearchField
                 id="word-search"
                 value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
+                onChange={setSearchInput}
                 placeholder="Buscar palabra…"
                 autoComplete="off"
                 maxLength={RUSSIAN_MAX_CHARS}
-                className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
               />
 
               {showSuggestionsPanel && (
@@ -766,36 +770,43 @@ function HomePage() {
                   role="listbox"
                   aria-label="Sugerencias"
                 >
-                  {suggestionsValidationError ? (
-                    <SuggestionsErrorMessage message={suggestionsValidationError} />
+                  {wordSuggestions.validationError ? (
+                    <SuggestionsErrorMessage
+                      message={wordSuggestions.validationError}
+                    />
                   ) : null}
 
-                  {!suggestionsValidationError && suggestionsQuery.isFetching && (
-                    <p
-                      className="px-4 py-3 text-sm text-orange-900/70"
-                      role="status"
-                    >
-                      Buscando…
-                    </p>
-                  )}
+                  {!wordSuggestions.validationError &&
+                    wordSuggestions.isInitialLoading && (
+                      <p
+                        className="px-4 py-3 text-sm text-orange-900/70"
+                        role="status"
+                      >
+                        Buscando…
+                      </p>
+                    )}
 
-                  {!suggestionsValidationError && suggestionsQuery.isError && (
-                    <SuggestionsErrorMessage error={suggestionsQuery.error} />
-                  )}
+                  {!wordSuggestions.validationError &&
+                  wordSuggestions.dbError ? (
+                    <SuggestionsErrorMessage
+                      error={wordSuggestions.dbError}
+                    />
+                  ) : null}
 
-                  {!suggestionsValidationError &&
-                    suggestionsQuery.isSuccess &&
-                    suggestionsQuery.data.suggestions.length === 0 && (
+                  {!wordSuggestions.validationError &&
+                    !wordSuggestions.isInitialLoading &&
+                    !wordSuggestions.dbError &&
+                    wordSuggestions.suggestions.length === 0 &&
+                    !wordSuggestions.isSearchingAi && (
                       <p className="px-4 py-3 text-sm text-orange-900/70">
                         No hay sugerencias.
                       </p>
                     )}
 
-                  {!suggestionsValidationError &&
-                    suggestionsQuery.isSuccess &&
-                    suggestionsQuery.data.suggestions.length > 0 && (
+                  {!wordSuggestions.validationError &&
+                    wordSuggestions.suggestions.length > 0 && (
                       <ul>
-                        {suggestionsQuery.data.suggestions.map((item) => (
+                        {wordSuggestions.suggestions.map((item) => (
                           <SuggestionRow
                             item={item}
                             key={suggestionKey(item)}
@@ -807,6 +818,26 @@ function HomePage() {
                           />
                         ))}
                       </ul>
+                    )}
+
+                  {!wordSuggestions.validationError &&
+                    wordSuggestions.isSearchingAi && (
+                      <p
+                        className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                        role="status"
+                      >
+                        Buscando con IA…
+                      </p>
+                    )}
+
+                  {!wordSuggestions.validationError &&
+                    wordSuggestions.showDbOnlyQuotaHint && (
+                      <p
+                        className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                        role="status"
+                      >
+                        {DB_ONLY_QUOTA_HINT}
+                      </p>
                     )}
                 </div>
               )}

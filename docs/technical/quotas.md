@@ -7,7 +7,7 @@
 
 | Сервис | Когда вызывается |
 |---|---|
-| OpenAI | генерация содержимого карточки; запрос фразы для Unsplash при регене картинки; `GET /suggestions` |
+| OpenAI | генерация содержимого карточки; запрос фразы для Unsplash при регене картинки; `GET /suggestions/ai` |
 | Unsplash | поиск картинки при генерации / регене |
 | ElevenLabs | **только** при создании нового `Word` (добавление через поиск или урок курса) |
 
@@ -65,4 +65,5 @@ OpenAI/Unsplash.
 | Генерация+создание слова из поиска (user auto-add / teacher|admin preview+create) | generations |
 | Генерация при добавлении слова в урок | generations (тот же счётчик) |
 | `POST /words/image/regenerate` (и первая картинка при create) | `imageGenerationCount` на Word |
-| `GET /suggestions` (ветка с OpenAI) | suggestions |
+| `GET /suggestions/ai` | suggestions (consume) + generation (check only) |
+| `GET /suggestions/db` | нет |

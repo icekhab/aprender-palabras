@@ -84,6 +84,8 @@ export interface AuthUser {
   login: string
   role: UserRole
   enabledExerciseTypes: ConfigurableExerciseType[]
+  /** False when daily suggestions or generation quota is exhausted (non-admin). */
+  canUseAiSuggestions: boolean
 }
 
 /** Limits for primary Spanish / Russian pair fields and suggestions `q`. */

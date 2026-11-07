@@ -28,7 +28,10 @@ import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
-import { normalizeWordKey } from '../words/word-normalize.js'
+import {
+  normalizeSearchKey,
+  normalizeWordKey,
+} from '../words/word-normalize.js'
 import {
   getMissingTrainerFields,
   isWordReadyForTrainer,
@@ -428,6 +431,8 @@ export class LessonsService {
     const russian = draft.russian.trim()
     const normalizedSpanish = normalizeWordKey(spanish)
     const normalizedRussian = normalizeWordKey(russian)
+    const searchSpanish = normalizeSearchKey(spanish)
+    const searchRussian = normalizeSearchKey(russian)
 
     try {
       const { word, createdNewWord } = await this.prisma.$transaction(
@@ -450,6 +455,8 @@ export class LessonsService {
                   russian,
                   normalizedSpanish,
                   normalizedRussian,
+                  searchSpanish,
+                  searchRussian,
                   additionalTranslations: draft.additionalTranslations,
                   definitionEs: draft.definitionEs,
                   examples: draft.examples,

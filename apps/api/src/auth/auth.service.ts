@@ -8,6 +8,7 @@ import {
 } from '@aprender-palabras/contracts'
 import argon2 from 'argon2'
 import { PrismaService } from '../prisma.service.js'
+import { computeCanUseAiSuggestions } from '../quotas/quota.service.js'
 import { SESSION_DURATION_MS } from './auth.constants.js'
 
 const DUMMY_PASSWORD_HASH =
@@ -24,6 +25,11 @@ const AUTH_USER_SELECT = {
   login: true,
   role: true,
   enabledExerciseTypes: true,
+  dailyGenerationLimit: true,
+  dailySuggestionsLimit: true,
+  quotaDate: true,
+  generationsCount: true,
+  suggestionsCount: true,
 } as const
 
 @Injectable()
@@ -124,6 +130,11 @@ function toAuthUser(user: {
   login: string
   role: AuthUser['role']
   enabledExerciseTypes: number[]
+  dailyGenerationLimit: number | null
+  dailySuggestionsLimit: number | null
+  quotaDate: Date | null
+  generationsCount: number
+  suggestionsCount: number
 }): AuthUser {
   return {
     id: user.id,
@@ -132,6 +143,7 @@ function toAuthUser(user: {
     enabledExerciseTypes: normalizeEnabledExerciseTypes(
       user.enabledExerciseTypes,
     ),
+    canUseAiSuggestions: computeCanUseAiSuggestions(user),
   }
 }
 

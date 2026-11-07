@@ -339,6 +339,6 @@ Unsplash / ElevenLabs. `admin` без дневных квот gen/suggestions.
 | Мин. символов | 1 | 1 |
 
 «Слово» = токен после trim и схлопывания пробелов. Те же лимиты для
-основной пары при create/edit и для `GET /suggestions?q` (по направлению
+основной пары при create/edit и для `GET /suggestions/db|ai?q` (по направлению
 ввода).
 

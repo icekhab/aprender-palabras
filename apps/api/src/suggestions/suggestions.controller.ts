@@ -16,8 +16,8 @@ import { SuggestionsService } from './suggestions.service.js'
 export class SuggestionsController {
   constructor(private readonly suggestionsService: SuggestionsService) {}
 
-  @Get()
-  suggest(
+  @Get('db')
+  suggestFromDb(
     @Req() request: AuthenticatedRequest,
     @Query() query: unknown,
   ): Promise<SuggestionsResponse> {
@@ -26,7 +26,23 @@ export class SuggestionsController {
       throw new BadRequestException('Invalid suggestion query')
     }
 
-    return this.suggestionsService.suggest(
+    return this.suggestionsService.suggestFromDb(
+      request.authUser.id,
+      result.data.q,
+    )
+  }
+
+  @Get('ai')
+  suggestFromAi(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: unknown,
+  ): Promise<SuggestionsResponse> {
+    const result = suggestionsQuerySchema.safeParse(query)
+    if (!result.success) {
+      throw new BadRequestException('Invalid suggestion query')
+    }
+
+    return this.suggestionsService.suggestFromAi(
       request.authUser.id,
       result.data.q,
     )

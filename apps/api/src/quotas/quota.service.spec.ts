@@ -1,7 +1,10 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { madridDateString } from '../training/selection.js'
-import { QuotaService } from './quota.service.js'
+import {
+  computeCanUseAiSuggestions,
+  QuotaService,
+} from './quota.service.js'
 
 function createPrismaMock() {
   const tx = {
@@ -18,6 +21,9 @@ function createPrismaMock() {
     $executeRaw: vi.fn<(args: unknown) => Promise<number>>(),
     word: {
       findUnique: vi.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    user: {
+      findUniqueOrThrow: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     _tx: tx,
   }
@@ -114,5 +120,62 @@ describe('QuotaService', () => {
     prisma.$executeRaw.mockResolvedValue(1)
     await service.consumeImageGeneration('word-1')
     expect(prisma.word.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('assertGenerationAvailable rejects without consuming', async () => {
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      role: 'user',
+      dailyGenerationLimit: null,
+      dailySuggestionsLimit: null,
+      quotaDate: new Date(`${madridDateString()}T00:00:00.000Z`),
+      generationsCount: 30,
+      suggestionsCount: 0,
+    })
+
+    await expect(
+      service.assertGenerationAvailable('user-1'),
+    ).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    })
+    expect(prisma._tx.user.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('computeCanUseAiSuggestions', () => {
+  it('is true for admin', () => {
+    expect(
+      computeCanUseAiSuggestions({
+        role: 'admin',
+        dailyGenerationLimit: null,
+        dailySuggestionsLimit: null,
+        quotaDate: null,
+        generationsCount: 999,
+        suggestionsCount: 999,
+      }),
+    ).toBe(true)
+  })
+
+  it('is false when generation or suggestions quota is exhausted', () => {
+    const today = new Date(`${madridDateString()}T00:00:00.000Z`)
+    expect(
+      computeCanUseAiSuggestions({
+        role: 'user',
+        dailyGenerationLimit: null,
+        dailySuggestionsLimit: null,
+        quotaDate: today,
+        generationsCount: 30,
+        suggestionsCount: 0,
+      }),
+    ).toBe(false)
+    expect(
+      computeCanUseAiSuggestions({
+        role: 'user',
+        dailyGenerationLimit: null,
+        dailySuggestionsLimit: null,
+        quotaDate: today,
+        generationsCount: 0,
+        suggestionsCount: 300,
+      }),
+    ).toBe(false)
   })
 })

@@ -1,9 +1,13 @@
 import type {
   AdminWordsSortBy,
+  AuthUser,
   SuggestionItem,
 } from '@aprender-palabras/contracts'
 import { RUSSIAN_MAX_CHARS } from '@aprender-palabras/contracts'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   useEffect,
   useState,
@@ -13,17 +17,20 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
+import { ClearableSearchField } from '@/components/clearable-search-field'
 import { Button } from '@/components/ui/button'
 import { listAdminWords } from '@/shared/api/admin-words'
 import { ApiError } from '@/shared/api/auth'
-import { getSuggestions } from '@/shared/api/suggestions'
 import { SuggestionsErrorMessage } from '@/shared/suggestions-error'
-import { getSuggestionsQueryError } from '@/shared/suggestions-query'
+import {
+  DB_ONLY_QUOTA_HINT,
+  MIN_QUERY_LENGTH,
+  useWordSuggestions,
+} from '@/shared/use-word-suggestions'
 
 const ADMIN_WORDS_QUERY_KEY = ['admin', 'words'] as const
 const PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 300
-const MIN_QUERY_LENGTH = 2
 
 const dateFormatter = new Intl.DateTimeFormat('es-ES', {
   day: '2-digit',
@@ -43,6 +50,8 @@ export function AdminWordsPage({
   userMenu: ReactNode
 }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const authUser = queryClient.getQueryData<AuthUser>(['auth', 'me'])
   const [suggestionInput, setSuggestionInput] = useState('')
   const [debouncedSuggestion, setDebouncedSuggestion] = useState('')
   const [suggestionFocused, setSuggestionFocused] = useState(false)
@@ -70,20 +79,16 @@ export function AdminWordsPage({
     }
   }, [filterInput])
 
-  const suggestionsValidationError =
-    getSuggestionsQueryError(debouncedSuggestion)
-
-  const suggestionsQuery = useQuery({
-    queryKey: ['admin', 'suggestions', debouncedSuggestion],
-    queryFn: ({ signal }) => getSuggestions(debouncedSuggestion, signal),
-    enabled:
-      debouncedSuggestion.length >= MIN_QUERY_LENGTH &&
-      !suggestionsValidationError,
-    retry: false,
+  const liveSuggestionQuery = suggestionInput.trim()
+  const wordSuggestions = useWordSuggestions(debouncedSuggestion, {
+    enabled: true,
+    canUseAiSuggestions: authUser?.canUseAiSuggestions !== false,
+    queryKeyPrefix: ['admin', 'suggestions'],
+    liveQuery: liveSuggestionQuery,
   })
 
   const showSuggestionsPanel =
-    suggestionFocused && debouncedSuggestion.length >= MIN_QUERY_LENGTH
+    suggestionFocused && liveSuggestionQuery.length >= MIN_QUERY_LENGTH
 
   const wordsQuery = useInfiniteQuery({
     queryKey: [...ADMIN_WORDS_QUERY_KEY, sortBy, debouncedFilter],
@@ -149,14 +154,13 @@ export function AdminWordsPage({
               <label className="sr-only" htmlFor="admin-suggestion-search">
                 Buscar para añadir al catálogo
               </label>
-              <input
+              <ClearableSearchField
                 id="admin-suggestion-search"
                 value={suggestionInput}
-                onChange={(event) => setSuggestionInput(event.target.value)}
+                onChange={setSuggestionInput}
                 placeholder="Buscar para añadir…"
                 autoComplete="off"
                 maxLength={RUSSIAN_MAX_CHARS}
-                className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
               />
 
               {showSuggestionsPanel ? (
@@ -165,11 +169,14 @@ export function AdminWordsPage({
                   role="listbox"
                   aria-label="Sugerencias"
                 >
-                  {suggestionsValidationError ? (
-                    <SuggestionsErrorMessage message={suggestionsValidationError} />
+                  {wordSuggestions.validationError ? (
+                    <SuggestionsErrorMessage
+                      message={wordSuggestions.validationError}
+                    />
                   ) : null}
 
-                  {!suggestionsValidationError && suggestionsQuery.isFetching ? (
+                  {!wordSuggestions.validationError &&
+                  wordSuggestions.isInitialLoading ? (
                     <p
                       className="px-4 py-3 text-sm text-orange-900/70"
                       role="status"
@@ -178,29 +185,52 @@ export function AdminWordsPage({
                     </p>
                   ) : null}
 
-                  {!suggestionsValidationError && suggestionsQuery.isError ? (
-                    <SuggestionsErrorMessage error={suggestionsQuery.error} />
+                  {!wordSuggestions.validationError &&
+                  wordSuggestions.dbError ? (
+                    <SuggestionsErrorMessage
+                      error={wordSuggestions.dbError}
+                    />
                   ) : null}
 
-                  {!suggestionsValidationError &&
-                  suggestionsQuery.isSuccess &&
-                  suggestionsQuery.data.suggestions.length === 0 ? (
+                  {!wordSuggestions.validationError &&
+                  !wordSuggestions.isInitialLoading &&
+                  !wordSuggestions.dbError &&
+                  wordSuggestions.suggestions.length === 0 &&
+                  !wordSuggestions.isSearchingAi ? (
                     <p className="px-4 py-3 text-sm text-orange-900/70">
                       No hay sugerencias.
                     </p>
                   ) : null}
 
-                  {!suggestionsValidationError &&
-                  suggestionsQuery.isSuccess &&
-                  suggestionsQuery.data.suggestions.length > 0 ? (
+                  {!wordSuggestions.validationError &&
+                  wordSuggestions.suggestions.length > 0 ? (
                     <ul>
-                      {suggestionsQuery.data.suggestions.map((item) => (
+                      {wordSuggestions.suggestions.map((item) => (
                         <AdminSuggestionRow
                           key={`${item.spanish}|${item.russian}`}
                           item={item}
                         />
                       ))}
                     </ul>
+                  ) : null}
+
+                  {!wordSuggestions.validationError &&
+                  wordSuggestions.isSearchingAi ? (
+                    <p
+                      className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                      role="status"
+                    >
+                      Buscando con IA…
+                    </p>
+                  ) : null}
+
+                  {wordSuggestions.showDbOnlyQuotaHint ? (
+                    <p
+                      className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                      role="status"
+                    >
+                      {DB_ONLY_QUOTA_HINT}
+                    </p>
                   ) : null}
                 </div>
               ) : null}

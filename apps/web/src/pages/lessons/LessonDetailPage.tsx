@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-query'
 import {
   RUSSIAN_MAX_CHARS,
+  type AuthUser,
   type LessonWordItem,
   type SuggestionItem,
 } from '@aprender-palabras/contracts'
@@ -13,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ProgressDot } from '@/components/progress-dot'
 import { BrandLink } from '@/components/brand-link'
+import { ClearableSearchField } from '@/components/clearable-search-field'
 import { Button } from '@/components/ui/button'
 import { WordRow } from '@/components/word-row'
 import { ApiError } from '../../shared/api/auth'
@@ -22,15 +24,17 @@ import {
   removeWordFromLesson,
   renameLesson,
 } from '../../shared/api/lessons'
-import { getSuggestions } from '../../shared/api/suggestions'
 import { SuggestionsErrorMessage } from '../../shared/suggestions-error'
-import { getSuggestionsQueryError } from '../../shared/suggestions-query'
+import {
+  DB_ONLY_QUOTA_HINT,
+  MIN_QUERY_LENGTH,
+  useWordSuggestions,
+} from '../../shared/use-word-suggestions'
 import { courseLessonsQueryKey } from '../courses/query-keys'
 import { ProgressRing } from './progress-ring'
 import { lessonStatusLabel } from './status-label'
 
 const SEARCH_DEBOUNCE_MS = 300
-const MIN_QUERY_LENGTH = 2
 const LESSON_QUERY_KEY = (courseId: string, id: string) =>
   ['courses', courseId, 'lessons', 'detail', id] as const
 
@@ -70,14 +74,13 @@ export function LessonDetailPage({
     enabled: Boolean(courseId) && Boolean(id),
   })
 
-  const suggestionsValidationError = getSuggestionsQueryError(debouncedQuery)
-  const suggestionsEnabled =
-    debouncedQuery.length >= MIN_QUERY_LENGTH && !suggestionsValidationError
-  const suggestionsQuery = useQuery({
-    queryKey: ['suggestions', 'lesson', courseId, id, debouncedQuery],
-    queryFn: ({ signal }) => getSuggestions(debouncedQuery, signal),
-    enabled: suggestionsEnabled && Boolean(id),
-    retry: false,
+  const authUser = queryClient.getQueryData<AuthUser>(['auth', 'me'])
+  const liveQuery = query.trim()
+  const wordSuggestions = useWordSuggestions(debouncedQuery, {
+    enabled: Boolean(id),
+    canUseAiSuggestions: authUser?.canUseAiSuggestions !== false,
+    queryKeyPrefix: ['suggestions', 'lesson', courseId, id],
+    liveQuery,
   })
 
   const renameMutation = useMutation({
@@ -165,11 +168,15 @@ export function LessonDetailPage({
     : lessonStatusLabel(lesson.status)
   const showSuggestions =
     canEdit &&
-    debouncedQuery.length >= MIN_QUERY_LENGTH &&
-    (Boolean(suggestionsValidationError) ||
-      suggestionsQuery.isFetching ||
-      suggestionsQuery.isError ||
-      suggestionsQuery.isSuccess)
+    liveQuery.length >= MIN_QUERY_LENGTH &&
+    (Boolean(wordSuggestions.validationError) ||
+      wordSuggestions.isInitialLoading ||
+      wordSuggestions.isSearchingAi ||
+      Boolean(wordSuggestions.dbError) ||
+      wordSuggestions.suggestions.length > 0 ||
+      (wordSuggestions.isInputSynced &&
+        !wordSuggestions.isInitialLoading &&
+        !wordSuggestions.dbError))
 
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
@@ -232,14 +239,13 @@ export function LessonDetailPage({
           <label className="sr-only" htmlFor="lesson-search">
             Añadir palabra
           </label>
-          <input
+          <ClearableSearchField
             id="lesson-search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={setQuery}
             placeholder="Buscar palabra para la lección…"
             autoComplete="off"
             maxLength={RUSSIAN_MAX_CHARS}
-            className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200"
           />
 
           {showSuggestions ? (
@@ -248,33 +254,37 @@ export function LessonDetailPage({
               role="listbox"
               aria-label="Sugerencias"
             >
-              {suggestionsValidationError ? (
-                <SuggestionsErrorMessage message={suggestionsValidationError} />
+              {wordSuggestions.validationError ? (
+                <SuggestionsErrorMessage
+                  message={wordSuggestions.validationError}
+                />
               ) : null}
 
-              {!suggestionsValidationError && suggestionsQuery.isFetching ? (
+              {!wordSuggestions.validationError &&
+              wordSuggestions.isInitialLoading ? (
                 <p className="px-4 py-3 text-sm text-orange-900/70" role="status">
                   Buscando…
                 </p>
               ) : null}
 
-              {!suggestionsValidationError && suggestionsQuery.isError ? (
-                <SuggestionsErrorMessage error={suggestionsQuery.error} />
+              {!wordSuggestions.validationError && wordSuggestions.dbError ? (
+                <SuggestionsErrorMessage error={wordSuggestions.dbError} />
               ) : null}
 
-              {!suggestionsValidationError &&
-              suggestionsQuery.isSuccess &&
-              suggestionsQuery.data.suggestions.length === 0 ? (
+              {!wordSuggestions.validationError &&
+              !wordSuggestions.isInitialLoading &&
+              !wordSuggestions.dbError &&
+              wordSuggestions.suggestions.length === 0 &&
+              !wordSuggestions.isSearchingAi ? (
                 <p className="px-4 py-3 text-sm text-orange-900/70">
                   No hay sugerencias.
                 </p>
               ) : null}
 
-              {!suggestionsValidationError &&
-              suggestionsQuery.isSuccess &&
-              suggestionsQuery.data.suggestions.length > 0 ? (
+              {!wordSuggestions.validationError &&
+              wordSuggestions.suggestions.length > 0 ? (
                 <ul>
-                  {suggestionsQuery.data.suggestions.map((item) => {
+                  {wordSuggestions.suggestions.map((item) => {
                     const lessonWord =
                       item.wordId === null
                         ? undefined
@@ -295,6 +305,25 @@ export function LessonDetailPage({
                     )
                   })}
                 </ul>
+              ) : null}
+
+              {!wordSuggestions.validationError &&
+              wordSuggestions.isSearchingAi ? (
+                <p
+                  className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                  role="status"
+                >
+                  Buscando con IA…
+                </p>
+              ) : null}
+
+              {wordSuggestions.showDbOnlyQuotaHint ? (
+                <p
+                  className="border-t border-orange-50 px-4 py-2 text-sm text-orange-900/60"
+                  role="status"
+                >
+                  {DB_ONLY_QUOTA_HINT}
+                </p>
               ) : null}
             </div>
           ) : null}

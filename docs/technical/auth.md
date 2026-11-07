@@ -29,8 +29,9 @@
 | `admin` | Права teacher по курсам + каталог/правка любых `Word` |
 
 Поле `User.role` (default `user`). Ответ `login` / `GET /auth/me` включает
-`role`. Все маршруты `/api/courses*` требуют `teacher` или `admin` (`403`
-иначе).
+`role` и `canUseAiSuggestions` (свободны обе дневные квоты suggestions и
+generation; у `admin` всегда `true`). Все маршруты `/api/courses*` требуют
+`teacher` или `admin` (`403` иначе).
 
 Nullable override квот (null = дефолт, см. [quotas.md](./quotas.md)):
 
