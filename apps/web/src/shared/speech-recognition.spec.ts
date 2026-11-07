@@ -105,6 +105,29 @@ describe('ensureMicrophonePermission', () => {
 
     await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
   })
+
+  it('force re-prompts after a previous grant cache', async () => {
+    const stop = vi.fn<() => void>()
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () =>
+      ({
+        getTracks: () => [{ stop }],
+      }) as unknown as MediaStream,
+    )
+
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia },
+      audioSession: { type: 'auto' },
+    })
+
+    await ensureMicrophonePermission()
+    expect(getUserMedia).toHaveBeenCalledOnce()
+
+    await ensureMicrophonePermission({ force: true })
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('speech recognition support', () => {

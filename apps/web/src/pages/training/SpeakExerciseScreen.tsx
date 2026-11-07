@@ -26,6 +26,12 @@ type SpeakOutcome = {
 const MIC_DENIED_MESSAGE =
   'Permite el micrófono para continuar. Si lo bloqueaste: Ajustes → Safari → Micrófono → Permitir.'
 
+const MIC_UNAVAILABLE_MESSAGE = 'No se pudo usar el micrófono.'
+const MIC_START_FAILED_MESSAGE = 'No se pudo iniciar el micrófono.'
+
+const TEXT_LINK_CLASS =
+  'text-sm text-orange-800/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 disabled:opacity-50'
+
 function recognitionErrorMessage(error: string): string {
   switch (error) {
     case 'not-allowed':
@@ -33,7 +39,7 @@ function recognitionErrorMessage(error: string): string {
     case 'no-speech':
       return 'No se escuchó nada. Inténtalo de nuevo.'
     case 'audio-capture':
-      return 'No se pudo usar el micrófono.'
+      return MIC_UNAVAILABLE_MESSAGE
     case 'network':
       return 'Error de red al reconocer la voz.'
     case 'aborted':
@@ -41,6 +47,14 @@ function recognitionErrorMessage(error: string): string {
     default:
       return 'No se pudo reconocer la voz. Inténtalo de nuevo.'
   }
+}
+
+function isMicrophoneAccessError(message: string): boolean {
+  return (
+    message === MIC_DENIED_MESSAGE ||
+    message === MIC_UNAVAILABLE_MESSAGE ||
+    message === MIC_START_FAILED_MESSAGE
+  )
 }
 
 export function SpeakExerciseScreen({
@@ -179,7 +193,7 @@ export function SpeakExerciseScreen({
         setErrorMessage(
           permission.reason === 'denied'
             ? MIC_DENIED_MESSAGE
-            : 'No se pudo usar el micrófono.',
+            : MIC_UNAVAILABLE_MESSAGE,
         )
         return
       }
@@ -259,15 +273,36 @@ export function SpeakExerciseScreen({
         session.start()
       } catch {
         teardownRecognition()
-        setErrorMessage('No se pudo iniciar el micrófono.')
+        setErrorMessage(MIC_START_FAILED_MESSAGE)
         setListenState('idle')
       }
+    })()
+  }
+
+  function requestMicAccess() {
+    if (disabled || listenState === 'listening') {
+      return
+    }
+
+    void (async () => {
+      const permission = await ensureMicrophonePermission({ force: true })
+      if (submittedRef.current) {
+        return
+      }
+      if (!permission.ok) {
+        setErrorMessage(MIC_DENIED_MESSAGE)
+        return
+      }
+      setErrorMessage('')
+      startListening()
     })()
   }
 
   const photographerName = word.imagePhotographerName
   const photographerUrl = word.imagePhotographerUrl
   const disabled = submitted || outcome !== null
+  const showPermitMicLink =
+    Boolean(errorMessage) && isMicrophoneAccessError(errorMessage)
 
   let micTone = 'bg-orange-600 text-white hover:bg-orange-700'
   if (listenState === 'listening') {
@@ -336,9 +371,20 @@ export function SpeakExerciseScreen({
             </p>
           ) : null}
 
+          {showPermitMicLink ? (
+            <button
+              type="button"
+              className={TEXT_LINK_CLASS}
+              disabled={disabled}
+              onClick={requestMicAccess}
+            >
+              Permitir micrófono
+            </button>
+          ) : null}
+
           <button
             type="button"
-            className="text-sm text-orange-800/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"
+            className={TEXT_LINK_CLASS}
             disabled={disabled}
             onClick={() => setSkipOpen(true)}
           >

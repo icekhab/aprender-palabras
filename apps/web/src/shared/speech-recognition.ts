@@ -18,8 +18,15 @@ export type MicrophonePermissionResult =
  *
  * Must leave audioSession `playback` first — iOS rejects capture otherwise.
  * Non-denied priming failures fall through so SpeechRecognition can still run.
+ * Pass `{ force: true }` to re-prompt after a previous denial in this tab.
  */
-export async function ensureMicrophonePermission(): Promise<MicrophonePermissionResult> {
+export async function ensureMicrophonePermission(
+  options?: { force?: boolean },
+): Promise<MicrophonePermissionResult> {
+  if (options?.force) {
+    microphonePermissionGranted = false
+  }
+
   if (microphonePermissionGranted) {
     return { ok: true }
   }
