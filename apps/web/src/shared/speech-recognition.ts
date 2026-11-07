@@ -15,10 +15,6 @@ export type MicrophonePermissionResult =
 /**
  * Ask for mic via getUserMedia, then release tracks immediately.
  * Used only from the «Permitir micrófono» link — normal Hablar relies on STT alone.
- *
- * Must leave audioSession `playback` first — iOS rejects capture otherwise.
- * Non-denied priming failures fall through so SpeechRecognition can still run.
- * Pass `{ force: true }` to re-prompt after a previous denial in this tab.
  */
 export async function ensureMicrophonePermission(
   options?: { force?: boolean },
@@ -35,7 +31,6 @@ export async function ensureMicrophonePermission(
     typeof navigator === 'undefined' ||
     !navigator.mediaDevices?.getUserMedia
   ) {
-    // Fall through to SpeechRecognition; some environments omit mediaDevices.
     return { ok: true }
   }
 
@@ -54,7 +49,6 @@ export async function ensureMicrophonePermission(
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
       return { ok: false, reason: 'denied' }
     }
-    // e.g. InvalidStateError while session was playback — let STT try.
     return { ok: true }
   }
 }
@@ -120,50 +114,10 @@ export type SpeechRecognitionHandlers = {
   onEnd: () => void
 }
 
-/** Max wait for SpeechRecognition.onend after stop/abort before continuing. */
-const END_TIMEOUT_MS = 500
-
 export type SpeechRecognitionSession = {
   start: () => void
   stop: () => void
-  /** Graceful stop and wait for onend (user toggle off). Does not call handlers.onEnd. */
-  stopAndWait: () => Promise<void>
-  /** Abort and wait for onend (or timeout) so iOS can leave capture routing. */
-  abort: () => Promise<void>
-}
-
-function waitForRecognitionEnd(
-  recognition: SpeechRecognitionLike,
-  end: () => void,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let settled = false
-    const finish = () => {
-      if (settled) {
-        return
-      }
-      settled = true
-      window.clearTimeout(timeoutId)
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      resolve()
-    }
-
-    const timeoutId = window.setTimeout(finish, END_TIMEOUT_MS)
-    // Wait for engine onend only — do not re-invoke handlers.onEnd.
-    recognition.onresult = null
-    recognition.onerror = null
-    recognition.onend = () => {
-      finish()
-    }
-
-    try {
-      end()
-    } catch {
-      finish()
-    }
-  })
+  abort: () => void
 }
 
 /**
@@ -212,13 +166,15 @@ export function createSpeechRecognition(
         // Already stopped.
       }
     },
-    stopAndWait: () =>
-      waitForRecognitionEnd(recognition, () => {
-        recognition.stop()
-      }),
-    abort: () =>
-      waitForRecognitionEnd(recognition, () => {
+    abort: () => {
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      try {
         recognition.abort()
-      }),
+      } catch {
+        // Already stopped.
+      }
+    },
   }
 }

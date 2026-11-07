@@ -171,7 +171,7 @@ describe('createSpeechRecognition', () => {
     ).toBeNull()
   })
 
-  it('wires handlers and defaults to es-ES', async () => {
+  it('wires handlers and defaults to es-ES', () => {
     const instances: Array<{
       lang: string
       continuous: boolean
@@ -226,67 +226,8 @@ describe('createSpeechRecognition', () => {
     instances[0]?.onend?.()
     expect(onEnd).toHaveBeenCalledOnce()
 
-    const abortPromise = session?.abort()
+    session?.abort()
     expect(instances[0]?.abort).toHaveBeenCalledOnce()
-    // Abort waits for onend (or timeout) before clearing handlers.
-    instances[0]?.onend?.()
-    await abortPromise
     expect(instances[0]?.onresult).toBeNull()
-  })
-
-  it('abort resolves after onend', async () => {
-    class MockRecognition {
-      lang = ''
-      continuous = false
-      interimResults = false
-      maxAlternatives = 1
-      onresult: ((event: unknown) => void) | null = null
-      onerror: ((event: unknown) => void) | null = null
-      onend: (() => void) | null = null
-      start = vi.fn<() => void>()
-      stop = vi.fn<() => void>()
-      abort = vi.fn<() => void>(() => {
-        this.onend?.()
-      })
-    }
-
-    vi.stubGlobal('webkitSpeechRecognition', MockRecognition)
-
-    const session = createSpeechRecognition({
-      onResult: vi.fn<(transcript: string, isFinal: boolean) => void>(),
-      onError: vi.fn<(error: string) => void>(),
-      onEnd: vi.fn<() => void>(),
-    })
-
-    await expect(session?.abort()).resolves.toBeUndefined()
-  })
-
-  it('stopAndWait resolves after onend without calling handlers.onEnd', async () => {
-    class MockRecognition {
-      lang = ''
-      continuous = false
-      interimResults = false
-      maxAlternatives = 1
-      onresult: ((event: unknown) => void) | null = null
-      onerror: ((event: unknown) => void) | null = null
-      onend: (() => void) | null = null
-      start = vi.fn<() => void>()
-      stop = vi.fn<() => void>(() => {
-        this.onend?.()
-      })
-      abort = vi.fn<() => void>()
-    }
-
-    vi.stubGlobal('webkitSpeechRecognition', MockRecognition)
-
-    const onEnd = vi.fn<() => void>()
-    const session = createSpeechRecognition({
-      onResult: vi.fn<(transcript: string, isFinal: boolean) => void>(),
-      onError: vi.fn<(error: string) => void>(),
-      onEnd,
-    })
-
-    await expect(session?.stopAndWait()).resolves.toBeUndefined()
-    expect(onEnd).not.toHaveBeenCalled()
   })
 })
