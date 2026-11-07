@@ -128,7 +128,7 @@ export function TrainerSessionPage() {
       const builtQueue = buildSessionQueue(data.words, enabled)
       setPrepared({
         sessionId: data.id,
-        queue: skipSpeak ? filterSpeakExercises(builtQueue) : builtQueue,
+        queue: filterSpeakExercises(builtQueue),
       })
       setSessionStartedAt(new Date().toISOString())
       setStepIndex(0)

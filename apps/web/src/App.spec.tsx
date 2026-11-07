@@ -760,6 +760,9 @@ describe('App', () => {
     expect(
       screen.getByRole('switch', { name: 'Español → ruso (elección)' }),
     ).toHaveAttribute('aria-checked', 'true')
+    expect(
+      screen.queryByRole('switch', { name: 'Pronunciación (hablar)' }),
+    ).not.toBeInTheDocument()
   })
 
   it('disables turning off an exercise when only two remain enabled', async () => {
@@ -798,7 +801,7 @@ describe('App', () => {
       name: 'Español → ruso (elección)',
     })
     const offSwitch = screen.getByRole('switch', {
-      name: 'Pronunciación (hablar)',
+      name: 'Ruso → español (escritura)',
     })
 
     expect(activeSwitch).toBeDisabled()

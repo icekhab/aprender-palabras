@@ -1158,6 +1158,10 @@ const EXERCISE_SETTING_LABELS: Record<
   },
 }
 
+const AVAILABLE_EXERCISE_TYPES = CONFIGURABLE_EXERCISE_TYPES.filter(
+  (type) => type !== 4,
+)
+
 function SettingsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -1165,7 +1169,9 @@ function SettingsPage() {
   const logoutMutation = useLogoutMutation()
   const enabledTypes =
     user?.enabledExerciseTypes ?? DEFAULT_ENABLED_EXERCISE_TYPES
-  const enabledCount = enabledTypes.length
+  const enabledCount = AVAILABLE_EXERCISE_TYPES.filter((type) =>
+    enabledTypes.includes(type),
+  ).length
   const atMinimum = enabledCount <= MIN_ENABLED_EXERCISE_TYPES
 
   const preferencesMutation = useMutation({
@@ -1228,7 +1234,7 @@ function SettingsPage() {
           </div>
 
           <ul className="divide-y divide-orange-100 overflow-hidden rounded-2xl border border-orange-100 bg-white">
-            {CONFIGURABLE_EXERCISE_TYPES.map((type) => {
+            {AVAILABLE_EXERCISE_TYPES.map((type) => {
               const on = enabledTypes.includes(type)
               const disabled =
                 preferencesMutation.isPending || (on && atMinimum)
