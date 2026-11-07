@@ -1,3 +1,7 @@
+import {
+  DEFAULT_ENABLED_EXERCISE_TYPES,
+  type AuthUser,
+} from '@aprender-palabras/contracts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -35,6 +39,7 @@ import {
 } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
 
+const AUTH_QUERY_KEY = ['auth', 'me'] as const
 const TRAINER_SESSION_QUERY_KEY = (id: string) =>
   ['training', 'session', id] as const
 const TRAINING_TODAY_QUERY_KEY = ['training', 'today'] as const
@@ -117,7 +122,10 @@ export function TrainerSessionPage() {
       const skipSpeak =
         !isSpeechRecognitionSupported() || readSkipSpeakExercises()
       setSkipSpeakExercises(skipSpeak)
-      const builtQueue = buildSessionQueue(data.words)
+      const authUser = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
+      const enabled =
+        authUser?.enabledExerciseTypes ?? DEFAULT_ENABLED_EXERCISE_TYPES
+      const builtQueue = buildSessionQueue(data.words, enabled)
       setPrepared({
         sessionId: data.id,
         queue: skipSpeak ? filterSpeakExercises(builtQueue) : builtQueue,
@@ -135,7 +143,7 @@ export function TrainerSessionPage() {
     return () => {
       cancelled = true
     }
-  }, [sessionQuery.data])
+  }, [queryClient, sessionQuery.data])
 
   const currentStep = queue[stepIndex] ?? null
 

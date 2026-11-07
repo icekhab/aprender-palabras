@@ -26,6 +26,8 @@ model User {
   quotaDate              DateTime?          @db.Date
   generationsCount       Int                @default(0)
   suggestionsCount       Int                @default(0)
+  /** Configurable trainer types (1/3/4/5). Type 2 is system-only. */
+  enabledExerciseTypes   Int[]              @default([1, 3, 4, 5])
   sessions                     Session[]
   cards                        UserCard[]
   createdWords                 Word[]                        @relation("WordCreator")

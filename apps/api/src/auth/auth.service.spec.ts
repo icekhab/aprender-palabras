@@ -6,6 +6,7 @@ const USER = {
   id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
   login: 'icekhab@gmail.com',
   role: 'admin' as const,
+  enabledExerciseTypes: [1, 3, 4, 5],
   passwordHash:
     '$argon2id$v=19$m=65536,p=4,t=3$wTLVO0Cauibw5R0IToCucA$yHJsCfkeaFsmmTing4GbW+UhACxdLSYFcuw4gmaV+Kw',
 }
@@ -27,6 +28,7 @@ function createPrismaMock() {
   const mock = {
     user: {
       findUnique: vi.fn<UserFindUnique>(),
+      update: vi.fn<(args: unknown) => Promise<object>>(),
     },
     session: {
       create: vi.fn<SessionCreate>().mockResolvedValue({}),
@@ -64,6 +66,7 @@ describe('AuthService', () => {
       id: USER.id,
       login: USER.login,
       role: USER.role,
+      enabledExerciseTypes: [1, 3, 4, 5],
     })
     expect(session?.token).toMatch(/^[\w-]{43}$/)
 
@@ -88,6 +91,38 @@ describe('AuthService', () => {
     expect(prisma.session.create).not.toHaveBeenCalled()
   })
 
+  it('updates enabled exercise preferences', async () => {
+    const prisma = createPrismaMock()
+    prisma.user.update.mockResolvedValue({
+      id: USER.id,
+      login: USER.login,
+      role: USER.role,
+      enabledExerciseTypes: [1, 3, 5],
+    })
+    const service = new AuthService(prisma as unknown as PrismaService)
+
+    await expect(
+      service.updatePreferences(USER.id, {
+        enabledExerciseTypes: [1, 3, 5],
+      }),
+    ).resolves.toEqual({
+      id: USER.id,
+      login: USER.login,
+      role: USER.role,
+      enabledExerciseTypes: [1, 3, 5],
+    })
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: USER.id },
+      data: { enabledExerciseTypes: [1, 3, 5] },
+      select: {
+        id: true,
+        login: true,
+        role: true,
+        enabledExerciseTypes: true,
+      },
+    })
+  })
+
   it('deletes an expired session and rejects it', async () => {
     const prisma = createPrismaMock()
     prisma.session.findUnique.mockResolvedValue({
@@ -97,6 +132,7 @@ describe('AuthService', () => {
         id: USER.id,
         login: USER.login,
         role: USER.role,
+        enabledExerciseTypes: [1, 3, 4, 5],
       },
     })
     const service = new AuthService(prisma as unknown as PrismaService)

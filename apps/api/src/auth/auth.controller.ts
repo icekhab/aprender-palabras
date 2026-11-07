@@ -5,13 +5,18 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
   UnauthorizedException,
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
-import { loginSchema, type AuthUser } from '@aprender-palabras/contracts'
+import {
+  loginSchema,
+  updatePreferencesSchema,
+  type AuthUser,
+} from '@aprender-palabras/contracts'
 import type { Response } from 'express'
 import { AuthService } from './auth.service.js'
 import { SESSION_COOKIE_NAME, sessionCookieOptions } from './auth.constants.js'
@@ -51,6 +56,22 @@ export class AuthController {
   @Get('me')
   me(@Req() request: AuthenticatedRequest): AuthUser {
     return request.authUser
+  }
+
+  @Patch('preferences')
+  async updatePreferences(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<AuthUser> {
+    const result = updatePreferencesSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid preferences data')
+    }
+
+    return this.authService.updatePreferences(
+      request.authUser.id,
+      result.data,
+    )
   }
 
   @Post('logout')

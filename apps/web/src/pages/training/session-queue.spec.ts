@@ -165,9 +165,80 @@ describe('typesForWord', () => {
       ),
     ).toEqual([3, 4, 5, 1])
   })
+
+  it('omits disabled configurable types but keeps type 2 for early words', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '1',
+          spanish: 'a',
+          russian: 'а',
+          completedTrainerCount: 0,
+        }),
+        [1, 3, 5],
+      ),
+    ).toEqual([1, 2, 3, 5])
+  })
+
+  it('starts with type 2 when type 1 is disabled for early words', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '1',
+          spanish: 'a',
+          russian: 'а',
+          completedTrainerCount: 0,
+        }),
+        [3, 4, 5],
+      ),
+    ).toEqual([2, 3, 4, 5])
+  })
+
+  it('shuffles only enabled types after two trainings', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    expect(
+      typesForWord(
+        word({
+          userCardId: '2',
+          spanish: 'b',
+          russian: 'б',
+          completedTrainerCount: 2,
+        }),
+        [1, 3, 5],
+      ),
+    ).toEqual([1, 3, 5])
+  })
 })
 
 describe('buildSessionQueue', () => {
+  it('never emits disabled exercise types', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+
+    const queue = buildSessionQueue(
+      [
+        word({
+          userCardId: '1',
+          spanish: 'a',
+          russian: 'а',
+          completedTrainerCount: 2,
+          showIntro: false,
+        }),
+      ],
+      [1, 3, 5],
+    )
+
+    expect(
+      queue
+        .filter((step) => step.kind === 'exercise')
+        .map((step) => step.type),
+    ).toEqual([1, 3, 5])
+  })
+
   it('starts with an atomic unlock of the first four words: intros → 1 → 2', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
 

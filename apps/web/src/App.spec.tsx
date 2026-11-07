@@ -15,6 +15,7 @@ const user = {
   id: '0199f98d-83c0-7bde-a537-b74cf7e9ea34',
   login: 'icekhab@gmail.com',
   role: 'admin' as const,
+  enabledExerciseTypes: [1, 3, 4, 5] as const,
 }
 
 function renderApp(initialPath = '/') {
@@ -751,10 +752,58 @@ describe('App', () => {
       await screen.findByRole('heading', { name: 'Ajustes' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByText(
-        'Las palabras se escuchan con la voz integrada de la aplicación.',
-      ),
+      screen.getByRole('heading', { name: 'Ejercicios' }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Debes mantener al menos 2 ejercicios activos/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('switch', { name: 'Español → ruso (elección)' }),
+    ).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('disables turning off an exercise when only two remain enabled', async () => {
+    const limitedUser = {
+      ...user,
+      enabledExerciseTypes: [1, 3] as const,
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url === '/api/auth/me') {
+          return jsonResponse(limitedUser)
+        }
+
+        if (isDictionaryListRequest(url)) {
+          return emptyDictionaryResponse()
+        }
+
+        if (isTrainingTodayRequest(url)) {
+          return emptyTrainingResponse()
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+
+    renderApp('/settings')
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ejercicios' }),
+    ).toBeInTheDocument()
+
+    const activeSwitch = screen.getByRole('switch', {
+      name: 'Español → ruso (elección)',
+    })
+    const offSwitch = screen.getByRole('switch', {
+      name: 'Pronunciación (hablar)',
+    })
+
+    expect(activeSwitch).toBeDisabled()
+    expect(offSwitch).toBeEnabled()
+    expect(offSwitch).toHaveAttribute('aria-checked', 'false')
   })
 
   it('opens account menu and navigates to created courses', async () => {

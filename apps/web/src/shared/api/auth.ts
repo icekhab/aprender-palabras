@@ -1,4 +1,8 @@
-import type { AuthUser, LoginInput } from '@aprender-palabras/contracts'
+import type {
+  AuthUser,
+  LoginInput,
+  UpdatePreferencesInput,
+} from '@aprender-palabras/contracts'
 
 export class ApiError extends Error {
   readonly status: number
@@ -77,6 +81,18 @@ export async function login(input: LoginInput): Promise<AuthUser> {
 export async function logout(): Promise<void> {
   await request('/api/auth/logout', {
     method: 'POST',
+  })
+}
+
+export async function updatePreferences(
+  input: UpdatePreferencesInput,
+): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/preferences', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
   })
 }
 

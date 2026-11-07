@@ -7,9 +7,13 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  CONFIGURABLE_EXERCISE_TYPES,
+  DEFAULT_ENABLED_EXERCISE_TYPES,
   loginSchema,
+  MIN_ENABLED_EXERCISE_TYPES,
   RUSSIAN_MAX_CHARS,
   type AuthUser,
+  type ConfigurableExerciseType,
   type DailyTrainerItem,
   type DictionaryListItem,
   type LoginInput,
@@ -56,7 +60,13 @@ import { TrainerSessionPage } from './pages/training/TrainerSessionPage'
 import { AddWordPage } from './pages/words/AddWordPage'
 import { WordCardEditPage } from './pages/words/WordCardEditPage'
 import { WordCardPage } from './pages/words/WordCardPage'
-import { ApiError, getCurrentUser, login, logout } from './shared/api/auth'
+import {
+  ApiError,
+  getCurrentUser,
+  login,
+  logout,
+  updatePreferences,
+} from './shared/api/auth'
 import { getSuggestions } from './shared/api/suggestions'
 import { generationQuotaToastCopyFromError } from './shared/quota-messages'
 import { SuggestionsErrorMessage } from './shared/suggestions-error'
@@ -1126,11 +1136,62 @@ function DictionaryWordRow({ item }: { item: DictionaryListItem }) {
   )
 }
 
+const EXERCISE_SETTING_LABELS: Record<
+  ConfigurableExerciseType,
+  { title: string; description: string }
+> = {
+  1: {
+    title: 'Español → ruso (elección)',
+    description: 'Elige la traducción rusa correcta',
+  },
+  3: {
+    title: 'Ruso → español (elección)',
+    description: 'Elige la palabra española correcta',
+  },
+  4: {
+    title: 'Pronunciación (hablar)',
+    description: 'Di la palabra española en voz alta',
+  },
+  5: {
+    title: 'Ruso → español (escritura)',
+    description: 'Escribe la palabra española',
+  },
+}
+
 function SettingsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const logoutMutation = useLogoutMutation()
+  const enabledTypes =
+    user?.enabledExerciseTypes ?? DEFAULT_ENABLED_EXERCISE_TYPES
+  const enabledCount = enabledTypes.length
+  const atMinimum = enabledCount <= MIN_ENABLED_EXERCISE_TYPES
+
+  const preferencesMutation = useMutation({
+    mutationFn: updatePreferences,
+    onSuccess: (nextUser) => {
+      queryClient.setQueryData(AUTH_QUERY_KEY, nextUser)
+    },
+  })
+
+  const toggleExercise = (type: ConfigurableExerciseType, nextOn: boolean) => {
+    if (!user || preferencesMutation.isPending) {
+      return
+    }
+
+    const next = nextOn
+      ? CONFIGURABLE_EXERCISE_TYPES.filter(
+          (item) => enabledTypes.includes(item) || item === type,
+        )
+      : enabledTypes.filter((item) => item !== type)
+
+    if (next.length < MIN_ENABLED_EXERCISE_TYPES) {
+      return
+    }
+
+    preferencesMutation.mutate({ enabledExerciseTypes: next })
+  }
 
   return (
     <main className="min-h-svh bg-orange-50 text-orange-950">
@@ -1157,11 +1218,68 @@ function SettingsPage() {
       </header>
 
       <div className="mx-auto max-w-3xl space-y-6 px-5 py-6 sm:px-8">
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Pronunciación</h2>
-          <p className="text-sm text-orange-900/70">
-            Las palabras se escuchan con la voz integrada de la aplicación.
-          </p>
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">Ejercicios</h2>
+            <p className="text-sm text-orange-900/70">
+              Elige qué ejercicios quieres practicar. Debes mantener al menos{' '}
+              {MIN_ENABLED_EXERCISE_TYPES} ejercicios activos.
+            </p>
+          </div>
+
+          <ul className="divide-y divide-orange-100 overflow-hidden rounded-2xl border border-orange-100 bg-white">
+            {CONFIGURABLE_EXERCISE_TYPES.map((type) => {
+              const on = enabledTypes.includes(type)
+              const disabled =
+                preferencesMutation.isPending || (on && atMinimum)
+              const labels = EXERCISE_SETTING_LABELS[type]
+
+              return (
+                <li
+                  key={type}
+                  className="flex items-center justify-between gap-4 px-4 py-3 sm:px-5"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-orange-950">{labels.title}</p>
+                    <p className="text-sm text-orange-900/65">
+                      {labels.description}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={labels.title}
+                    disabled={disabled}
+                    className={[
+                      'relative h-7 w-12 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200',
+                      on ? 'bg-orange-700' : 'bg-orange-200',
+                      disabled
+                        ? 'cursor-not-allowed opacity-50'
+                        : 'cursor-pointer',
+                    ].join(' ')}
+                    onClick={() => {
+                      toggleExercise(type, !on)
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className={[
+                        'absolute top-0.5 left-0.5 size-6 rounded-full bg-white shadow transition',
+                        on ? 'translate-x-5' : 'translate-x-0',
+                      ].join(' ')}
+                    />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+
+          {preferencesMutation.isError ? (
+            <p role="alert" className="text-sm text-red-700">
+              No se pudieron guardar los ajustes. Inténtalo de nuevo.
+            </p>
+          ) : null}
         </section>
       </div>
     </main>

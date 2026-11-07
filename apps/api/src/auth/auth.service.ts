@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
-import type { AuthUser, LoginInput } from '@aprender-palabras/contracts'
+import {
+  normalizeEnabledExerciseTypes,
+  type AuthUser,
+  type LoginInput,
+  type UpdatePreferencesInput,
+} from '@aprender-palabras/contracts'
 import argon2 from 'argon2'
 import { PrismaService } from '../prisma.service.js'
 import { SESSION_DURATION_MS } from './auth.constants.js'
@@ -14,6 +19,13 @@ interface CreatedSession {
   expiresAt: Date
 }
 
+const AUTH_USER_SELECT = {
+  id: true,
+  login: true,
+  role: true,
+  enabledExerciseTypes: true,
+} as const
+
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
@@ -23,9 +35,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { normalizedLogin },
       select: {
-        id: true,
-        login: true,
-        role: true,
+        ...AUTH_USER_SELECT,
         passwordHash: true,
       },
     })
@@ -57,7 +67,7 @@ export class AuthService {
     ])
 
     return {
-      user: { id: user.id, login: user.login, role: user.role },
+      user: toAuthUser(user),
       token,
       expiresAt,
     }
@@ -70,11 +80,7 @@ export class AuthService {
         id: true,
         expiresAt: true,
         user: {
-          select: {
-            id: true,
-            login: true,
-            role: true,
-          },
+          select: AUTH_USER_SELECT,
         },
       },
     })
@@ -88,13 +94,44 @@ export class AuthService {
       return null
     }
 
-    return session.user
+    return toAuthUser(session.user)
+  }
+
+  async updatePreferences(
+    userId: string,
+    input: UpdatePreferencesInput,
+  ): Promise<AuthUser> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        enabledExerciseTypes: input.enabledExerciseTypes,
+      },
+      select: AUTH_USER_SELECT,
+    })
+
+    return toAuthUser(user)
   }
 
   async logout(token: string): Promise<void> {
     await this.prisma.session.deleteMany({
       where: { tokenHash: hashToken(token) },
     })
+  }
+}
+
+function toAuthUser(user: {
+  id: string
+  login: string
+  role: AuthUser['role']
+  enabledExerciseTypes: number[]
+}): AuthUser {
+  return {
+    id: user.id,
+    login: user.login,
+    role: user.role,
+    enabledExerciseTypes: normalizeEnabledExerciseTypes(
+      user.enabledExerciseTypes,
+    ),
   }
 }
 

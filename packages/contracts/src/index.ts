@@ -11,10 +11,79 @@ export const userRoleSchema = z.enum(['user', 'teacher', 'admin'])
 
 export type UserRole = z.infer<typeof userRoleSchema>
 
+/** Exercise types the user can toggle in settings (type 2 is system-only). */
+export const CONFIGURABLE_EXERCISE_TYPES = [1, 3, 4, 5] as const
+
+export type ConfigurableExerciseType =
+  (typeof CONFIGURABLE_EXERCISE_TYPES)[number]
+
+export const DEFAULT_ENABLED_EXERCISE_TYPES: ConfigurableExerciseType[] = [
+  1, 3, 4, 5,
+]
+
+export const MIN_ENABLED_EXERCISE_TYPES = 2
+
+const configurableExerciseTypeSchema = z.union([
+  z.literal(1),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+])
+
+export function normalizeEnabledExerciseTypes(
+  value: unknown,
+): ConfigurableExerciseType[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_ENABLED_EXERCISE_TYPES]
+  }
+
+  const seen = new Set<ConfigurableExerciseType>()
+  for (const item of value) {
+    const parsed = configurableExerciseTypeSchema.safeParse(item)
+    if (parsed.success) {
+      seen.add(parsed.data)
+    }
+  }
+
+  const normalized = CONFIGURABLE_EXERCISE_TYPES.filter((type) =>
+    seen.has(type),
+  )
+  if (normalized.length < MIN_ENABLED_EXERCISE_TYPES) {
+    return [...DEFAULT_ENABLED_EXERCISE_TYPES]
+  }
+  return normalized
+}
+
+export const updatePreferencesSchema = z.object({
+  enabledExerciseTypes: z
+    .array(configurableExerciseTypeSchema)
+    .superRefine((types, ctx) => {
+      const unique = new Set(types)
+      if (unique.size !== types.length) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'enabledExerciseTypes must be unique',
+        })
+      }
+      if (unique.size < MIN_ENABLED_EXERCISE_TYPES) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `At least ${MIN_ENABLED_EXERCISE_TYPES} exercises must be enabled`,
+        })
+      }
+    })
+    .transform((types) =>
+      CONFIGURABLE_EXERCISE_TYPES.filter((type) => types.includes(type)),
+    ),
+})
+
+export type UpdatePreferencesInput = z.infer<typeof updatePreferencesSchema>
+
 export interface AuthUser {
   id: string
   login: string
   role: UserRole
+  enabledExerciseTypes: ConfigurableExerciseType[]
 }
 
 /** Limits for primary Spanish / Russian pair fields and suggestions `q`. */

@@ -1,4 +1,10 @@
-import type { TrainerSessionWord } from '@aprender-palabras/contracts'
+import type {
+  ConfigurableExerciseType,
+  TrainerSessionWord,
+} from '@aprender-palabras/contracts'
+import {
+  DEFAULT_ENABLED_EXERCISE_TYPES,
+} from '@aprender-palabras/contracts'
 import { shuffleInPlace } from './exercise1'
 
 /** How many words to unlock at session start (intros → type 1 → type 2). */
@@ -65,15 +71,31 @@ type WordState = {
 
 /**
  * Personal exercise-type chain for a card:
- * - first two trainings (count 0|1): prefix 1 → 2, then shuffle of 3/4/5;
- * - after that (count ≥ 2): full shuffle of 1/3/4/5 (no type 2).
+ * - first two trainings (count 0|1): type 2 always; prefix 1 if enabled,
+ *   then shuffle of remaining enabled among 3/4/5;
+ * - after that (count ≥ 2): full shuffle of enabled among 1/3/4/5 (no type 2).
  * Call once per word and reuse — shuffle is not stable across calls.
  */
-export function typesForWord(word: TrainerSessionWord): ExerciseType[] {
+export function typesForWord(
+  word: TrainerSessionWord,
+  enabled: readonly ConfigurableExerciseType[] = DEFAULT_ENABLED_EXERCISE_TYPES,
+): ExerciseType[] {
+  const enabledSet = new Set<ConfigurableExerciseType>(enabled)
+  const configurable = ([1, 3, 4, 5] as const).filter((type) =>
+    enabledSet.has(type),
+  )
+
   if (word.completedTrainerCount >= 2) {
-    return shuffleInPlace([1, 3, 4, 5] as ExerciseType[])
+    return shuffleInPlace([...configurable] as ExerciseType[])
   }
-  return [1, 2, ...shuffleInPlace([3, 4, 5] as ExerciseType[])]
+
+  const tail = shuffleInPlace(
+    configurable.filter((type) => type !== 1) as ExerciseType[],
+  )
+  if (enabledSet.has(1)) {
+    return [1, 2, ...tail]
+  }
+  return [2, ...tail]
 }
 
 function pickInjectSize(waitingCount: number): number {
@@ -126,10 +148,13 @@ function emitTypeBlock(
   }
 }
 
-function createStates(words: TrainerSessionWord[]): WordState[] {
+function createStates(
+  words: TrainerSessionWord[],
+  enabled: readonly ConfigurableExerciseType[],
+): WordState[] {
   return words.map((word) => ({
     word,
-    chain: typesForWord(word),
+    chain: typesForWord(word, enabled),
     nextIndex: 0,
   }))
 }
@@ -137,14 +162,16 @@ function createStates(words: TrainerSessionWord[]): WordState[] {
 /**
  * Atomic unlock block: all intros (shuffled) → all type 1 (shuffled)
  * → optional all type 2 for eligible (shuffled). Nothing else interleaved.
+ * Type 1/2 blocks are no-ops when those types are absent from word chains.
  */
 function unlockBatch(
   steps: SessionStep[],
   batchWords: TrainerSessionWord[],
   batchId: number,
   includeType2: boolean,
+  enabled: readonly ConfigurableExerciseType[],
 ): WordState[] {
-  const states = createStates(batchWords)
+  const states = createStates(batchWords, enabled)
   emitIntros(steps, batchWords, batchId)
   emitTypeBlock(steps, states, 1, batchId)
   if (includeType2) {
@@ -162,7 +189,10 @@ function unlockBatch(
  *
  * Error retries (when enqueued by the session UI) always append to the end.
  */
-export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
+export function buildSessionQueue(
+  words: TrainerSessionWord[],
+  enabled: readonly ConfigurableExerciseType[] = DEFAULT_ENABLED_EXERCISE_TYPES,
+): SessionStep[] {
   if (words.length === 0) {
     return []
   }
@@ -173,7 +203,13 @@ export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
 
   const initial = shuffled.slice(0, INITIAL_UNLOCK)
   const waiting = shuffled.slice(INITIAL_UNLOCK)
-  const unlocked: WordState[] = unlockBatch(steps, initial, batchId, true)
+  const unlocked: WordState[] = unlockBatch(
+    steps,
+    initial,
+    batchId,
+    true,
+    enabled,
+  )
   batchId += 1
 
   let guard = 0
@@ -195,7 +231,9 @@ export function buildSessionQueue(words: TrainerSessionWord[]): SessionStep[] {
     if (shouldInject) {
       const size = pickInjectSize(waiting.length)
       const batchWords = waiting.splice(0, size)
-      unlocked.push(...unlockBatch(steps, batchWords, batchId, false))
+      unlocked.push(
+        ...unlockBatch(steps, batchWords, batchId, false, enabled),
+      )
       batchId += 1
       continue
     }

@@ -35,11 +35,16 @@ completion атомарно обновляет прогресс карточек
 
 Тип 4 в сессии — «русский → речь» через Web Speech API
 (`SpeechRecognition` / `webkitSpeechRecognition`, `es-ES`) на клиенте.
-Сравнение transcript — `compareSpanishAnswer`. Без API (Firefox и т.п.) шаги
-типа 4 вырезаются из очереди при подготовке сессии. Opt-out «¿No puedes
-hablar?» пишется в `sessionStorage` и переживает «Continuar» на следующий
-тренажёр; сбрасывается при уходе на главную. Старый UI audio→type
-(`Exercise4Screen`) в репозитории остаётся, в роутинг сессии не подключён.
+Сравнение transcript — `compareSpanishAnswer`. Шаги типа 4 не попадают в
+очередь, если тип выключен в `User.enabledExerciseTypes` (Ajustes), либо без
+Web Speech API (Firefox и т.п.), либо после opt-out «¿No puedes hablar?»
+(`sessionStorage`, переживает «Continuar», сбрасывается при уходе на главную).
+Старый UI audio→type (`Exercise4Screen`) в репозитории остаётся, в роутинг
+сессии не подключён.
+
+Очередь строится на клиенте из `enabledExerciseTypes` текущего пользователя
+(см. [auth.md](./auth.md)): типы 1/3/4/5 фильтруются настройками; тип 2
+остаётся системным для `completedTrainerCount <= 1`.
 
 После speak на iOS: `abort` recognition → `releaseMicToPlayback()` (kick
 audioSession в `playback`) → короткая пауза (~400ms) → feedback / TTS карточки.
