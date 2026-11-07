@@ -107,7 +107,9 @@ function stubSpeechRecognition() {
     onerror: MockSpeechRecognitionInstance['onerror'] = null
     onend: MockSpeechRecognitionInstance['onend'] = null
     start = vi.fn<() => void>()
-    stop = vi.fn<() => void>()
+    stop = vi.fn<() => void>(() => {
+      this.onend?.()
+    })
     abort = vi.fn<() => void>(() => {
       this.onend?.()
     })

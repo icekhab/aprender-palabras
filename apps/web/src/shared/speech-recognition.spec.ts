@@ -260,4 +260,33 @@ describe('createSpeechRecognition', () => {
 
     await expect(session?.abort()).resolves.toBeUndefined()
   })
+
+  it('stopAndWait resolves after onend without calling handlers.onEnd', async () => {
+    class MockRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      maxAlternatives = 1
+      onresult: ((event: unknown) => void) | null = null
+      onerror: ((event: unknown) => void) | null = null
+      onend: (() => void) | null = null
+      start = vi.fn<() => void>()
+      stop = vi.fn<() => void>(() => {
+        this.onend?.()
+      })
+      abort = vi.fn<() => void>()
+    }
+
+    vi.stubGlobal('webkitSpeechRecognition', MockRecognition)
+
+    const onEnd = vi.fn<() => void>()
+    const session = createSpeechRecognition({
+      onResult: vi.fn<(transcript: string, isFinal: boolean) => void>(),
+      onError: vi.fn<(error: string) => void>(),
+      onEnd,
+    })
+
+    await expect(session?.stopAndWait()).resolves.toBeUndefined()
+    expect(onEnd).not.toHaveBeenCalled()
+  })
 })

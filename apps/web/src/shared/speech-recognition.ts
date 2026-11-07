@@ -120,14 +120,50 @@ export type SpeechRecognitionHandlers = {
   onEnd: () => void
 }
 
-/** Max wait for SpeechRecognition.onend after abort before continuing teardown. */
-const ABORT_ONEND_TIMEOUT_MS = 500
+/** Max wait for SpeechRecognition.onend after stop/abort before continuing. */
+const END_TIMEOUT_MS = 500
 
 export type SpeechRecognitionSession = {
   start: () => void
   stop: () => void
+  /** Graceful stop and wait for onend (user toggle off). Does not call handlers.onEnd. */
+  stopAndWait: () => Promise<void>
   /** Abort and wait for onend (or timeout) so iOS can leave capture routing. */
   abort: () => Promise<void>
+}
+
+function waitForRecognitionEnd(
+  recognition: SpeechRecognitionLike,
+  end: () => void,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      window.clearTimeout(timeoutId)
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      resolve()
+    }
+
+    const timeoutId = window.setTimeout(finish, END_TIMEOUT_MS)
+    // Wait for engine onend only — do not re-invoke handlers.onEnd.
+    recognition.onresult = null
+    recognition.onerror = null
+    recognition.onend = () => {
+      finish()
+    }
+
+    try {
+      end()
+    } catch {
+      finish()
+    }
+  })
 }
 
 /**
@@ -176,35 +212,13 @@ export function createSpeechRecognition(
         // Already stopped.
       }
     },
-    abort: () => {
-      return new Promise<void>((resolve) => {
-        let settled = false
-        const finish = () => {
-          if (settled) {
-            return
-          }
-          settled = true
-          window.clearTimeout(timeoutId)
-          recognition.onresult = null
-          recognition.onerror = null
-          recognition.onend = null
-          resolve()
-        }
-
-        const timeoutId = window.setTimeout(finish, ABORT_ONEND_TIMEOUT_MS)
-        // Wait for engine onend only — do not re-invoke handlers.onEnd.
-        recognition.onresult = null
-        recognition.onerror = null
-        recognition.onend = () => {
-          finish()
-        }
-
-        try {
-          recognition.abort()
-        } catch {
-          finish()
-        }
-      })
-    },
+    stopAndWait: () =>
+      waitForRecognitionEnd(recognition, () => {
+        recognition.stop()
+      }),
+    abort: () =>
+      waitForRecognitionEnd(recognition, () => {
+        recognition.abort()
+      }),
   }
 }

@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import * as audioSession from '../../shared/audio-session'
@@ -36,6 +43,7 @@ type MockRecognitionInstance = {
   onerror: ((event: unknown) => void) | null
   onend: (() => void) | null
   start: ReturnType<typeof vi.fn<() => void>>
+  stop: ReturnType<typeof vi.fn<() => void>>
   abort: ReturnType<typeof vi.fn<() => void>>
 }
 
@@ -55,7 +63,9 @@ function stubRecognition(options?: {
     start = vi.fn<() => void>(() => {
       options?.onStart?.(this)
     })
-    stop = vi.fn<() => void>()
+    stop = vi.fn<() => void>(() => {
+      this.onend?.()
+    })
     abort = vi.fn<() => void>(() => {
       this.onend?.()
     })
@@ -71,6 +81,25 @@ function stubRecognition(options?: {
   }
 }
 
+function stubMic(getUserMedia?: ReturnType<typeof vi.fn>) {
+  const stop = vi.fn<() => void>()
+  const media =
+    getUserMedia ??
+    vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () =>
+      ({
+        getTracks: () => [{ stop }],
+      }) as unknown as MediaStream,
+    )
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    mediaDevices: { getUserMedia: media },
+    audioSession: { type: 'auto' },
+  })
+  return { getUserMedia: media, stop }
+}
+
 afterEach(() => {
   cleanup()
   resetMicrophonePermissionForTests()
@@ -79,18 +108,11 @@ afterEach(() => {
 })
 
 describe('SpeakExerciseScreen mic access', () => {
-  it('starts SpeechRecognition synchronously on Hablar without getUserMedia or release', () => {
-    const getUserMedia = vi.fn<
-      (constraints: MediaStreamConstraints) => Promise<MediaStream>
-    >()
+  it('starts SpeechRecognition synchronously and holds getUserMedia without release', async () => {
     const recognition = stubRecognition()
+    const { getUserMedia } = stubMic()
     const releaseSpy = vi.spyOn(audioSession, 'releaseMicToPlayback')
     const prepareSpy = vi.spyOn(audioSession, 'prepareAudioSessionForMicrophone')
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      mediaDevices: { getUserMedia },
-      audioSession: { type: 'playback' },
-    })
 
     render(
       <SpeakExerciseScreen
@@ -105,18 +127,25 @@ describe('SpeakExerciseScreen mic access', () => {
     expect(screen.getByText('Escuchando…')).toBeInTheDocument()
     expect(recognition.latest()?.start).toHaveBeenCalledOnce()
     expect(prepareSpy).toHaveBeenCalledOnce()
-    expect(getUserMedia).not.toHaveBeenCalled()
     expect(releaseSpy).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(getUserMedia).toHaveBeenCalledOnce()
+    })
   })
 
-  it('shows Permitir micrófono after STT denial and primes only via the link', async () => {
+  it('shows Permitir micrófono after STT denial and primes via the link', async () => {
+    let allowed = false
+    const stop = vi.fn<() => void>()
     const getUserMedia = vi.fn<
       (constraints: MediaStreamConstraints) => Promise<MediaStream>
-    >(async () =>
-      ({
-        getTracks: () => [{ stop: vi.fn<() => void>() }],
-      }) as unknown as MediaStream,
-    )
+    >(async () => {
+      if (!allowed) {
+        throw new DOMException('Permission denied', 'NotAllowedError')
+      }
+      return {
+        getTracks: () => [{ stop }],
+      } as unknown as MediaStream
+    })
 
     stubRecognition({
       onStart: (instance) => {
@@ -125,11 +154,7 @@ describe('SpeakExerciseScreen mic access', () => {
         })
       },
     })
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      mediaDevices: { getUserMedia },
-      audioSession: { type: 'playback' },
-    })
+    stubMic(getUserMedia)
 
     render(
       <SpeakExerciseScreen
@@ -147,9 +172,8 @@ describe('SpeakExerciseScreen mic access', () => {
     expect(
       screen.getByRole('button', { name: 'Permitir micrófono' }),
     ).toBeInTheDocument()
-    expect(getUserMedia).not.toHaveBeenCalled()
 
-    // Next Hablar after Permitir should succeed without STT denial.
+    allowed = true
     stubRecognition()
     fireEvent.click(screen.getByRole('button', { name: 'Permitir micrófono' }))
 
@@ -158,7 +182,6 @@ describe('SpeakExerciseScreen mic access', () => {
         screen.queryByText(/Permite el micrófono para continuar/),
       ).not.toBeInTheDocument()
     })
-    expect(getUserMedia).toHaveBeenCalledOnce()
     await waitFor(() => {
       expect(screen.getByText('Escuchando…')).toBeInTheDocument()
     })
@@ -180,13 +203,7 @@ describe('SpeakExerciseScreen mic access', () => {
     })
 
     const recognition = stubRecognition()
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      mediaDevices: {
-        getUserMedia: vi.fn(),
-      },
-      audioSession: { type: 'auto' },
-    })
+    stubMic()
 
     render(
       <SpeakExerciseScreen
@@ -212,13 +229,9 @@ describe('SpeakExerciseScreen mic access', () => {
     expect(order).toEqual(['release', 'reset', 'feedback'])
   })
 
-  it('second click without interim stops listening and allows start again', () => {
+  it('second click without interim waits for onend before idle, then can start again', async () => {
     const recognition = stubRecognition()
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      mediaDevices: { getUserMedia: vi.fn() },
-      audioSession: { type: 'auto' },
-    })
+    const { stop: trackStop } = stubMic()
 
     render(
       <SpeakExerciseScreen
@@ -230,25 +243,60 @@ describe('SpeakExerciseScreen mic access', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
     expect(screen.getByText('Escuchando…')).toBeInTheDocument()
-    expect(recognition.latest()?.start).toHaveBeenCalledOnce()
+    const first = recognition.latest()
+    expect(first?.start).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole('button', { name: 'Escuchando…' }))
+    expect(first?.stop).toHaveBeenCalledOnce()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Hablar' })).toBeEnabled()
+    })
     expect(screen.getByText('Di la palabra en español')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hablar' })).toBeEnabled()
+    expect(trackStop).toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
     expect(screen.getByText('Escuchando…')).toBeInTheDocument()
     expect(recognition.latest()?.start).toHaveBeenCalledOnce()
+    expect(recognition.latest()).not.toBe(first)
+  })
+
+  it('keeps mic disabled until stopAndWait finishes', async () => {
+    const recognition = stubRecognition()
+    stubMic()
+
+    render(
+      <SpeakExerciseScreen
+        word={word()}
+        onRevealResult={vi.fn()}
+        onSkipSpeak={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    const first = recognition.latest()
+    expect(first).not.toBeNull()
+
+    // Defer onend so stopping stays active.
+    first!.stop = vi.fn<() => void>()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escuchando…' }))
+    expect(screen.getByRole('button', { name: 'Escuchando…' })).toBeDisabled()
+
+    await act(async () => {
+      first!.onend?.()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Hablar' })).toBeEnabled()
+    })
   })
 
   it('second click with wrong interim scores incorrect', async () => {
     const feedbackSpy = vi.spyOn(feedbackSound, 'playFeedbackSound')
     const recognition = stubRecognition()
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      mediaDevices: { getUserMedia: vi.fn() },
-      audioSession: { type: 'auto' },
-    })
+    stubMic()
 
     render(
       <SpeakExerciseScreen

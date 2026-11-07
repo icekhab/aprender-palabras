@@ -18,7 +18,7 @@ import {
 import { FEEDBACK_HOLD_MS } from './feedback'
 import { compareSpanishAnswer } from './spanish-answer'
 
-type ListenState = 'idle' | 'listening' | 'processing'
+type ListenState = 'idle' | 'listening' | 'stopping' | 'processing'
 
 type SpeakOutcome = {
   correct: boolean
@@ -69,6 +69,7 @@ export function SpeakExerciseScreen({
   onSkipSpeak: () => void
 }) {
   const sessionRef = useRef<SpeechRecognitionSession | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
   const settleTimerRef = useRef<number | null>(null)
   const listenRequestRef = useRef(0)
   const submittedRef = useRef(false)
@@ -80,10 +81,53 @@ export function SpeakExerciseScreen({
   const [outcome, setOutcome] = useState<SpeakOutcome | null>(null)
   const [skipOpen, setSkipOpen] = useState(false)
 
+  function stopMicStream() {
+    const stream = micStreamRef.current
+    micStreamRef.current = null
+    if (!stream) {
+      return
+    }
+    for (const track of stream.getTracks()) {
+      track.stop()
+    }
+  }
+
+  /** Hold getUserMedia for the listen window (iOS capture stability). */
+  function holdMicStream() {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return
+    }
+
+    const requestId = listenRequestRef.current
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        if (
+          requestId !== listenRequestRef.current ||
+          submittedRef.current ||
+          sessionRef.current === null
+        ) {
+          for (const track of stream.getTracks()) {
+            track.stop()
+          }
+          return
+        }
+        stopMicStream()
+        micStreamRef.current = stream
+      })
+      .catch(() => {
+        // STT may still work without a held stream.
+      })
+  }
+
   /** Stop STT only — do not touch playback session (keeps Hablar start in gesture). */
   function abortListeningOnly() {
     const session = sessionRef.current
     sessionRef.current = null
+    stopMicStream()
     if (session) {
       void session.abort()
     }
@@ -93,6 +137,7 @@ export function SpeakExerciseScreen({
   async function releaseAfterSpeak() {
     const session = sessionRef.current
     sessionRef.current = null
+    stopMicStream()
     if (session) {
       await session.abort()
     }
@@ -189,7 +234,7 @@ export function SpeakExerciseScreen({
     setErrorMessage(message)
   }
 
-  /** Second tap while listening: stop; compare interim if any, else idle. */
+  /** Second tap while listening: stop; compare interim if any, else idle after onend. */
   function stopListening() {
     if (submittedRef.current || listenState !== 'listening') {
       return
@@ -204,14 +249,29 @@ export function SpeakExerciseScreen({
       return
     }
 
-    abortListeningOnly()
+    const session = sessionRef.current
+    sessionRef.current = null
+    setListenState('stopping')
     setTranscript('')
-    setListenState('idle')
     setErrorMessage('')
+
+    void (async () => {
+      stopMicStream()
+      if (session) {
+        await session.stopAndWait()
+      }
+      if (submittedRef.current) {
+        return
+      }
+      setListenState('idle')
+    })()
   }
 
   function onMicClick() {
     if (submittedRef.current || outcome !== null) {
+      return
+    }
+    if (listenState === 'stopping' || listenState === 'processing') {
       return
     }
     if (listenState === 'listening') {
@@ -222,7 +282,12 @@ export function SpeakExerciseScreen({
   }
 
   function startListening() {
-    if (submittedRef.current || listenState === 'listening') {
+    if (
+      submittedRef.current ||
+      listenState === 'listening' ||
+      listenState === 'stopping' ||
+      listenState === 'processing'
+    ) {
       return
     }
 
@@ -233,8 +298,11 @@ export function SpeakExerciseScreen({
     listenRequestRef.current += 1
     setListenState('listening')
 
-    // Abort prior session without awaiting — keep start() in the user gesture.
-    abortListeningOnly()
+    // Only tear down a leftover session; idle means clean after stopAndWait.
+    if (sessionRef.current) {
+      abortListeningOnly()
+    }
+
     prepareAudioSessionForMicrophone()
 
     const session = createSpeechRecognition({
@@ -287,6 +355,8 @@ export function SpeakExerciseScreen({
           rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
           return
         }
+        stopMicStream()
+        sessionRef.current = null
         setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
       },
     })
@@ -299,7 +369,9 @@ export function SpeakExerciseScreen({
 
     sessionRef.current = session
     try {
+      // Keep start() in the user gesture; hold stream without awaiting.
       session.start()
+      holdMicStream()
     } catch {
       abortListeningOnly()
       setErrorMessage(MIC_START_FAILED_MESSAGE)
@@ -308,7 +380,11 @@ export function SpeakExerciseScreen({
   }
 
   function requestMicAccess() {
-    if (disabled || listenState === 'listening') {
+    if (
+      disabled ||
+      listenState === 'listening' ||
+      listenState === 'stopping'
+    ) {
       return
     }
 
@@ -328,12 +404,13 @@ export function SpeakExerciseScreen({
 
   const photographerName = word.imagePhotographerName
   const photographerUrl = word.imagePhotographerUrl
-  const disabled = submitted || outcome !== null
+  const disabled =
+    submitted || outcome !== null || listenState === 'stopping'
   const showPermitMicLink =
     Boolean(errorMessage) && isMicrophoneAccessError(errorMessage)
 
   let micTone = 'bg-orange-600 text-white hover:bg-orange-700'
-  if (listenState === 'listening') {
+  if (listenState === 'listening' || listenState === 'stopping') {
     micTone = 'bg-red-600 text-white hover:bg-red-700'
   } else if (outcome?.correct) {
     micTone = 'bg-green-600 text-white'
@@ -378,7 +455,9 @@ export function SpeakExerciseScreen({
           <button
             type="button"
             aria-label={
-              listenState === 'listening' ? 'Escuchando…' : 'Hablar'
+              listenState === 'listening' || listenState === 'stopping'
+                ? 'Escuchando…'
+                : 'Hablar'
             }
             disabled={disabled}
             className={`inline-flex size-28 cursor-pointer items-center justify-center rounded-full shadow-md transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 disabled:cursor-default sm:size-32 ${micTone}`}
@@ -388,7 +467,7 @@ export function SpeakExerciseScreen({
           </button>
 
           <p className="min-h-6 text-center text-base text-orange-900/70">
-            {listenState === 'listening'
+            {listenState === 'listening' || listenState === 'stopping'
               ? 'Escuchando…'
               : transcript || 'Di la palabra en español'}
           </p>
