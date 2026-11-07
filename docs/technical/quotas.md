@@ -25,8 +25,8 @@ TTS **не** вызывается из trainer, lazy `GET /speech` или про
 
 | Квота | `user` | `teacher` | Условие ошибки |
 |---|---:|---:|---|
-| Генерация слов | 30 | 100 | `generationsCount >= generationLimit` |
-| Suggestions | 300 | 600 | `suggestionsCount >= suggestionsLimit` |
+| Генерация слов | 60 | 100 | `generationsCount >= generationLimit` |
+| Suggestions | 450 | 600 | `suggestionsCount >= suggestionsLimit` |
 
 Перед любым платным вызовом проверить квоту; при исчерпании — ответ с
 ошибкой дневной квоты (**без** вызова внешнего API), счётчик не увеличивать

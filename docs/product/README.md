@@ -159,7 +159,7 @@
 6. Создатель курса видит приглашённых и может менять их текущий урок;
    приглашённый не видит прогресс других.
 7. Платные API ограничены дневными квотами для не-admin (генерации слов:
-   user 30 / teacher 100; suggestions: user 300 / teacher 600) и лимитом
+   user 60 / teacher 100; suggestions: user 450 / teacher 600) и лимитом
    ≤3 картинок на слово; TTS только при создании слова. См.
    [01-words.md](./01-words.md) §12 и [technical/quotas.md](../technical/quotas.md).
 

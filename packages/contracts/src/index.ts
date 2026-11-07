@@ -208,6 +208,19 @@ export const wordPairSchema = z.object({
 
 export type WordPairInput = z.infer<typeof wordPairSchema>
 
+/** Async user auto-add: same pair payload as preview. */
+export const generateWordSchema = wordPairSchema
+
+export type GenerateWordInput = WordPairInput
+
+export const wordGenerationStatusSchema = z.enum([
+  'generating',
+  'ready',
+  'failed',
+])
+
+export type WordGenerationStatus = z.infer<typeof wordGenerationStatusSchema>
+
 export const wordGenderSchema = z.enum(['masculine', 'feminine'])
 
 export type WordGender = z.infer<typeof wordGenderSchema>
@@ -415,6 +428,7 @@ export interface DictionaryListItem {
   spanish: string
   russian: string
   progress: number
+  generationStatus: WordGenerationStatus
   addedAt: string
 }
 
@@ -453,6 +467,7 @@ export interface UserCardDetail {
   progress: number
   inDictionary: boolean
   source: UserCardSource
+  generationStatus: WordGenerationStatus
   addedAt: string
   ready: boolean
   missingFields: string[]

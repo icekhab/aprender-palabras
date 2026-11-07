@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserCardDetail } from '@aprender-palabras/contracts'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { WordCardFields } from '@/components/word-card-fields'
+import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { ApiError } from '@/shared/api/auth'
 import { readReturnTo } from '@/shared/return-to'
 import {
@@ -20,17 +21,44 @@ export function WordCardPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const returnTo = readReturnTo(searchParams)
+  const queryClient = useQueryClient()
 
   const cardQuery = useQuery({
     queryKey: ['words', 'card', cardId],
     queryFn: ({ signal }) => getWordCard(cardId, signal),
     enabled: cardId.length > 0,
     retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.generationStatus === 'generating' ? 5_000 : false,
   })
 
+  const sawGeneratingRef = useRef(false)
+  useEffect(() => {
+    const status = cardQuery.data?.generationStatus
+    if (status === 'generating') {
+      sawGeneratingRef.current = true
+      return
+    }
+
+    if (
+      sawGeneratingRef.current &&
+      (status === 'ready' || status === 'failed')
+    ) {
+      sawGeneratingRef.current = false
+      void queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
+    }
+  }, [cardQuery.data?.generationStatus, queryClient])
+
+  const isCenteredState =
+    cardQuery.isPending ||
+    cardQuery.isError ||
+    (cardQuery.isSuccess &&
+      (cardQuery.data.generationStatus === 'generating' ||
+        cardQuery.data.generationStatus === 'failed'))
+
   return (
-    <main className="min-h-svh bg-orange-50 text-orange-950">
-      <header className="border-b border-orange-100 bg-white/90">
+    <main className="flex min-h-svh flex-col bg-orange-50 text-orange-950">
+      <header className="shrink-0 border-b border-orange-100 bg-white/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div>
             <BrandLink />
@@ -51,30 +79,104 @@ export function WordCardPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
-        {cardQuery.isPending ? (
-          <p className="text-sm text-orange-900/70" role="status">
-            Cargando la tarjeta…
-          </p>
-        ) : null}
-
-        {cardQuery.isError ? (
-          <div role="alert">
-            <p className="text-sm text-red-700">
-              {cardQuery.error instanceof ApiError &&
-              cardQuery.error.status === 404
-                ? 'No se encontró la tarjeta.'
-                : 'No se pudo cargar la tarjeta.'}
+      {isCenteredState ? (
+        <div className="grid flex-1 place-items-center px-5 py-10">
+          {cardQuery.isPending ? (
+            <p className="text-sm text-orange-900/70" role="status">
+              Cargando la tarjeta…
             </p>
-            <Button className="mt-4" onClick={() => void cardQuery.refetch()}>
-              Reintentar
-            </Button>
-          </div>
-        ) : null}
+          ) : null}
 
-        {cardQuery.isSuccess ? <WordCardContent card={cardQuery.data} /> : null}
-      </div>
+          {cardQuery.isError ? (
+            <div className="max-w-sm text-center" role="alert">
+              <p className="text-sm text-red-700">
+                {cardQuery.error instanceof ApiError &&
+                cardQuery.error.status === 404
+                  ? 'No se encontró la tarjeta.'
+                  : 'No se pudo cargar la tarjeta.'}
+              </p>
+              <Button
+                className="mt-4"
+                onClick={() => void cardQuery.refetch()}
+              >
+                Reintentar
+              </Button>
+            </div>
+          ) : null}
+
+          {cardQuery.isSuccess &&
+          cardQuery.data.generationStatus === 'generating' ? (
+            <WordGenerateLoader />
+          ) : null}
+
+          {cardQuery.isSuccess &&
+          cardQuery.data.generationStatus === 'failed' ? (
+            <GenerationFailedState
+              card={cardQuery.data}
+              onDeleted={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: DICTIONARY_QUERY_KEY,
+                })
+              }}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-6 sm:px-8">
+          {cardQuery.isSuccess &&
+          cardQuery.data.generationStatus === 'ready' ? (
+            <WordCardContent card={cardQuery.data} />
+          ) : null}
+        </div>
+      )}
     </main>
+  )
+}
+
+function GenerationFailedState({
+  card,
+  onDeleted,
+}: {
+  card: UserCardDetail
+  onDeleted: () => void
+}) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteWordCard(card.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
+      await queryClient.invalidateQueries({ queryKey: ['lessons'] })
+      await queryClient.invalidateQueries({ queryKey: ['training', 'today'] })
+      queryClient.removeQueries({ queryKey: ['words', 'card', card.id] })
+      onDeleted()
+      navigate('/', { replace: true })
+    },
+  })
+
+  return (
+    <div className="max-w-md space-y-4 text-center" role="alert">
+      <h2 className="text-lg font-semibold tracking-tight">
+        No se pudo generar la tarjeta
+      </h2>
+      <p className="text-sm text-orange-900/70">
+        «{card.spanish}» — {card.russian}. Puedes eliminarla del diccionario e
+        intentarlo más tarde.
+      </p>
+      {deleteMutation.isError ? (
+        <p className="text-sm text-red-700">
+          No se pudo eliminar. Inténtalo de nuevo.
+        </p>
+      ) : null}
+      <Button
+        className="bg-red-700 hover:bg-red-800"
+        disabled={deleteMutation.isPending}
+        onClick={() => deleteMutation.mutate()}
+      >
+        {deleteMutation.isPending ? 'Eliminando…' : 'Eliminar del diccionario'}
+      </Button>
+    </div>
   )
 }
 

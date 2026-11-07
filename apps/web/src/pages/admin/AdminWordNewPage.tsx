@@ -52,12 +52,10 @@ export function AdminWordNewPage() {
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-6 sm:px-8">
-        <AdminWordGenerateForm
-          pair={{ spanish, russian }}
-          onCancel={() => navigate('/admin/words')}
-        />
-      </div>
+      <AdminWordGenerateForm
+        pair={{ spanish, russian }}
+        onCancel={() => navigate('/admin/words')}
+      />
     </main>
   )
 }
@@ -97,14 +95,14 @@ function AdminWordGenerateForm({
 
   if (previewQuery.isPending) {
     return (
-      <div className="grid place-items-center py-16">
+      <div className="grid flex-1 place-items-center px-5 py-10">
         <WordGenerateLoader />
       </div>
     )
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-6 sm:px-8">
       <p className="mb-4 text-sm text-orange-900/70">
         Se guardará en el catálogo global, no en tu diccionario.
       </p>

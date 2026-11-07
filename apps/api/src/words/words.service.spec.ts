@@ -472,7 +472,11 @@ describe('WordsService', () => {
         wordId: 'word-1',
         progress: 100,
         addedAt,
-        word: { spanish: 'esperar', russian: 'ждать' },
+        word: {
+          spanish: 'esperar',
+          russian: 'ждать',
+          generationStatus: 'ready',
+        },
       },
     ])
 
@@ -489,6 +493,7 @@ describe('WordsService', () => {
           spanish: 'esperar',
           russian: 'ждать',
           progress: 100,
+          generationStatus: 'ready',
           addedAt: addedAt.toISOString(),
         },
       ],
@@ -519,6 +524,7 @@ describe('WordsService', () => {
         imagePhotographerUrl: null,
         imagePageUrl: null,
         imageProvider: null,
+        generationStatus: 'ready',
         createdByUserId: 'user-1',
         createdViaLesson: false,
       },
@@ -535,6 +541,7 @@ describe('WordsService', () => {
       spanish: 'esperar',
       russian: 'ждать',
       progress: 60,
+      generationStatus: 'ready',
       ready: true,
       missingFields: [],
       canEdit: false,
@@ -574,6 +581,7 @@ describe('WordsService', () => {
         imagePhotographerUrl: null,
         imagePageUrl: null,
         imageProvider: null,
+        generationStatus: 'ready',
         createdByUserId: 'user-1',
         createdViaLesson: false,
       },
@@ -584,6 +592,7 @@ describe('WordsService', () => {
       service.resetProgress('user-1', 'user', 'card-1'),
     ).resolves.toMatchObject({
       progress: 0,
+      generationStatus: 'ready',
     })
 
     expect(prisma.userCard.update).toHaveBeenCalledWith({
@@ -643,7 +652,11 @@ describe('WordsService', () => {
         wordId: 'word-1',
         progress: 50,
         addedAt: new Date('2026-10-18T12:00:00.000Z'),
-        word: { spanish: 'esperar', russian: 'ждать' },
+        word: {
+          spanish: 'esperar',
+          russian: 'ждать',
+          generationStatus: 'ready',
+        },
       },
     ])
 
@@ -653,7 +666,13 @@ describe('WordsService', () => {
       totalCount: 7,
       averageProgress: 60,
       hasMore: false,
-      items: [{ spanish: 'esperar', russian: 'ждать' }],
+      items: [
+        {
+          spanish: 'esperar',
+          russian: 'ждать',
+          generationStatus: 'ready',
+        },
+      ],
     })
 
     expect(prisma.userCard.aggregate).toHaveBeenCalledWith({
@@ -698,12 +717,95 @@ describe('WordsService', () => {
     expect(tx.userCard.create).not.toHaveBeenCalled()
   })
 
+  it('generates asynchronously: creates stub card and enqueues fill', async () => {
+    const addedAt = new Date('2026-10-18T12:00:00.000Z')
+    openAiService.isConfigured.mockReturnValue(true)
+    openAiService.generateWordContent.mockResolvedValue({
+      additionalTranslations: [],
+      definitionEs: 'Tener esperanza.',
+      examples: ['Espero.'],
+      partOfSpeech: 'verbo',
+      gender: null,
+      wrongRussian: ['a', 'b', 'c'],
+      wrongSpanish: ['x', 'y', 'z'],
+      unsplashQuery: 'waiting',
+    })
+    unsplashService.searchImage.mockResolvedValue(null)
+    tx.word.findUnique.mockResolvedValue(null)
+    tx.word.create.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      generationStatus: 'generating',
+    })
+    tx.userCard.findUnique.mockResolvedValue(null)
+    tx.userCard.create.mockResolvedValue({
+      id: 'card-1',
+      wordId: 'word-1',
+      progress: 0,
+      addedAt,
+    })
+    prisma.word.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        id: 'word-1',
+        spanish: 'esperar',
+        russian: 'ждать',
+        generationStatus: 'generating',
+      })
+    prisma.word.update.mockResolvedValue({})
+
+    await expect(
+      service.generate('user-1', { spanish: 'esperar', russian: 'ждать' }),
+    ).resolves.toEqual({
+      id: 'card-1',
+      wordId: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      progress: 0,
+      generationStatus: 'generating',
+      addedAt: addedAt.toISOString(),
+    })
+
+    expect(quotaService.consumeGeneration).toHaveBeenCalledWith('user-1')
+    await vi.waitFor(() => {
+      expect(openAiService.generateWordContent).toHaveBeenCalled()
+    })
+  })
+
+  it('attaches to an existing generating word without consuming quota', async () => {
+    const addedAt = new Date('2026-10-18T12:00:00.000Z')
+    prisma.word.findUnique.mockResolvedValue({
+      id: 'word-1',
+      spanish: 'esperar',
+      russian: 'ждать',
+      generationStatus: 'generating',
+    })
+    prisma.userCard.findUnique.mockResolvedValue(null)
+    prisma.userCard.create.mockResolvedValue({
+      id: 'card-2',
+      wordId: 'word-1',
+      progress: 0,
+      addedAt,
+    })
+
+    await expect(
+      service.generate('user-2', { spanish: 'esperar', russian: 'ждать' }),
+    ).resolves.toMatchObject({
+      id: 'card-2',
+      generationStatus: 'generating',
+    })
+    expect(quotaService.consumeGeneration).not.toHaveBeenCalled()
+    expect(openAiService.generateWordContent).not.toHaveBeenCalled()
+  })
+
   it('adds an existing word to the user dictionary', async () => {
     const addedAt = new Date('2026-10-18T12:00:00.000Z')
     prisma.word.findUnique.mockResolvedValue({
       id: 'word-1',
       spanish: 'esperar',
       russian: 'ждать',
+      generationStatus: 'ready',
     })
     prisma.userCard.findUnique.mockResolvedValue(null)
     prisma.userCard.create.mockResolvedValue({
@@ -721,6 +823,7 @@ describe('WordsService', () => {
       spanish: 'esperar',
       russian: 'ждать',
       progress: 0,
+      generationStatus: 'ready',
       addedAt: addedAt.toISOString(),
     })
 
@@ -813,6 +916,7 @@ describe('WordsService', () => {
           imagePhotographerUrl: null,
           imagePageUrl: null,
           imageProvider: null,
+          generationStatus: 'ready',
           createdByUserId: 'user-1',
           createdViaLesson: true,
         },
@@ -827,6 +931,7 @@ describe('WordsService', () => {
       russian: 'ожидать',
       partOfSpeech: 'verbo',
       gender: null,
+      generationStatus: 'ready',
       ready: true,
       canEdit: true,
     })

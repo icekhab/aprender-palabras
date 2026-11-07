@@ -16,6 +16,7 @@ import {
   addExistingWordSchema,
   dictionaryListQuerySchema,
   createWordSchema,
+  generateWordSchema,
   regenerateWordImageSchema,
   updateWordCardSchema,
   wordPairSchema,
@@ -57,6 +58,19 @@ export class WordsController {
     }
 
     return this.wordsService.preview(request.authUser.id, result.data)
+  }
+
+  @Post('generate')
+  generate(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<DictionaryListItem> {
+    const result = generateWordSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid word pair')
+    }
+
+    return this.wordsService.generate(request.authUser.id, result.data)
   }
 
   @Post('existing')

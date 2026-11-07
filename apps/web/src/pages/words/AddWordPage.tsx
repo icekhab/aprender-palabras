@@ -12,7 +12,7 @@ import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { ApiError, isGenerationQuotaError } from '@/shared/api/auth'
 import { addNewWordToCollection } from '@/shared/api/collections'
 import { addNewWordToLesson } from '@/shared/api/lessons'
-import { createWord, previewWord } from '@/shared/api/words'
+import { createWord, generateWord, previewWord } from '@/shared/api/words'
 import { COLLECTIONS_QUERY_KEY } from '../collections/query-keys'
 import {
   generationQuotaScreenCopyFromError,
@@ -89,10 +89,7 @@ function AutoAddWordPage({
   const startedRef = useRef(false)
 
   const autoAddMutation = useMutation({
-    mutationFn: async () => {
-      const draft = await previewWord({ spanish, russian })
-      return createWord(draft)
-    },
+    mutationFn: () => generateWord({ spanish, russian }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
       navigate('/', { replace: true })

@@ -37,7 +37,7 @@ Nullable override квот (null = дефолт, см. [quotas.md](./quotas.md))
 
 - `dailySearchGenerationLimit` (дефолт 20);
 - `dailyTotalGenerationLimit` (дефолт 100, поиск + курсы);
-- `dailySuggestionsLimit` (дефолт 300).
+- `dailySuggestionsLimit` (дефолт 450 для `user`, 600 для `teacher`).
 
 Плюс счётчики текущего дня Madrid и `quotaDate`.
 

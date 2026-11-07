@@ -34,7 +34,7 @@
     (без платных API, без квоты генераций);
   - уже в личном словаре — иконка прогресса (как в Diccionario).
 
-Дневная квота suggestions (`Europe/Madrid`): **300**/день для `user`,
+Дневная квота suggestions (`Europe/Madrid`): **450**/день для `user`,
 **600**/день для `teacher`; `admin` без лимита; override
 `User.dailySuggestionsLimit`. AI-ветка также требует свободную квоту
 генераций (check без consume). См. [quotas.md](./quotas.md).

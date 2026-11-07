@@ -103,7 +103,7 @@
   счётчики `generationsCount` / `suggestionsCount` + `quotaDate` (Madrid).
 - [x] Prisma `Word.imageGenerationCount` (0..3).
 - [x] Сервис квот: сброс по дате Madrid; дефолты по роли
-  (user gen 30 / sug 300; teacher gen 100 / sug 600); admin без дневных.
+  (user gen 60 / sug 450; teacher gen 100 / sug 600); admin без дневных.
 - [x] Генерация (поиск или урок): один счётчик `generations`.
 - [x] `GET /suggestions/ai` → счётчик suggestions (+ check generation);
   `GET /suggestions/db` без квоты; `429` при лимите AI.

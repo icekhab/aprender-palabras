@@ -7,9 +7,12 @@
 - suggestions обогащаются `wordId` / `progress` из `Word` и `UserCard`
   (см. [suggestions.md](./suggestions.md));
 - если пары нет в БД: **admin/teacher** — preview → форма → save;
-  **user** — generate+create без UI правки (квота gen до внешних API);
+  **user** — `POST /words/generate` (async): сразу `UserCard` + stub `Word`,
+  контент в фоне (квота gen при enqueue);
 - если пара есть — «+» → `POST /words/existing` (без OpenAI/Unsplash/TTS);
-- генерация: OpenAI + Unsplash; TTS (ElevenLabs) **только** при create нового
+  для user на пару в статусе `generating`/`failed` тот же `POST /words/generate`
+  только цепляет `UserCard` к общему `Word` (без квоты / без второй генерации);
+- генерация: OpenAI + Unsplash; TTS (ElevenLabs) при готовности нового
   `Word`; trainer/speech **не** вызывают ensure/generate TTS;
 - `canEdit`: `admin` — любые; `teacher` — только `createdByUserId === me`;
   `user` — никогда; иначе `PATCH` → `403`, без карандаша;
@@ -35,8 +38,10 @@
 определение на испанском, примеры, часть речи, род, до десяти неверных вариантов
 каждого направления (для задания выбираются 3 случайных), URL изображения и
 атрибуция Unsplash, **`createdByUserId`**, **`imageGenerationCount`**
-(0..3). При создании новой пары — текущий пользователь; при reuse владельца
-не менять.
+(0..3), **`generationStatus`** (`generating` | `ready` | `failed`),
+**`generationStartedAt`**, **`generationAttemptCount`**, **`generationError`**.
+При создании новой пары — текущий пользователь; при reuse владельца
+не менять. Существующие слова после миграции — `ready`.
 
 Часть речи: при user auto-add, если AI не вернул значение из
 `PART_OF_SPEECH_OPTIONS`, сохраняется sentinel `no determinada`
@@ -100,6 +105,7 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
       "spanish": "esperar",
       "russian": "ждать",
       "progress": 0,
+      "generationStatus": "ready",
       "addedAt": "2026-10-18T12:00:00.000Z"
     }
   ]
@@ -108,12 +114,15 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 `averageProgress` — округлённое среднее `progress` по всем карточкам словаря
 (не только по текущей странице и не по результатам `q`). Если карточек нет — `0`.
+`generationStatus` — статус генерации глобального `Word`.
 
 ### `GET /words/:cardId`
 
 Возвращает полную карточку `UserCard` текущего пользователя: поля слова,
-прогресс, `ready` / `missingFields`, `canEdit` (admin или teacher-создатель),
-список уроков пользователя, в которых есть это слово.
+`generationStatus`, прогресс, `ready` / `missingFields`, `canEdit`
+(admin или teacher-создатель), список уроков пользователя, в которых есть
+это слово. Карточки с `generationStatus !== ready` не считаются готовыми
+к тренажёру (`ready=false`).
 
 Ошибки: `401` нет сессии, `404` карточки нет или она чужая.
 
@@ -203,6 +212,29 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 Ответ `200`: полный draft карточки без записи в БД. Если OpenAI или Unsplash
 недоступны, обязательная пара возвращается, опциональные поля остаются пустыми.
+Используется admin/teacher (форма перед save).
+
+### `POST /words/generate`
+
+Тело: `{ "spanish", "russian" }` (как preview).
+
+Для **user** auto-add:
+
+1. если `Word` с парой уже есть — создать `UserCard` (если ещё нет) и вернуть
+   `DictionaryListItem` с текущим `generationStatus` (без квоты, без новой
+   генерации);
+2. иначе списать квоту gen, создать stub `Word` (`generating`, attempt=1) +
+   `UserCard`, сразу вернуть item, в фоне OpenAI → Unsplash → TTS → `ready`;
+3. таймаут попытки ~90 с → `failed`;
+4. job каждые 30 с: ретрай `failed` / stuck `generating` (>5 мин) пока
+   `generationAttemptCount < 2`; после 2 попыток остаётся `failed`
+   (admin re-generate — следующий этап).
+
+Успех `200`: `DictionaryListItem` (включая `generationStatus`).
+Ошибки: `400`, `401`, `409` карточка уже есть, `429` квота.
+
+UI: строка в словаре сразу (иконка + tooltip при `generating`); карточка
+поллит `GET /words/:cardId` раз в 5 с, пока статус `generating`.
 
 ### `POST /words/existing`
 
@@ -218,7 +250,7 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 `source=manual`, `inDictionary=true`, `progress=0`.
 
 Успех `200`: `DictionaryListItem` (id карточки, wordId, spanish, russian,
-progress, addedAt).
+progress, generationStatus, addedAt).
 
 Ошибки: `400` невалидное тело, `401` нет сессии, `404` слова нет,
 `409` карточка уже есть у пользователя.

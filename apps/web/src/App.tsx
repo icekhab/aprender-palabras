@@ -44,7 +44,6 @@ import { BrandLink } from '@/components/brand-link'
 import { ClearableSearchField } from '@/components/clearable-search-field'
 import { Button } from '@/components/ui/button'
 import { ProgressDot } from '@/components/progress-dot'
-import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { WordRow } from '@/components/word-row'
 import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
 import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
@@ -82,9 +81,8 @@ import {
 } from './shared/api/training'
 import {
   addExistingWord,
-  createWord,
+  generateWord,
   listDictionaryWords,
-  previewWord,
 } from './shared/api/words'
 
 const AUTH_QUERY_KEY = ['auth', 'me'] as const
@@ -619,14 +617,30 @@ function HomePage() {
   const logoutMutation = useLogoutMutation()
   const canAutoAddNewWords = user?.role === 'user'
 
+  const [autoAddingKeys, setAutoAddingKeys] = useState(() => new Set<string>())
+
   const autoAddMutation = useMutation({
-    mutationFn: async (pair: { spanish: string; russian: string }) => {
-      const draft = await previewWord(pair)
-      return createWord(draft)
+    mutationFn: (pair: { spanish: string; russian: string }) =>
+      generateWord(pair),
+    onMutate: (pair) => {
+      const key = `${pair.spanish}\0${pair.russian}`
+      setAutoAddingKeys((current) => new Set(current).add(key))
+      return { key }
     },
-    onSuccess: async () => {
+    onSettled: (_data, _error, _pair, context) => {
+      if (!context?.key) {
+        return
+      }
+
+      setAutoAddingKeys((current) => {
+        const next = new Set(current)
+        next.delete(context.key)
+        return next
+      })
+    },
+    onSuccess: async (card) => {
+      markSuggestionAddedInCache(queryClient, card)
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
-      await queryClient.invalidateQueries({ queryKey: ['suggestions'] })
     },
     onError: (error) => {
       const quotaCopy = generationQuotaToastCopyFromError(error)
@@ -693,6 +707,12 @@ function HomePage() {
     getNextPageParam: (lastPage, _pages, lastPageParam) =>
       lastPage.hasMore ? lastPageParam + DICTIONARY_PAGE_SIZE : undefined,
     placeholderData: keepPreviousData,
+    refetchInterval: (query) => {
+      const hasGenerating = query.state.data?.pages.some((page) =>
+        page.items.some((item) => item.generationStatus === 'generating'),
+      )
+      return hasGenerating ? 5_000 : false
+    },
   })
 
   const trainingQuery = useQuery({
@@ -811,7 +831,9 @@ function HomePage() {
                             item={item}
                             key={suggestionKey(item)}
                             canAutoAdd={canAutoAddNewWords}
-                            autoAddPending={autoAddMutation.isPending}
+                            autoAddPending={autoAddingKeys.has(
+                              `${item.spanish}\0${item.russian}`,
+                            )}
                             onAutoAdd={(pair) => {
                               autoAddMutation.mutate(pair)
                             }}
@@ -855,17 +877,6 @@ function HomePage() {
           </p>
         ) : null}
       </header>
-
-      {autoAddMutation.isPending ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-orange-950/40 p-4"
-          role="presentation"
-        >
-          <div className="rounded-2xl border border-orange-100 bg-white px-8 py-10 shadow-lg">
-            <WordGenerateLoader />
-          </div>
-        </div>
-      ) : null}
 
       {showTrainingSection ? (
         <section className="mx-auto max-w-5xl px-5 pt-8 sm:px-8">
@@ -1160,6 +1171,7 @@ function DictionaryWordRow({ item }: { item: DictionaryListItem }) {
       spanish={item.spanish}
       russian={item.russian}
       progress={item.progress}
+      generationStatus={item.generationStatus}
       onSelect={() => {
         void navigate(`/words/${item.id}`)
       }}
@@ -1509,22 +1521,7 @@ function SuggestionRow({
       return addExistingWord({ wordId: item.wordId })
     },
     onSuccess: async (card) => {
-      queryClient.setQueriesData<SuggestionsResponse>(
-        { queryKey: ['suggestions'] },
-        (current) => {
-          if (!current) {
-            return current
-          }
-
-          return {
-            suggestions: current.suggestions.map((suggestion) =>
-              suggestion.wordId === card.wordId
-                ? { ...suggestion, progress: card.progress }
-                : suggestion,
-            ),
-          }
-        },
-      )
+      markSuggestionAddedInCache(queryClient, card)
       await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
     },
   })
@@ -1632,6 +1629,43 @@ function SuggestionProgressIcon({
     >
       <ProgressDot progress={progress} />
     </span>
+  )
+}
+
+function markSuggestionAddedInCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  card: Pick<
+    DictionaryListItem,
+    'wordId' | 'spanish' | 'russian' | 'progress'
+  >,
+): void {
+  queryClient.setQueriesData<SuggestionsResponse>(
+    { queryKey: ['suggestions'] },
+    (current) => {
+      if (!current) {
+        return current
+      }
+
+      return {
+        suggestions: current.suggestions.map((suggestion) => {
+          const sameWord =
+            suggestion.wordId !== null && suggestion.wordId === card.wordId
+          const samePair =
+            suggestion.spanish === card.spanish &&
+            suggestion.russian === card.russian
+
+          if (!sameWord && !samePair) {
+            return suggestion
+          }
+
+          return {
+            ...suggestion,
+            wordId: card.wordId,
+            progress: card.progress,
+          }
+        }),
+      }
+    },
   )
 }
 

@@ -46,6 +46,7 @@ const cardPayload = {
   progress: 0,
   inDictionary: true,
   source: 'manual',
+  generationStatus: 'ready',
   addedAt: '2026-10-18T12:00:00.000Z',
   ready: true,
   missingFields: [],

@@ -3,8 +3,13 @@ export function getMissingTrainerFields(word: {
   russian: string
   wrongRussian: string[]
   wrongSpanish: string[]
+  generationStatus?: 'generating' | 'ready' | 'failed'
 }): string[] {
   const missing: string[] = []
+
+  if (word.generationStatus != null && word.generationStatus !== 'ready') {
+    missing.push('generationStatus')
+  }
 
   if (!word.spanish.trim()) {
     missing.push('spanish')
@@ -30,6 +35,7 @@ export function isWordReadyForTrainer(word: {
   russian: string
   wrongRussian: string[]
   wrongSpanish: string[]
+  generationStatus?: 'generating' | 'ready' | 'failed'
 }): boolean {
   return getMissingTrainerFields(word).length === 0
 }

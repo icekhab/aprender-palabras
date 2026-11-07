@@ -101,8 +101,14 @@ enum UserCardSource {
   lesson
 }
 
+enum WordGenerationStatus {
+  generating
+  ready
+  failed
+}
+
 model Word {
-  id                     String         @id @default(uuid()) @db.Uuid
+  id                     String                @id @default(uuid()) @db.Uuid
   spanish                String
   russian                String
   normalizedSpanish      String
@@ -111,24 +117,28 @@ model Word {
   searchSpanish          String
   /** Accent-folded search key (see normalizeSearchKey). */
   searchRussian          String
-  additionalTranslations String[]       @default([])
+  additionalTranslations String[]              @default([])
   definitionEs           String?
-  examples               String[]       @default([])
+  examples               String[]              @default([])
   partOfSpeech           String?
   gender                 WordGender?
-  wrongRussian           String[]       @default([])
-  wrongSpanish           String[]       @default([])
+  wrongRussian           String[]              @default([])
+  wrongSpanish           String[]              @default([])
   imageUrl               String?
   imagePhotographerName  String?
   imagePhotographerUrl   String?
   imagePageUrl           String?
   imageProvider          ImageProvider?
-  imageGenerationCount   Int            @default(0)
-  createdByUserId        String?        @db.Uuid
-  createdViaLesson       Boolean        @default(false)
-  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
-  createdBy              User?          @relation("WordCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  imageGenerationCount   Int                   @default(0)
+  generationStatus       WordGenerationStatus  @default(ready)
+  generationStartedAt    DateTime?             @db.Timestamptz(3)
+  generationAttemptCount Int                   @default(0)
+  generationError        String?
+  createdByUserId        String?               @db.Uuid
+  createdViaLesson       Boolean               @default(false)
+  createdAt              DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime              @updatedAt @db.Timestamptz(3)
+  createdBy              User?                 @relation("WordCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   cards                  UserCard[]
   lessonWords            LessonWord[]
   collectionItems        WordCollectionItem[]
@@ -140,6 +150,7 @@ model Word {
   @@index([createdAt])
   @@index([searchSpanish])
   @@index([searchRussian])
+  @@index([generationStatus, generationStartedAt])
 }
 
 model WordAudio {

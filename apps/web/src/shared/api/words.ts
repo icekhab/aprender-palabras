@@ -56,6 +56,20 @@ export async function previewWord(
   })
 }
 
+export async function generateWord(
+  input: WordPairInput,
+  signal?: AbortSignal,
+): Promise<DictionaryListItem> {
+  return request<DictionaryListItem>('/api/words/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+    signal,
+  })
+}
+
 export async function createWord(draft: WordDraft): Promise<Word> {
   return request<Word>('/api/words', {
     method: 'POST',

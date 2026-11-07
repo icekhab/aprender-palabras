@@ -52,13 +52,13 @@ describe('QuotaService', () => {
     expect(prisma._tx.user.update).not.toHaveBeenCalled()
   })
 
-  it('rejects generation when user hits default limit of 30', async () => {
+  it('rejects generation when user hits default limit of 60', async () => {
     prisma._tx.user.findUniqueOrThrow.mockResolvedValue({
       role: 'user',
       dailyGenerationLimit: null,
       dailySuggestionsLimit: null,
       quotaDate: new Date(`${madridDateString()}T00:00:00.000Z`),
-      generationsCount: 30,
+      generationsCount: 60,
       suggestionsCount: 0,
     })
 
@@ -86,7 +86,7 @@ describe('QuotaService', () => {
     )
   })
 
-  it('uses role defaults for suggestions (user 300 / teacher 600)', async () => {
+  it('uses role defaults for suggestions (user 450 / teacher 600)', async () => {
     prisma._tx.user.findUniqueOrThrow.mockResolvedValue({
       role: 'teacher',
       dailyGenerationLimit: null,
@@ -128,7 +128,7 @@ describe('QuotaService', () => {
       dailyGenerationLimit: null,
       dailySuggestionsLimit: null,
       quotaDate: new Date(`${madridDateString()}T00:00:00.000Z`),
-      generationsCount: 30,
+      generationsCount: 60,
       suggestionsCount: 0,
     })
 
@@ -163,7 +163,7 @@ describe('computeCanUseAiSuggestions', () => {
         dailyGenerationLimit: null,
         dailySuggestionsLimit: null,
         quotaDate: today,
-        generationsCount: 30,
+        generationsCount: 60,
         suggestionsCount: 0,
       }),
     ).toBe(false)
@@ -174,7 +174,7 @@ describe('computeCanUseAiSuggestions', () => {
         dailySuggestionsLimit: null,
         quotaDate: today,
         generationsCount: 0,
-        suggestionsCount: 300,
+        suggestionsCount: 450,
       }),
     ).toBe(false)
   })

@@ -6,6 +6,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import {
@@ -24,6 +26,7 @@ import {
   type UserRole,
   type Word,
   type WordDraft,
+  type WordGenerationStatus,
   type WordPairInput,
 } from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
@@ -34,11 +37,20 @@ import { PrismaService } from '../prisma.service.js'
 import { QuotaService } from '../quotas/quota.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
 import { canEditWord } from './word-edit-access.js'
+import {
+  WORD_GENERATION_ERROR_MAX_LENGTH,
+  WORD_GENERATION_MAX_ATTEMPTS,
+  WORD_GENERATION_RETRY_INTERVAL_MS,
+  WORD_GENERATION_STUCK_AFTER_MS,
+  WORD_GENERATION_TIMEOUT_MS,
+} from './word-generation.constants.js'
 import { normalizeSearchKey, normalizeWordKey } from './word-normalize.js'
 
 @Injectable()
-export class WordsService {
+export class WordsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WordsService.name)
+  private readonly inFlightGenerations = new Map<string, Promise<void>>()
+  private retryTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(
     private readonly prisma: PrismaService,
@@ -47,6 +59,19 @@ export class WordsService {
     private readonly wordAudioService: WordAudioService,
     private readonly quotaService: QuotaService,
   ) {}
+
+  onModuleInit(): void {
+    this.retryTimer = setInterval(() => {
+      void this.processGenerationRetries()
+    }, WORD_GENERATION_RETRY_INTERVAL_MS)
+  }
+
+  onModuleDestroy(): void {
+    if (this.retryTimer) {
+      clearInterval(this.retryTimer)
+      this.retryTimer = null
+    }
+  }
 
   async preview(userId: string, input: WordPairInput): Promise<WordDraft> {
     const spanish = input.spanish.trim()
@@ -86,6 +111,93 @@ export class WordsService {
     } catch (error) {
       this.logger.error('Word preview generation failed', error)
       return emptyDraft
+    }
+  }
+
+  async generate(
+    userId: string,
+    input: WordPairInput,
+  ): Promise<DictionaryListItem> {
+    const spanish = input.spanish.trim()
+    const russian = input.russian.trim()
+    const normalizedSpanish = normalizeWordKey(spanish)
+    const normalizedRussian = normalizeWordKey(russian)
+    const searchSpanish = normalizeSearchKey(spanish)
+    const searchRussian = normalizeSearchKey(russian)
+
+    const existing = await this.prisma.word.findUnique({
+      where: {
+        normalizedSpanish_normalizedRussian: {
+          normalizedSpanish,
+          normalizedRussian,
+        },
+      },
+    })
+
+    if (existing) {
+      const card = await this.attachCardToWord(userId, existing.id)
+      return toDictionaryListItem(card, existing)
+    }
+
+    if (!this.openAiService.isConfigured()) {
+      const { card, word } = await this.createStubWordWithCard({
+        userId,
+        spanish,
+        russian,
+        normalizedSpanish,
+        normalizedRussian,
+        searchSpanish,
+        searchRussian,
+        generationStatus: 'ready',
+        generationStartedAt: null,
+        generationAttemptCount: 0,
+      })
+      return toDictionaryListItem(card, word)
+    }
+
+    await this.quotaService.consumeGeneration(userId)
+
+    try {
+      const { card, word, createdNewWord } = await this.createStubWordWithCard({
+        userId,
+        spanish,
+        russian,
+        normalizedSpanish,
+        normalizedRussian,
+        searchSpanish,
+        searchRussian,
+        generationStatus: 'generating',
+        generationStartedAt: new Date(),
+        generationAttemptCount: 1,
+      })
+
+      if (createdNewWord && word.generationStatus === 'generating') {
+        this.enqueueGeneration(word.id)
+      }
+
+      return toDictionaryListItem(card, word)
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raced = await this.prisma.word.findUniqueOrThrow({
+          where: {
+            normalizedSpanish_normalizedRussian: {
+              normalizedSpanish,
+              normalizedRussian,
+            },
+          },
+        })
+        const card = await this.attachCardToWord(userId, raced.id)
+        return toDictionaryListItem(card, raced)
+      }
+
+      throw error
     }
   }
 
@@ -531,6 +643,7 @@ export class WordsService {
         imagePhotographerUrl: string | null
         imagePageUrl: string | null
         imageProvider: 'unsplash' | null
+        generationStatus: WordGenerationStatus
         createdByUserId: string | null
         createdViaLesson: boolean
       }
@@ -580,6 +693,7 @@ export class WordsService {
       progress: card.progress,
       inDictionary: card.inDictionary,
       source: card.source,
+      generationStatus: card.word.generationStatus,
       addedAt: card.addedAt.toISOString(),
       ready: missingFields.length === 0,
       missingFields,
@@ -589,6 +703,380 @@ export class WordsService {
         courseId: item.lesson.courseId,
         title: item.lesson.title,
       })),
+    }
+  }
+
+  private async attachCardToWord(
+    userId: string,
+    wordId: string,
+  ): Promise<{
+    id: string
+    wordId: string
+    progress: number
+    addedAt: Date
+  }> {
+    const existingCard = await this.prisma.userCard.findUnique({
+      where: {
+        userId_wordId: {
+          userId,
+          wordId,
+        },
+      },
+    })
+
+    if (existingCard) {
+      throw new ConflictException('Word already exists')
+    }
+
+    try {
+      return await this.prisma.userCard.create({
+        data: {
+          userId,
+          wordId,
+          source: 'manual',
+          inDictionary: true,
+          progress: 0,
+        },
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Word already exists')
+      }
+
+      throw error
+    }
+  }
+
+  private async createStubWordWithCard(input: {
+    userId: string
+    spanish: string
+    russian: string
+    normalizedSpanish: string
+    normalizedRussian: string
+    searchSpanish: string
+    searchRussian: string
+    generationStatus: WordGenerationStatus
+    generationStartedAt: Date | null
+    generationAttemptCount: number
+  }): Promise<{
+    card: { id: string; wordId: string; progress: number; addedAt: Date }
+    word: {
+      id: string
+      spanish: string
+      russian: string
+      generationStatus: WordGenerationStatus
+    }
+    createdNewWord: boolean
+  }> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        let existing = await tx.word.findUnique({
+          where: {
+            normalizedSpanish_normalizedRussian: {
+              normalizedSpanish: input.normalizedSpanish,
+              normalizedRussian: input.normalizedRussian,
+            },
+          },
+        })
+        let createdNewWord = false
+
+        if (!existing) {
+          try {
+            existing = await tx.word.create({
+              data: {
+                spanish: input.spanish,
+                russian: input.russian,
+                normalizedSpanish: input.normalizedSpanish,
+                normalizedRussian: input.normalizedRussian,
+                searchSpanish: input.searchSpanish,
+                searchRussian: input.searchRussian,
+                generationStatus: input.generationStatus,
+                generationStartedAt: input.generationStartedAt,
+                generationAttemptCount: input.generationAttemptCount,
+                createdByUserId: input.userId,
+                createdViaLesson: false,
+              },
+            })
+            createdNewWord = true
+          } catch (error) {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === 'P2002'
+            ) {
+              existing = await tx.word.findUniqueOrThrow({
+                where: {
+                  normalizedSpanish_normalizedRussian: {
+                    normalizedSpanish: input.normalizedSpanish,
+                    normalizedRussian: input.normalizedRussian,
+                  },
+                },
+              })
+            } else {
+              throw error
+            }
+          }
+        }
+
+        const existingCard = await tx.userCard.findUnique({
+          where: {
+            userId_wordId: {
+              userId: input.userId,
+              wordId: existing.id,
+            },
+          },
+        })
+
+        if (existingCard) {
+          throw new ConflictException('Word already exists')
+        }
+
+        const card = await tx.userCard.create({
+          data: {
+            userId: input.userId,
+            wordId: existing.id,
+            source: 'manual',
+            inDictionary: true,
+            progress: 0,
+          },
+        })
+
+        return { card, word: existing, createdNewWord }
+      })
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Word already exists')
+      }
+
+      throw error
+    }
+  }
+
+  private enqueueGeneration(wordId: string): void {
+    if (this.inFlightGenerations.has(wordId)) {
+      return
+    }
+
+    const run = this.runGeneration(wordId).finally(() => {
+      this.inFlightGenerations.delete(wordId)
+    })
+    this.inFlightGenerations.set(wordId, run)
+  }
+
+  private async runGeneration(wordId: string): Promise<void> {
+    try {
+      const word = await this.prisma.word.findUnique({
+        where: { id: wordId },
+      })
+
+      if (!word || word.generationStatus === 'ready') {
+        return
+      }
+
+      if (!this.openAiService.isConfigured()) {
+        await this.prisma.word.update({
+          where: { id: wordId },
+          data: {
+            generationStatus: 'failed',
+            generationError: 'OpenAI is not configured',
+          },
+        })
+        return
+      }
+
+      const generated = await withTimeout(
+        this.generateContentForWord(word.spanish, word.russian),
+        WORD_GENERATION_TIMEOUT_MS,
+        'Word generation timed out',
+      )
+
+      const current = await this.prisma.word.findUnique({
+        where: { id: wordId },
+        select: { generationStatus: true },
+      })
+
+      if (!current || current.generationStatus === 'ready') {
+        return
+      }
+
+      const partOfSpeech = isKnownPartOfSpeech(generated.partOfSpeech)
+        ? generated.partOfSpeech
+        : PART_OF_SPEECH_UNDETERMINED
+      const gender =
+        partOfSpeech === 'sustantivo' ? generated.gender : null
+
+      await this.prisma.word.update({
+        where: { id: wordId },
+        data: {
+          additionalTranslations: generated.additionalTranslations,
+          definitionEs: generated.definitionEs,
+          examples: generated.examples,
+          partOfSpeech,
+          gender,
+          wrongRussian: generated.wrongRussian,
+          wrongSpanish: generated.wrongSpanish,
+          imageUrl: generated.imageUrl,
+          imagePhotographerName: generated.imagePhotographerName,
+          imagePhotographerUrl: generated.imagePhotographerUrl,
+          imagePageUrl: generated.imagePageUrl,
+          imageProvider: generated.imageProvider,
+          imageGenerationCount: generated.imageUrl ? 1 : 0,
+          generationStatus: 'ready',
+          generationError: null,
+          generationStartedAt: null,
+        },
+      })
+
+      if (
+        generated.imageProvider === 'unsplash' &&
+        generated.imageDownloadLocation
+      ) {
+        void this.unsplashService.trackDownload(generated.imageDownloadLocation)
+      }
+
+      try {
+        await this.wordAudioService.ensureWordAudio(wordId)
+      } catch (error) {
+        this.logger.error(
+          `TTS failed after async word generation (${wordId})`,
+          error,
+        )
+      }
+    } catch (error) {
+      const message = truncateGenerationError(
+        error instanceof Error ? error.message : 'Word generation failed',
+      )
+      this.logger.error(`Async word generation failed (${wordId})`, error)
+
+      try {
+        await this.prisma.word.update({
+          where: { id: wordId },
+          data: {
+            generationStatus: 'failed',
+            generationError: message,
+          },
+        })
+      } catch (updateError) {
+        this.logger.error(
+          `Failed to mark word generation as failed (${wordId})`,
+          updateError,
+        )
+      }
+    }
+  }
+
+  private async generateContentForWord(
+    spanish: string,
+    russian: string,
+  ): Promise<{
+    additionalTranslations: string[]
+    definitionEs: string | null
+    examples: string[]
+    partOfSpeech: string | null
+    gender: 'masculine' | 'feminine' | null
+    wrongRussian: string[]
+    wrongSpanish: string[]
+    imageUrl: string | null
+    imagePhotographerName: string | null
+    imagePhotographerUrl: string | null
+    imagePageUrl: string | null
+    imageProvider: 'unsplash' | null
+    imageDownloadLocation: string | null
+  }> {
+    const content = await this.openAiService.generateWordContent(
+      spanish,
+      russian,
+    )
+    const image = await this.unsplashService.searchImage(content.unsplashQuery)
+
+    return {
+      additionalTranslations: content.additionalTranslations,
+      definitionEs: content.definitionEs,
+      examples: content.examples,
+      partOfSpeech: content.partOfSpeech,
+      gender: content.gender,
+      wrongRussian: content.wrongRussian,
+      wrongSpanish: content.wrongSpanish,
+      imageUrl: image?.imageUrl ?? null,
+      imagePhotographerName: image?.imagePhotographerName ?? null,
+      imagePhotographerUrl: image?.imagePhotographerUrl ?? null,
+      imagePageUrl: image?.imagePageUrl ?? null,
+      imageProvider: image?.imageProvider ?? null,
+      imageDownloadLocation: image?.imageDownloadLocation ?? null,
+    }
+  }
+
+  /** Visible for tests; scans failed / stuck words and retries up to max attempts. */
+  async processGenerationRetries(): Promise<void> {
+    const stuckBefore = new Date(Date.now() - WORD_GENERATION_STUCK_AFTER_MS)
+
+    const exhaustedStuck = await this.prisma.word.findMany({
+      where: {
+        generationStatus: 'generating',
+        generationStartedAt: { lt: stuckBefore },
+        generationAttemptCount: { gte: WORD_GENERATION_MAX_ATTEMPTS },
+      },
+      select: { id: true },
+      take: 50,
+    })
+
+    for (const word of exhaustedStuck) {
+      if (this.inFlightGenerations.has(word.id)) {
+        continue
+      }
+
+      await this.prisma.word.update({
+        where: { id: word.id },
+        data: {
+          generationStatus: 'failed',
+          generationError: 'Word generation stuck after max attempts',
+          generationStartedAt: null,
+        },
+      })
+    }
+
+    const retryCandidates = await this.prisma.word.findMany({
+      where: {
+        OR: [
+          {
+            generationStatus: 'failed',
+            generationAttemptCount: { lt: WORD_GENERATION_MAX_ATTEMPTS },
+          },
+          {
+            generationStatus: 'generating',
+            generationStartedAt: { lt: stuckBefore },
+            generationAttemptCount: { lt: WORD_GENERATION_MAX_ATTEMPTS },
+          },
+        ],
+      },
+      select: { id: true },
+      take: 20,
+    })
+
+    for (const word of retryCandidates) {
+      if (this.inFlightGenerations.has(word.id)) {
+        continue
+      }
+
+      await this.prisma.word.update({
+        where: { id: word.id },
+        data: {
+          generationStatus: 'generating',
+          generationStartedAt: new Date(),
+          generationAttemptCount: { increment: 1 },
+          generationError: null,
+        },
+      })
+      this.enqueueGeneration(word.id)
     }
   }
 
@@ -639,14 +1127,7 @@ export class WordsService {
       totalCount,
       averageProgress,
       hasMore: query.offset + cards.length < matchedCount,
-      items: cards.map((card) => ({
-        id: card.id,
-        wordId: card.wordId,
-        spanish: card.word.spanish,
-        russian: card.word.russian,
-        progress: card.progress,
-        addedAt: card.addedAt.toISOString(),
-      })),
+      items: cards.map((card) => toDictionaryListItem(card, card.word)),
     }
   }
 
@@ -662,48 +1143,8 @@ export class WordsService {
       throw new NotFoundException('Word not found')
     }
 
-    const existingCard = await this.prisma.userCard.findUnique({
-      where: {
-        userId_wordId: {
-          userId,
-          wordId,
-        },
-      },
-    })
-
-    if (existingCard) {
-      throw new ConflictException('Word already exists')
-    }
-
-    try {
-      const card = await this.prisma.userCard.create({
-        data: {
-          userId,
-          wordId,
-          source: 'manual',
-          inDictionary: true,
-          progress: 0,
-        },
-      })
-
-      return {
-        id: card.id,
-        wordId: word.id,
-        spanish: word.spanish,
-        russian: word.russian,
-        progress: card.progress,
-        addedAt: card.addedAt.toISOString(),
-      }
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Word already exists')
-      }
-
-      throw error
-    }
+    const card = await this.attachCardToWord(userId, wordId)
+    return toDictionaryListItem(card, word)
   }
 
   async create(userId: string, draft: WordDraft): Promise<Word> {
@@ -854,6 +1295,56 @@ function emptyWordDraft(spanish: string, russian: string): WordDraft {
     imageProvider: null,
     imageDownloadLocation: null,
   }
+}
+
+function toDictionaryListItem(
+  card: { id: string; wordId: string; progress: number; addedAt: Date },
+  word: {
+    spanish: string
+    russian: string
+    generationStatus: WordGenerationStatus
+  },
+): DictionaryListItem {
+  return {
+    id: card.id,
+    wordId: card.wordId,
+    spanish: word.spanish,
+    russian: word.russian,
+    progress: card.progress,
+    generationStatus: word.generationStatus,
+    addedAt: card.addedAt.toISOString(),
+  }
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(message))
+        }, ms)
+      }),
+    ])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
+}
+
+function truncateGenerationError(message: string): string {
+  if (message.length <= WORD_GENERATION_ERROR_MAX_LENGTH) {
+    return message
+  }
+
+  return message.slice(0, WORD_GENERATION_ERROR_MAX_LENGTH)
 }
 
 function toWordResponse(word: {

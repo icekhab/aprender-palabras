@@ -25,6 +25,28 @@ describe('lesson readiness', () => {
     ).toEqual([])
   })
 
+  it('treats non-ready generation status as missing', () => {
+    expect(
+      isWordReadyForTrainer({
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        generationStatus: 'generating',
+      }),
+    ).toBe(false)
+
+    expect(
+      getMissingTrainerFields({
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['a', 'b', 'c'],
+        wrongSpanish: ['x', 'y', 'z'],
+        generationStatus: 'failed',
+      }),
+    ).toEqual(['generationStatus'])
+  })
+
   it('requires at least three distractors in each direction', () => {
     expect(
       isWordReadyForTrainer({

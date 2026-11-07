@@ -28,6 +28,24 @@ describe('WordRow', () => {
     expect(container.querySelector('svg.lucide-check')).toBeTruthy()
   })
 
+  it('shows a spinner instead of progress while generating', () => {
+    const { container } = render(
+      <ul>
+        <WordRow
+          spanish="hola"
+          russian="привет"
+          progress={0}
+          generationStatus="generating"
+        />
+      </ul>,
+    )
+
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeTruthy()
+    expect(container.querySelector('li')?.getAttribute('title')).toBe(
+      'Generándose, espere…',
+    )
+  })
+
   it('calls onSelect when the spanish word is clicked', () => {
     const onSelect = vi.fn<() => void>()
     render(

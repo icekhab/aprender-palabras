@@ -414,6 +414,7 @@ describe('App', () => {
               spanish: 'hola',
               russian: 'привет',
               progress: 0,
+              generationStatus: 'ready',
               addedAt: '2026-10-01T00:00:00.000Z',
             },
           ],
@@ -535,6 +536,7 @@ describe('App', () => {
               spanish: 'esperar',
               russian: 'ждать',
               progress: 50,
+              generationStatus: 'ready',
               addedAt: '2026-10-18T12:00:00.000Z',
             },
             {
@@ -543,6 +545,7 @@ describe('App', () => {
               spanish: 'hablar',
               russian: 'говорить',
               progress: 0,
+              generationStatus: 'ready',
               addedAt: '2026-10-17T12:00:00.000Z',
             },
           ],
@@ -561,6 +564,7 @@ describe('App', () => {
               spanish: 'esperar',
               russian: 'ждать',
               progress: 50,
+              generationStatus: 'ready',
               addedAt: '2026-10-18T12:00:00.000Z',
             },
           ],
@@ -619,6 +623,7 @@ describe('App', () => {
               spanish: 'hablar',
               russian: 'говорить',
               progress: 0,
+              generationStatus: 'ready',
               addedAt: '2026-10-18T12:00:00.000Z',
             },
           ],
@@ -677,6 +682,7 @@ describe('App', () => {
               spanish: 'esperar',
               russian: 'ждать',
               progress: 50,
+              generationStatus: 'ready',
               addedAt: '2026-10-18T12:00:00.000Z',
             },
           ],
@@ -704,6 +710,7 @@ describe('App', () => {
           progress: 50,
           inDictionary: true,
           source: 'manual',
+          generationStatus: 'ready',
           addedAt: '2026-10-18T12:00:00.000Z',
           ready: true,
           missingFields: [],
@@ -1304,15 +1311,24 @@ describe('App', () => {
     expect(await screen.findByText('esperar')).toBeInTheDocument()
   })
 
-  it('shows generate loader overlay when a user adds a new suggestion', async () => {
+  it('adds a new suggestion asynchronously without a blocking overlay', async () => {
     const regularUser = {
       ...user,
       id: '0199f98d-83c0-7bde-a537-b74cf7e9ea35',
       login: 'user@local.test',
       role: 'user' as const,
     }
+    let dictionaryItems: Array<{
+      id: string
+      wordId: string
+      spanish: string
+      russian: string
+      progress: number
+      generationStatus: 'generating' | 'ready' | 'failed'
+      addedAt: string
+    }> = []
 
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input)
 
       if (url === '/api/auth/me') {
@@ -1320,7 +1336,12 @@ describe('App', () => {
       }
 
       if (isDictionaryListRequest(url)) {
-        return emptyDictionaryResponse()
+        return jsonResponse({
+          totalCount: dictionaryItems.length,
+          averageProgress: 0,
+          hasMore: false,
+          items: dictionaryItems,
+        })
       }
 
       if (isTrainingTodayRequest(url)) {
@@ -1343,10 +1364,19 @@ describe('App', () => {
         })
       }
 
-      if (url === '/api/words/preview') {
-        await new Promise(() => {
-          // Keep pending so the loader stays visible.
-        })
+      if (url === '/api/words/generate' && init?.method === 'POST') {
+        dictionaryItems = [
+          {
+            id: 'card-1',
+            wordId: 'word-1',
+            spanish: 'esperar',
+            russian: 'ждать',
+            progress: 0,
+            generationStatus: 'generating',
+            addedAt: '2026-10-18T12:00:00.000Z',
+          },
+        ]
+        return jsonResponse(dictionaryItems[0])
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -1359,13 +1389,33 @@ describe('App', () => {
     fireEvent.focus(searchInput)
     fireEvent.change(searchInput, { target: { value: 'esperar' } })
 
-    fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
+    const suggestionButton = await screen.findByRole('button', {
+      name: /esperar\s*—\s*ждать/i,
+    })
+    fireEvent.click(suggestionButton)
 
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/words/generate',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'same-origin',
+        }),
+      )
+    })
     expect(
-      await screen.findByRole('status', { name: 'Generando la tarjeta…' }),
+      screen.queryByRole('status', { name: 'Generando la tarjeta…' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.focus(searchInput)
+    expect(
+      await screen.findByLabelText(/esperar — ждать, progreso 0%/i),
     ).toBeInTheDocument()
-    expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Español')).not.toBeInTheDocument()
+
+    const aiCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).startsWith('/api/suggestions/ai?'),
+    )
+    expect(aiCalls).toHaveLength(1)
   })
 
   it('shows a toast when user auto-add hits the generation quota', async () => {
@@ -1407,7 +1457,7 @@ describe('App', () => {
         })
       }
 
-      if (url === '/api/words/preview') {
+      if (url === '/api/words/generate') {
         return {
           ok: false,
           status: 429,
@@ -1576,6 +1626,7 @@ describe('App', () => {
           spanish: 'esperar',
           russian: 'ждать',
           progress: 0,
+          generationStatus: 'ready',
           addedAt: '2026-10-18T12:00:00.000Z',
         })
       }
