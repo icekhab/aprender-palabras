@@ -45,6 +45,17 @@ export function attemptKey(userCardId: string, type: ExerciseType): string {
   return `${userCardId}:${type}`
 }
 
+/** Speak exercise (type 4). Kept as number 4; former audio→type UI is unused. */
+export const SPEAK_EXERCISE_TYPE: ExerciseType = 4
+
+/** Drop speak steps when STT is unavailable or the user opts out for this run. */
+export function filterSpeakExercises(steps: SessionStep[]): SessionStep[] {
+  return steps.filter(
+    (step) =>
+      !(step.kind === 'exercise' && step.type === SPEAK_EXERCISE_TYPE),
+  )
+}
+
 type WordState = {
   word: TrainerSessionWord
   chain: ExerciseType[]

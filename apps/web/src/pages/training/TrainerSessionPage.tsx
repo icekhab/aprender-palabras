@@ -13,16 +13,24 @@ import { playFeedbackSound } from '../../shared/feedback-sound'
 import { preloadWordAudio, speakWord } from '../../shared/speech'
 import { AnswerResultScreen } from './AnswerResultScreen'
 import { CompletionScreen } from './CompletionScreen'
+import { isSpeechRecognitionSupported } from '../../shared/speech-recognition'
+import {
+  clearSkipSpeakExercises,
+  readSkipSpeakExercises,
+  writeSkipSpeakExercises,
+} from '../../shared/skip-speak-preference'
 import { Exercise1Screen } from './Exercise1Screen'
 import { Exercise2Screen } from './Exercise2Screen'
 import { Exercise3Screen } from './Exercise3Screen'
-import { Exercise4Screen } from './Exercise4Screen'
 import { Exercise5Screen } from './Exercise5Screen'
+import { SpeakExerciseScreen } from './SpeakExerciseScreen'
 import {
   attemptKey,
   buildSessionQueue,
   createRetryStep,
+  filterSpeakExercises,
   MAX_ATTEMPTS_PER_EXERCISE,
+  SPEAK_EXERCISE_TYPE,
   type SessionStep,
 } from './session-queue'
 import { WordDetailCard } from './WordDetailCard'
@@ -68,6 +76,18 @@ export function TrainerSessionPage() {
   const [saving, setSaving] = useState(false)
   /** ISO timestamp when the session queue became ready (client clock). */
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null)
+  /**
+   * Drop speak exercises: unsupported browser, or user opt-out kept in
+   * sessionStorage until returning to home (survives Continuar).
+   */
+  const [skipSpeakExercises, setSkipSpeakExercises] = useState(
+    () => !isSpeechRecognitionSupported() || readSkipSpeakExercises(),
+  )
+
+  const goHome = useCallback((replace = false) => {
+    clearSkipSpeakExercises()
+    void navigate('/', replace ? { replace: true } : undefined)
+  }, [navigate])
 
   const sessionQuery = useQuery({
     queryKey: TRAINER_SESSION_QUERY_KEY(trainerId),
@@ -94,9 +114,13 @@ export function TrainerSessionPage() {
       if (cancelled) {
         return
       }
+      const skipSpeak =
+        !isSpeechRecognitionSupported() || readSkipSpeakExercises()
+      setSkipSpeakExercises(skipSpeak)
+      const builtQueue = buildSessionQueue(data.words)
       setPrepared({
         sessionId: data.id,
-        queue: buildSessionQueue(data.words),
+        queue: skipSpeak ? filterSpeakExercises(builtQueue) : builtQueue,
       })
       setSessionStartedAt(new Date().toISOString())
       setStepIndex(0)
@@ -127,9 +151,9 @@ export function TrainerSessionPage() {
       return
     }
     if (queue.length === 0) {
-      void navigate('/', { replace: true })
+      goHome(true)
     }
-  }, [sessionQuery.isSuccess, sessionReady, queue.length, navigate])
+  }, [sessionQuery.isSuccess, sessionReady, queue.length, goHome])
 
   const isCurrentStepResolved = useCallback((): boolean => {
     if (!currentStep) {
@@ -215,7 +239,11 @@ export function TrainerSessionPage() {
     let nextQueue = queue
     if (
       answerResult?.enqueueRetry &&
-      currentStep?.kind === 'exercise'
+      currentStep?.kind === 'exercise' &&
+      !(
+        skipSpeakExercises &&
+        currentStep.type === SPEAK_EXERCISE_TYPE
+      )
     ) {
       const key = attemptKey(currentStep.word.userCardId, currentStep.type)
       const attempts = attemptCounts[key] ?? 0
@@ -247,9 +275,46 @@ export function TrainerSessionPage() {
     isCurrentStepResolved,
     queue,
     sessionId,
+    skipSpeakExercises,
     stepIndex,
     submitCompletion,
   ])
+
+  const handleSkipSpeakExercises = useCallback(() => {
+    if (!sessionId || !prepared || prepared.sessionId !== sessionId) {
+      return
+    }
+
+    const keptBefore = prepared.queue
+      .slice(0, stepIndex)
+      .filter(
+        (step) =>
+          !(
+            step.kind === 'exercise' &&
+            step.type === SPEAK_EXERCISE_TYPE
+          ),
+      ).length
+    const nextQueue = filterSpeakExercises(prepared.queue)
+
+    writeSkipSpeakExercises(true)
+    setSkipSpeakExercises(true)
+    setAnswerResult(null)
+    setPrepared({ sessionId, queue: nextQueue })
+
+    if (nextQueue.length === 0 || keptBefore >= nextQueue.length) {
+      setCompletion({
+        wordCount: 0,
+        dailyTotal: 0,
+        dailyCompleted: 0,
+        nextTrainerId: null,
+        error: null,
+      })
+      void submitCompletion()
+      return
+    }
+
+    setStepIndex(keptBefore)
+  }, [prepared, sessionId, stepIndex, submitCompletion])
 
   const handleRevealResult = useCallback(
     (result: { correct: boolean; accentWarning?: string }) => {
@@ -312,7 +377,7 @@ export function TrainerSessionPage() {
         <Button
           type="button"
           className="mt-4 bg-orange-700 hover:bg-orange-800"
-          onClick={() => void navigate('/')}
+          onClick={() => goHome()}
         >
           Volver al inicio
         </Button>
@@ -341,7 +406,7 @@ export function TrainerSessionPage() {
           })
         }}
         onHome={() => {
-          void navigate('/', { replace: true })
+          goHome(true)
         }}
       />
     )
@@ -372,9 +437,9 @@ export function TrainerSessionPage() {
     currentStep.type === 3 &&
     answerResult === null
 
-  const showExercise4 =
+  const showSpeakExercise =
     currentStep.kind === 'exercise' &&
-    currentStep.type === 4 &&
+    currentStep.type === SPEAK_EXERCISE_TYPE &&
     answerResult === null
 
   const showExercise5 =
@@ -452,11 +517,12 @@ export function TrainerSessionPage() {
         />
       ) : null}
 
-      {showExercise4 ? (
-        <Exercise4Screen
+      {showSpeakExercise ? (
+        <SpeakExerciseScreen
           key={currentStep.id}
           word={currentStep.word}
           onRevealResult={handleRevealResult}
+          onSkipSpeak={handleSkipSpeakExercises}
         />
       ) : null}
 
@@ -484,7 +550,7 @@ export function TrainerSessionPage() {
           onCancel={() => setExitOpen(false)}
           onConfirm={() => {
             setExitOpen(false)
-            void navigate('/')
+            goHome()
           }}
         />
       ) : null}

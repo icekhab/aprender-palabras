@@ -33,6 +33,14 @@
 completion атомарно обновляет прогресс карточек, агрегаты и
 `User.lastCompletedTrainerAt`.
 
+Тип 4 в сессии — «русский → речь» через Web Speech API
+(`SpeechRecognition` / `webkitSpeechRecognition`, `es-ES`) на клиенте.
+Сравнение transcript — `compareSpanishAnswer`. Без API (Firefox и т.п.) шаги
+типа 4 вырезаются из очереди при подготовке сессии. Opt-out «¿No puedes
+hablar?» пишется в `sessionStorage` и переживает «Continuar» на следующий
+тренажёр; сбрасывается при уходе на главную. Старый UI audio→type
+(`Exercise4Screen`) в репозитории остаётся, в роутинг сессии не подключён.
+
 ## Якорь времени
 
 | Поле | Описание |

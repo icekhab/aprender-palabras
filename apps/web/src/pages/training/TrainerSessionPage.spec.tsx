@@ -10,6 +10,11 @@ import {
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resetSpeechForTests } from '../../shared/speech'
+import {
+  clearSkipSpeakExercises,
+  readSkipSpeakExercises,
+  writeSkipSpeakExercises,
+} from '../../shared/skip-speak-preference'
 import { FEEDBACK_HOLD_MS } from './feedback'
 import { TrainerSessionPage } from './TrainerSessionPage'
 
@@ -76,6 +81,61 @@ function renderSession(initialPath = `/entrenamiento/${TRAINER_ID}`) {
   )
 }
 
+type MockSpeechRecognitionInstance = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  onresult: ((event: unknown) => void) | null
+  onerror: ((event: unknown) => void) | null
+  onend: (() => void) | null
+  start: ReturnType<typeof vi.fn>
+  stop: ReturnType<typeof vi.fn>
+  abort: ReturnType<typeof vi.fn>
+}
+
+function stubSpeechRecognition() {
+  let latest: MockSpeechRecognitionInstance | null = null
+
+  class MockRecognition {
+    lang = ''
+    continuous = false
+    interimResults = false
+    maxAlternatives = 1
+    onresult: MockSpeechRecognitionInstance['onresult'] = null
+    onerror: MockSpeechRecognitionInstance['onerror'] = null
+    onend: MockSpeechRecognitionInstance['onend'] = null
+    start = vi.fn<() => void>()
+    stop = vi.fn<() => void>()
+    abort = vi.fn<() => void>()
+
+    constructor() {
+      latest = this
+    }
+  }
+
+  vi.stubGlobal('SpeechRecognition', MockRecognition)
+  vi.stubGlobal('webkitSpeechRecognition', MockRecognition)
+
+  return {
+    latest: () => latest,
+    emitInterim(transcript: string) {
+      latest?.onresult?.({
+        results: [{ isFinal: false, 0: { transcript } }],
+      })
+    },
+    emitFinal(transcript: string) {
+      latest?.onresult?.({
+        results: [{ isFinal: true, 0: { transcript } }],
+      })
+      latest?.onend?.()
+    },
+    end() {
+      latest?.onend?.()
+    },
+  }
+}
+
 function stubSpeech() {
   const start = vi.fn<() => void>()
   const source = {
@@ -97,7 +157,22 @@ function stubSpeech() {
   }
 
   vi.stubGlobal('AudioContext', MockAudioContext)
-  return start
+  const recognition = stubSpeechRecognition()
+  return { start, recognition }
+}
+
+async function answerSpeakAndContinue(
+  transcript: string,
+  recognition: ReturnType<typeof stubSpeechRecognition>,
+) {
+  fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+  await act(async () => {
+    recognition.emitFinal(transcript)
+  })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 }
 
 function progressNow() {
@@ -207,6 +282,7 @@ function mockSession(
 afterEach(() => {
   cleanup()
   resetSpeechForTests()
+  clearSkipSpeakExercises()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
@@ -214,7 +290,7 @@ afterEach(() => {
 
 describe('TrainerSessionPage', () => {
   it('shows progress during intro and starts type 1 after intros', async () => {
-    const speak = stubSpeech()
+    const { start: speak } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
@@ -453,7 +529,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('opens exercise 5 russian prompt typing without answer audio', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     // random≈1 → identity chain [1,3,4,5] when type 2 is skipped
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
@@ -486,14 +562,8 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    // type 4
-    const audioInput = screen.getByRole('textbox', { name: 'Escribe la palabra' })
-    fireEvent.change(audioInput, { target: { value: 'lección' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    // type 4 speak
+    await answerSpeakAndContinue('lección', recognition)
 
     // type 5
     expect(screen.getByText('лекция')).toBeInTheDocument()
@@ -510,8 +580,8 @@ describe('TrainerSessionPage', () => {
     expect(screen.getByText('Ortografía correcta: lección')).toBeInTheDocument()
   })
 
-  it('opens exercise 4 audio typing with autofocus and accepts a typed answer', async () => {
-    stubSpeech()
+  it('opens speak exercise with russian prompt and accepts recognized speech', async () => {
+    const { recognition } = stubSpeech()
     // random≈1 → identity chain [1,3,4,5] when type 2 is skipped
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
@@ -543,14 +613,16 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    const input = screen.getByRole('textbox', { name: 'Escribe la palabra' })
-    expect(input).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'Comprobar' })).toBeDisabled()
+    expect(screen.getByText('кофе')).toBeInTheDocument()
+    expect(screen.getByText('Di la palabra en español')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '¿No puedes hablar?' }),
+    ).toBeInTheDocument()
 
-    fireEvent.change(input, { target: { value: 'cafe' } })
-    expect(screen.getByRole('button', { name: 'Comprobar' })).toBeEnabled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await act(async () => {
+      recognition.emitFinal('cafe')
+    })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
     })
@@ -562,8 +634,188 @@ describe('TrainerSessionPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('appends a type 1 retry at the end of the queue after a wrong answer', async () => {
+  it('accepts a matching interim transcript without waiting for final', async () => {
+    const { recognition } = stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+        wrongSpanish: ['adios', 'gracias', 'favor'],
+      }),
+    ])
+
+    renderSession()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: 'привет' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'hola' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await act(async () => {
+      recognition.emitInterim('hola')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+
+    expect(
+      screen.queryByText('Tu respuesta es incorrecta'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+  })
+
+  it('offers retry when recognition ends on a non-matching interim', async () => {
+    const { recognition } = stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'hola',
+        russian: 'привет',
+        wrongRussian: ['пока', 'спасибо', 'пожалуйста'],
+        wrongSpanish: ['adios', 'gracias', 'favor'],
+      }),
+    ])
+
+    renderSession()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: 'привет' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'hola' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await act(async () => {
+      recognition.emitInterim('adios')
+      recognition.end()
+    })
+
+    expect(
+      screen.getByText('No se reconoció la palabra. Inténtalo de nuevo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hablar' })).toBeEnabled()
+    expect(screen.queryByText('Tu respuesta es incorrecta')).not.toBeInTheDocument()
+  })
+
+  it('skips remaining speak exercises after opt-out confirmation', async () => {
+    const { recognition } = stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'café',
+        russian: 'кофе',
+        wrongRussian: ['чай', 'вода', 'сок'],
+        wrongSpanish: ['te', 'agua', 'jugo'],
+      }),
+    ])
+
+    renderSession()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: 'кофе' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'café' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    expect(screen.getByText('Di la palabra en español')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '¿No puedes hablar?' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar sin voz' }))
+
+    expect(screen.getByRole('textbox', { name: 'Escribe la palabra' })).toBeInTheDocument()
+    expect(screen.getByText('кофе')).toBeInTheDocument()
+    expect(screen.queryByText('Di la palabra en español')).not.toBeInTheDocument()
+    expect(recognition.latest()).toBeNull()
+  })
+
+  it('skips speak exercises when opt-out is already stored for Continuar', async () => {
+    writeSkipSpeakExercises(true)
     stubSpeech()
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    mockSession([
+      sessionWord({
+        showIntro: false,
+        completedTrainerCount: 3,
+        spanish: 'libro',
+        russian: 'книга',
+        wrongRussian: ['тетрадь', 'ручка', 'стол'],
+        wrongSpanish: ['cuaderno', 'bolígrafo', 'mesa'],
+      }),
+    ])
+
+    renderSession()
+    expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: 'книга' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'libro' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+
+    // Speak skipped from stored preference — typed exercise next.
+    expect(screen.getByRole('textbox', { name: 'Escribe la palabra' })).toBeInTheDocument()
+    expect(screen.getByText('книга')).toBeInTheDocument()
+    expect(screen.queryByText('Di la palabra en español')).not.toBeInTheDocument()
+  })
+
+  it('clears speak opt-out when leaving to home', async () => {
+    writeSkipSpeakExercises(true)
+    stubSpeech()
+    mockSession([sessionWord()])
+
+    renderSession()
+    expect(await screen.findByText('esperar')).toBeInTheDocument()
+    expect(readSkipSpeakExercises()).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salir' }))
+
+    expect(await screen.findByText('Home')).toBeInTheDocument()
+    expect(readSkipSpeakExercises()).toBe(false)
+  })
+
+  it('appends a type 1 retry at the end of the queue after a wrong answer', async () => {
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
@@ -594,15 +846,8 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    // type 4
-    fireEvent.change(screen.getByRole('textbox', { name: 'Escribe la palabra' }), {
-      target: { value: 'hola' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    // type 4 speak
+    await answerSpeakAndContinue('hola', recognition)
 
     // type 5
     fireEvent.change(screen.getByRole('textbox', { name: 'Escribe la palabra' }), {
@@ -619,7 +864,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('does not enqueue a fourth attempt after three wrong answers', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
@@ -652,17 +897,17 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    for (let i = 0; i < 2; i += 1) {
-      fireEvent.change(
-        screen.getByRole('textbox', { name: 'Escribe la palabra' }),
-        { target: { value: 'hola' } },
-      )
-      fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
-      })
-      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
-    }
+    await answerSpeakAndContinue('hola', recognition)
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Escribe la palabra' }),
+      { target: { value: 'hola' } },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
     // retry 1
     expect(screen.getByText('Recuerda la palabra')).toBeInTheDocument()
@@ -678,7 +923,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('does not retry exercise 2 after No recuerdo', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession([
       sessionWord({
@@ -713,17 +958,17 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    for (let i = 0; i < 2; i += 1) {
-      fireEvent.change(
-        screen.getByRole('textbox', { name: 'Escribe la palabra' }),
-        { target: { value: 'hola' } },
-      )
-      fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
-      })
-      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
-    }
+    await answerSpeakAndContinue('hola', recognition)
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Escribe la palabra' }),
+      { target: { value: 'hola' } },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
     await act(async () => {
       await Promise.resolve()
@@ -831,7 +1076,9 @@ describe('TrainerSessionPage', () => {
     expect(progressNow()).toBeGreaterThan(before)
   })
 
-  async function finishSingleWordSession() {
+  async function finishSingleWordSession(
+    recognition: ReturnType<typeof stubSpeechRecognition>,
+  ) {
     expect(await screen.findByText('Recuerda la palabra')).toBeInTheDocument()
     vi.useFakeTimers()
 
@@ -847,17 +1094,17 @@ describe('TrainerSessionPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
-    for (let i = 0; i < 2; i += 1) {
-      fireEvent.change(
-        screen.getByRole('textbox', { name: 'Escribe la palabra' }),
-        { target: { value: 'hola' } },
-      )
-      fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
-      })
-      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
-    }
+    await answerSpeakAndContinue('hola', recognition)
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Escribe la palabra' }),
+      { target: { value: 'hola' } },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
     await act(async () => {
       await Promise.resolve()
@@ -865,7 +1112,7 @@ describe('TrainerSessionPage', () => {
   }
 
   it('shows celebrate screen and Continuar opens the next trainer', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession(
       [
@@ -887,7 +1134,7 @@ describe('TrainerSessionPage', () => {
     )
 
     renderSession()
-    await finishSingleWordSession()
+    await finishSingleWordSession(recognition)
 
     expect(screen.getByText(/¡Bien hecho!|¡Día completado!/)).toBeInTheDocument()
     expect(screen.getByText(/1 palabra/)).toBeInTheDocument()
@@ -905,7 +1152,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('shows daily finished message even when an extra trainer is already queued', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession(
       [
@@ -927,7 +1174,7 @@ describe('TrainerSessionPage', () => {
     )
 
     renderSession()
-    await finishSingleWordSession()
+    await finishSingleWordSession(recognition)
 
     expect(
       screen.getByText('Has terminado el entrenamiento diario.'),
@@ -940,7 +1187,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('closes completion with X without a confirm dialog', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession(
       [
@@ -957,7 +1204,7 @@ describe('TrainerSessionPage', () => {
     )
 
     renderSession()
-    await finishSingleWordSession()
+    await finishSingleWordSession(recognition)
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
     expect(screen.getByText('Home')).toBeInTheDocument()
@@ -967,7 +1214,7 @@ describe('TrainerSessionPage', () => {
   })
 
   it('retries saving progress when complete fails', async () => {
-    stubSpeech()
+    const { recognition } = stubSpeech()
     vi.spyOn(Math, 'random').mockReturnValue(0.999)
     mockSession(
       [
@@ -990,7 +1237,7 @@ describe('TrainerSessionPage', () => {
     )
 
     renderSession()
-    await finishSingleWordSession()
+    await finishSingleWordSession(recognition)
 
     expect(
       screen.getByText(

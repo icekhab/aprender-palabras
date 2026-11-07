@@ -3,9 +3,12 @@ import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import {
   buildSessionQueue,
   createRetryStep,
+  filterSpeakExercises,
   INITIAL_UNLOCK,
+  SPEAK_EXERCISE_TYPE,
   typesForWord,
   type ExerciseSessionStep,
+  type SessionStep,
 } from './session-queue'
 
 function word(
@@ -35,6 +38,33 @@ function word(
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('filterSpeakExercises', () => {
+  it('removes only speak exercise steps', () => {
+    const card = word({
+      userCardId: 'card-1',
+      spanish: 'hola',
+      russian: 'привет',
+    })
+    const steps: SessionStep[] = [
+      { kind: 'intro', id: 'intro', word: card },
+      { kind: 'exercise', id: 'ex1', type: 1, word: card },
+      {
+        kind: 'exercise',
+        id: 'ex4',
+        type: SPEAK_EXERCISE_TYPE,
+        word: card,
+      },
+      { kind: 'exercise', id: 'ex5', type: 5, word: card },
+    ]
+
+    expect(filterSpeakExercises(steps).map((step) => step.id)).toEqual([
+      'intro',
+      'ex1',
+      'ex5',
+    ])
+  })
 })
 
 describe('createRetryStep', () => {
