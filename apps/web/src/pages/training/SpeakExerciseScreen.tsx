@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
 import {
   micReleaseSettleMs,
+  prepareAudioSessionForMicrophone,
   releaseMicToPlayback,
 } from '../../shared/audio-session'
 import { playFeedbackSound } from '../../shared/feedback-sound'
+import { resetPlaybackAudioGraph } from '../../shared/reset-playback-audio'
 import {
   createSpeechRecognition,
   ensureMicrophonePermission,
@@ -77,10 +79,14 @@ export function SpeakExerciseScreen({
   const [outcome, setOutcome] = useState<SpeakOutcome | null>(null)
   const [skipOpen, setSkipOpen] = useState(false)
 
-  function teardownRecognition() {
-    sessionRef.current?.abort()
+  async function teardownRecognition() {
+    const session = sessionRef.current
     sessionRef.current = null
+    if (session) {
+      await session.abort()
+    }
     releaseMicToPlayback()
+    resetPlaybackAudioGraph()
   }
 
   function clearSettleTimer() {
@@ -94,7 +100,7 @@ export function SpeakExerciseScreen({
     return () => {
       listenRequestRef.current += 1
       clearSettleTimer()
-      teardownRecognition()
+      void teardownRecognition()
     }
   }, [])
 
@@ -122,21 +128,24 @@ export function SpeakExerciseScreen({
     setTranscript(heard)
     setErrorMessage('')
     setListenState('processing')
-    teardownRecognition()
 
-    const playAndReveal = () => {
-      settleTimerRef.current = null
-      playFeedbackSound(result.correct ? 'correct' : 'incorrect')
-      setOutcome(result)
-    }
+    void (async () => {
+      await teardownRecognition()
 
-    const settleMs = micReleaseSettleMs()
-    if (settleMs <= 0) {
-      playAndReveal()
-      return
-    }
+      const playAndReveal = () => {
+        settleTimerRef.current = null
+        playFeedbackSound(result.correct ? 'correct' : 'incorrect')
+        setOutcome(result)
+      }
 
-    settleTimerRef.current = window.setTimeout(playAndReveal, settleMs)
+      const settleMs = micReleaseSettleMs()
+      if (settleMs <= 0) {
+        playAndReveal()
+        return
+      }
+
+      settleTimerRef.current = window.setTimeout(playAndReveal, settleMs)
+    })()
   }
 
   function acceptTranscript(value: string) {
@@ -160,7 +169,7 @@ export function SpeakExerciseScreen({
     if (submittedRef.current) {
       return
     }
-    teardownRecognition()
+    void teardownRecognition()
     setTranscript('')
     setListenState('idle')
     setErrorMessage(message)
@@ -174,13 +183,12 @@ export function SpeakExerciseScreen({
     clearSettleTimer()
     setErrorMessage('')
     setTranscript('')
-    teardownRecognition()
 
     const requestId = ++listenRequestRef.current
     setListenState('listening')
 
     void (async () => {
-      const permission = await ensureMicrophonePermission()
+      await teardownRecognition()
       if (
         requestId !== listenRequestRef.current ||
         submittedRef.current
@@ -188,15 +196,7 @@ export function SpeakExerciseScreen({
         return
       }
 
-      if (!permission.ok) {
-        setListenState('idle')
-        setErrorMessage(
-          permission.reason === 'denied'
-            ? MIC_DENIED_MESSAGE
-            : MIC_UNAVAILABLE_MESSAGE,
-        )
-        return
-      }
+      prepareAudioSessionForMicrophone()
 
       let lastInterim = ''
 
@@ -238,7 +238,7 @@ export function SpeakExerciseScreen({
             rejectForRetry(message)
             return
           }
-          teardownRecognition()
+          void teardownRecognition()
           setListenState('idle')
         },
         onEnd: () => {
@@ -258,7 +258,7 @@ export function SpeakExerciseScreen({
         requestId !== listenRequestRef.current ||
         submittedRef.current
       ) {
-        session?.abort()
+        await session?.abort()
         return
       }
 
@@ -272,7 +272,7 @@ export function SpeakExerciseScreen({
       try {
         session.start()
       } catch {
-        teardownRecognition()
+        await teardownRecognition()
         setErrorMessage(MIC_START_FAILED_MESSAGE)
         setListenState('idle')
       }
@@ -400,7 +400,7 @@ export function SpeakExerciseScreen({
             setSkipOpen(false)
             listenRequestRef.current += 1
             clearSettleTimer()
-            teardownRecognition()
+            void teardownRecognition()
             onSkipSpeak()
           }}
         />

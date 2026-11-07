@@ -124,12 +124,26 @@ export function stopSpeech(): void {
   currentSource = null
 }
 
-/** Clears cached audio state between unit tests. */
-export function resetSpeechForTests(): void {
+/**
+ * Close the word TTS AudioContext after mic capture so the next play uses a
+ * fresh graph (avoids muffled iOS playback on a capture-tainted context).
+ */
+export function resetSpeechAudioGraph(): void {
   stopSpeech()
+  const context = audioContext
   audioContext = null
   buffers.clear()
   loading.clear()
+  if (context && typeof context.close === 'function') {
+    void context.close().catch(() => {
+      // Already closed.
+    })
+  }
+}
+
+/** Clears cached audio state between unit tests. */
+export function resetSpeechForTests(): void {
+  resetSpeechAudioGraph()
 }
 
 export function speakWord(wordId: string): void {

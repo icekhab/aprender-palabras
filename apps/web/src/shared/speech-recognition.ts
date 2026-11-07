@@ -13,8 +13,8 @@ export type MicrophonePermissionResult =
   | { ok: false; reason: 'denied' | 'unavailable' }
 
 /**
- * Ask for mic via getUserMedia once, then release tracks immediately.
- * Helps iOS Safari remember Allow more reliably than SpeechRecognition alone.
+ * Ask for mic via getUserMedia, then release tracks immediately.
+ * Used only from the «Permitir micrófono» link — normal Hablar relies on STT alone.
  *
  * Must leave audioSession `playback` first — iOS rejects capture otherwise.
  * Non-denied priming failures fall through so SpeechRecognition can still run.
@@ -120,10 +120,14 @@ export type SpeechRecognitionHandlers = {
   onEnd: () => void
 }
 
+/** Max wait for SpeechRecognition.onend after abort before continuing teardown. */
+const ABORT_ONEND_TIMEOUT_MS = 500
+
 export type SpeechRecognitionSession = {
   start: () => void
   stop: () => void
-  abort: () => void
+  /** Abort and wait for onend (or timeout) so iOS can leave capture routing. */
+  abort: () => Promise<void>
 }
 
 /**
@@ -173,14 +177,34 @@ export function createSpeechRecognition(
       }
     },
     abort: () => {
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      try {
-        recognition.abort()
-      } catch {
-        // Already stopped.
-      }
+      return new Promise<void>((resolve) => {
+        let settled = false
+        const finish = () => {
+          if (settled) {
+            return
+          }
+          settled = true
+          window.clearTimeout(timeoutId)
+          recognition.onresult = null
+          recognition.onerror = null
+          recognition.onend = null
+          resolve()
+        }
+
+        const timeoutId = window.setTimeout(finish, ABORT_ONEND_TIMEOUT_MS)
+        // Wait for engine onend only — do not re-invoke handlers.onEnd.
+        recognition.onresult = null
+        recognition.onerror = null
+        recognition.onend = () => {
+          finish()
+        }
+
+        try {
+          recognition.abort()
+        } catch {
+          finish()
+        }
+      })
     },
   }
 }

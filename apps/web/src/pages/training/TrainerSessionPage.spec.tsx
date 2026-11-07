@@ -108,7 +108,9 @@ function stubSpeechRecognition() {
     onend: MockSpeechRecognitionInstance['onend'] = null
     start = vi.fn<() => void>()
     stop = vi.fn<() => void>()
-    abort = vi.fn<() => void>()
+    abort = vi.fn<() => void>(() => {
+      this.onend?.()
+    })
 
     constructor() {
       latest = this
@@ -183,6 +185,7 @@ async function answerSpeakAndContinue(
   await act(async () => {
     recognition.emitFinal(transcript)
   })
+  await flushMicPrime()
   await act(async () => {
     await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
   })
@@ -303,8 +306,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+/** Flush SpeakExerciseScreen async start / teardown (abort → release → feedback). */
 async function flushMicPrime() {
   await act(async () => {
+    await Promise.resolve()
     await Promise.resolve()
     await Promise.resolve()
   })
@@ -646,6 +651,7 @@ describe('TrainerSessionPage', () => {
     await act(async () => {
       recognition.emitFinal('cafe')
     })
+    await flushMicPrime()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
     })
@@ -692,6 +698,7 @@ describe('TrainerSessionPage', () => {
     await act(async () => {
       recognition.emitInterim('hola')
     })
+    await flushMicPrime()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FEEDBACK_HOLD_MS)
     })
@@ -738,6 +745,7 @@ describe('TrainerSessionPage', () => {
       recognition.emitInterim('adios')
       recognition.end()
     })
+    await flushMicPrime()
 
     expect(
       screen.getByText('No se reconoció la palabra. Inténtalo de nuevo.'),

@@ -46,15 +46,15 @@ Web Speech API (Firefox и т.п.), либо после opt-out «¿No puedes ha
 (см. [auth.md](./auth.md)): типы 1/3/4/5 фильтруются настройками; тип 2
 остаётся системным для `completedTrainerCount <= 1`.
 
-После speak на iOS: `abort` recognition → `releaseMicToPlayback()` (kick
-audioSession в `playback`) → короткая пауза (~400ms) → feedback / TTS карточки.
-Иначе Web Audio остаётся «приглушённым» после режима микрофона.
+После speak на iOS: `abort` recognition → дождаться `onend` →
+`releaseMicToPlayback()` → пересоздать Web Audio graph → пауза (~700ms) →
+feedback / TTS карточки. Иначе звук остаётся «приглушённым» после микрофона.
 
-Перед первым `SpeechRecognition.start()` в вкладке: сбросить audioSession в
-`auto` (`prepareAudioSessionForMicrophone`), затем `getUserMedia({ audio })` и
-сразу `track.stop()` — иначе iOS при `playback` (silent-switch unlock) отвергает
-capture без диалога. Постоянный grant из кода выдать нельзя; при Deny —
-подсказка Ajustes → Safari → Micrófono. Прочие ошибки priming не блокируют STT.
+Перед `SpeechRecognition.start()`: `prepareAudioSessionForMicrophone()` (`auto`).
+Обычный Hablar не вызывает `getUserMedia` (один системный путь STT). Priming
+через `getUserMedia` только по ссылке «Permitir micrófono». Постоянный Allow
+из кода выдать нельзя; при Deny — подсказка Ajustes → Safari → Micrófono →
+Permitir.
 
 ## Якорь времени
 

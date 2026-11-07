@@ -5,7 +5,7 @@ type AudioSessionNavigator = Navigator & {
 }
 
 /** Settle time after SpeechRecognition before Web Audio on iOS. */
-export const IOS_MIC_RELEASE_MS = 400
+export const IOS_MIC_RELEASE_MS = 700
 
 function getAudioSession(): { type: string } | null {
   if (typeof navigator === 'undefined') {
