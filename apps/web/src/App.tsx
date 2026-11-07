@@ -39,6 +39,7 @@ import { AppSplash } from '@/components/app-splash'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
 import { ProgressDot } from '@/components/progress-dot'
+import { WordGenerateLoader } from '@/components/word-generate-loader'
 import { WordRow } from '@/components/word-row'
 import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
 import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
@@ -593,6 +594,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function HomePage() {
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
   const user = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -602,6 +604,29 @@ function HomePage() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [noWordsModalOpen, setNoWordsModalOpen] = useState(false)
   const logoutMutation = useLogoutMutation()
+  const canAutoAddNewWords = user?.role === 'user'
+
+  const autoAddMutation = useMutation({
+    mutationFn: async (pair: { spanish: string; russian: string }) => {
+      const draft = await previewWord(pair)
+      return createWord(draft)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] })
+    },
+    onError: (error) => {
+      const quotaCopy = generationQuotaToastCopyFromError(error)
+      if (quotaCopy) {
+        showToast(quotaCopy)
+        return
+      }
+      showToast({
+        title: 'No se pudo añadir la palabra',
+        description: 'Inténtalo de nuevo.',
+      })
+    },
+  })
 
   useEffect(() => {
     const trimmed = searchInput.trim()
@@ -764,6 +789,11 @@ function HomePage() {
                           <SuggestionRow
                             item={item}
                             key={suggestionKey(item)}
+                            canAutoAdd={canAutoAddNewWords}
+                            autoAddPending={autoAddMutation.isPending}
+                            onAutoAdd={(pair) => {
+                              autoAddMutation.mutate(pair)
+                            }}
                           />
                         ))}
                       </ul>
@@ -784,6 +814,17 @@ function HomePage() {
           </p>
         ) : null}
       </header>
+
+      {autoAddMutation.isPending ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-orange-950/40 p-4"
+          role="presentation"
+        >
+          <div className="rounded-2xl border border-orange-100 bg-white px-8 py-10 shadow-lg">
+            <WordGenerateLoader />
+          </div>
+        </div>
+      ) : null}
 
       {showTrainingSection ? (
         <section className="mx-auto max-w-5xl px-5 pt-8 sm:px-8">
@@ -1286,11 +1327,19 @@ function useLogoutMutation() {
   })
 }
 
-function SuggestionRow({ item }: { item: SuggestionItem }) {
+function SuggestionRow({
+  item,
+  canAutoAdd,
+  autoAddPending,
+  onAutoAdd,
+}: {
+  item: SuggestionItem
+  canAutoAdd: boolean
+  autoAddPending: boolean
+  onAutoAdd: (pair: { spanish: string; russian: string }) => void
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { showToast } = useToast()
-  const authUser = queryClient.getQueryData<AuthUser>(AUTH_QUERY_KEY)
   const params = new URLSearchParams({
     spanish: item.spanish,
     russian: item.russian,
@@ -1325,35 +1374,10 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
     },
   })
 
-  const autoAddMutation = useMutation({
-    mutationFn: async () => {
-      const draft = await previewWord({
-        spanish: item.spanish,
-        russian: item.russian,
-      })
-      return createWord(draft)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: DICTIONARY_QUERY_KEY })
-      await queryClient.invalidateQueries({ queryKey: ['suggestions'] })
-    },
-    onError: (error) => {
-      const quotaCopy = generationQuotaToastCopyFromError(error)
-      if (quotaCopy) {
-        showToast(quotaCopy)
-        return
-      }
-      showToast({
-        title: 'No se pudo añadir la palabra',
-        description: 'Inténtalo de nuevo.',
-      })
-    },
-  })
-
   const label = `${item.spanish} — ${item.russian}`
   const inDictionary = item.wordId !== null && item.progress !== null
   const canQuickAdd = item.wordId !== null && item.progress === null
-  const isUserAutoAdd = authUser?.role === 'user'
+  const rowBusy = autoAddPending || addMutation.isPending
 
   const text = (
     <span className="min-w-0 flex-1 text-base">
@@ -1369,12 +1393,12 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
         <button
           type="button"
           className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={autoAddMutation.isPending}
+          disabled={rowBusy}
           onMouseDown={keepSearchFocus}
           onPointerDown={keepSearchFocus}
           onClick={() => {
-            if (isUserAutoAdd) {
-              autoAddMutation.mutate()
+            if (canAutoAdd) {
+              onAutoAdd({ spanish: item.spanish, russian: item.russian })
               return
             }
             navigate(`/words/new?${params}`)
@@ -1393,7 +1417,8 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
           type="button"
           className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={`Añadir ${label}`}
-          disabled={addMutation.isPending}
+          aria-busy={rowBusy}
+          disabled={rowBusy}
           onMouseDown={keepSearchFocus}
           onPointerDown={keepSearchFocus}
           onClick={() => {
@@ -1405,7 +1430,11 @@ function SuggestionRow({ item }: { item: SuggestionItem }) {
             className="grid size-7 shrink-0 place-items-center rounded-full bg-orange-600 text-white"
             aria-hidden
           >
-            <Plus className="size-4 stroke-[3]" />
+            {addMutation.isPending ? (
+              <span className="word-gen-spin size-3.5 rounded-full border-2 border-white/35 border-t-white" />
+            ) : (
+              <Plus className="size-4 stroke-[3]" />
+            )}
           </span>
         </button>
       </li>

@@ -1034,6 +1034,136 @@ describe('App', () => {
     expect(screen.getByText('esperar')).toBeInTheDocument()
   })
 
+  it('shows generate loader overlay when a user adds a new suggestion', async () => {
+    const regularUser = {
+      ...user,
+      id: '0199f98d-83c0-7bde-a537-b74cf7e9ea35',
+      login: 'user@local.test',
+      role: 'user' as const,
+    }
+
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(regularUser)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words/preview') {
+        await new Promise(() => {
+          // Keep pending so the loader stays visible.
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
+
+    expect(
+      await screen.findByRole('status', { name: 'Generando la tarjeta…' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Buscar palabra')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Español')).not.toBeInTheDocument()
+  })
+
+  it('shows a toast when user auto-add hits the generation quota', async () => {
+    const regularUser = {
+      ...user,
+      id: '0199f98d-83c0-7bde-a537-b74cf7e9ea35',
+      login: 'user@local.test',
+      role: 'user' as const,
+    }
+
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url === '/api/auth/me') {
+        return jsonResponse(regularUser)
+      }
+
+      if (isDictionaryListRequest(url)) {
+        return emptyDictionaryResponse()
+      }
+
+      if (isTrainingTodayRequest(url)) {
+        return emptyTrainingResponse()
+      }
+
+      if (url.startsWith('/api/suggestions?')) {
+        return jsonResponse({
+          suggestions: [
+            {
+              spanish: 'esperar',
+              russian: 'ждать',
+              wordId: null,
+              progress: null,
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/words/preview') {
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({
+            message: 'Daily quota exceeded',
+            code: 'GENERATION_QUOTA_EXCEEDED',
+            limit: 20,
+          }),
+        } as Response
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp()
+
+    const searchInput = await screen.findByLabelText('Buscar palabra')
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'esperar' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: /esperar/i }))
+
+    expect(await screen.findByText('Cuota diaria agotada')).toBeInTheDocument()
+    expect(
+      screen.getByText('Puedes generar hasta 20 palabras al día.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('status', { name: 'Generando la tarjeta…' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('opens the add-word page from a suggestion and confirms create', async () => {
     const draft = {
       spanish: 'esperar',
