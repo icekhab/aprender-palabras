@@ -50,6 +50,10 @@ Web Speech API (Firefox и т.п.), либо после opt-out «¿No puedes ha
 audioSession в `playback`) → короткая пауза (~400ms) → feedback / TTS карточки.
 Иначе Web Audio остаётся «приглушённым» после режима микрофона.
 
+Перед первым `SpeechRecognition.start()` в вкладке: `getUserMedia({ audio })`
+и сразу `track.stop()` — чтобы iOS Safari чаще запоминал Allow (постоянный
+grant из кода выдать нельзя; при Deny — подсказка Ajustes → Safari → Micrófono).
+
 ## Якорь времени
 
 | Поле | Описание |

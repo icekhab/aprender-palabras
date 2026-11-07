@@ -10,6 +10,7 @@ import {
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resetSpeechForTests } from '../../shared/speech'
+import { resetMicrophonePermissionForTests } from '../../shared/speech-recognition'
 import {
   clearSkipSpeakExercises,
   readSkipSpeakExercises,
@@ -157,6 +158,18 @@ function stubSpeech() {
   }
 
   vi.stubGlobal('AudioContext', MockAudioContext)
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    mediaDevices: {
+      getUserMedia: vi.fn<
+        (constraints: MediaStreamConstraints) => Promise<MediaStream>
+      >(async () =>
+        ({
+          getTracks: () => [{ stop: vi.fn<() => void>() }],
+        }) as unknown as MediaStream,
+      ),
+    },
+  })
   const recognition = stubSpeechRecognition()
   return { start, recognition }
 }
@@ -166,6 +179,7 @@ async function answerSpeakAndContinue(
   recognition: ReturnType<typeof stubSpeechRecognition>,
 ) {
   fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+  await flushMicPrime()
   await act(async () => {
     recognition.emitFinal(transcript)
   })
@@ -282,11 +296,19 @@ function mockSession(
 afterEach(() => {
   cleanup()
   resetSpeechForTests()
+  resetMicrophonePermissionForTests()
   clearSkipSpeakExercises()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
+
+async function flushMicPrime() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
 
 describe('TrainerSessionPage', () => {
   it('shows progress during intro and starts type 1 after intros', async () => {
@@ -620,6 +642,7 @@ describe('TrainerSessionPage', () => {
     ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await flushMicPrime()
     await act(async () => {
       recognition.emitFinal('cafe')
     })
@@ -665,6 +688,7 @@ describe('TrainerSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await flushMicPrime()
     await act(async () => {
       recognition.emitInterim('hola')
     })
@@ -709,6 +733,7 @@ describe('TrainerSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    await flushMicPrime()
     await act(async () => {
       recognition.emitInterim('adios')
       recognition.end()

@@ -1,4 +1,52 @@
+import { releaseMicToPlayback } from './audio-session'
+
 /** Minimal Web Speech Recognition surface we use (Chrome/Safari prefixes). */
+
+/** Tab-lifetime cache after a successful getUserMedia prime. */
+let microphonePermissionGranted = false
+
+export type MicrophonePermissionResult =
+  | { ok: true }
+  | { ok: false; reason: 'denied' | 'unavailable' }
+
+/**
+ * Ask for mic via getUserMedia once, then release tracks immediately.
+ * Helps iOS Safari remember Allow more reliably than SpeechRecognition alone.
+ */
+export async function ensureMicrophonePermission(): Promise<MicrophonePermissionResult> {
+  if (microphonePermissionGranted) {
+    return { ok: true }
+  }
+
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
+    // Fall through to SpeechRecognition; some environments omit mediaDevices.
+    return { ok: true }
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    for (const track of stream.getTracks()) {
+      track.stop()
+    }
+    microphonePermissionGranted = true
+    releaseMicToPlayback()
+    return { ok: true }
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : ''
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return { ok: false, reason: 'denied' }
+    }
+    return { ok: false, reason: 'unavailable' }
+  }
+}
+
+/** Clears the tab cache between unit tests. */
+export function resetMicrophonePermissionForTests(): void {
+  microphonePermissionGranted = false
+}
 
 export type SpeechRecognitionResultEventLike = {
   results: ArrayLike<{

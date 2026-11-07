@@ -1,13 +1,58 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSpeechRecognition,
+  ensureMicrophonePermission,
   getSpeechRecognitionConstructor,
   isSpeechRecognitionSupported,
+  resetMicrophonePermissionForTests,
 } from './speech-recognition'
 
 afterEach(() => {
+  resetMicrophonePermissionForTests()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+describe('ensureMicrophonePermission', () => {
+  it('primes via getUserMedia once and stops tracks', async () => {
+    const stop = vi.fn<() => void>()
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () =>
+      ({
+        getTracks: () => [{ stop }],
+      }) as unknown as MediaStream,
+    )
+
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia },
+      audioSession: { type: 'play-and-record' },
+    })
+
+    await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
+    await expect(ensureMicrophonePermission()).resolves.toEqual({ ok: true })
+    expect(getUserMedia).toHaveBeenCalledOnce()
+    expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('maps denial to denied', async () => {
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async () => {
+      throw new DOMException('Permission denied', 'NotAllowedError')
+    })
+
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia },
+    })
+
+    await expect(ensureMicrophonePermission()).resolves.toEqual({
+      ok: false,
+      reason: 'denied',
+    })
+  })
 })
 
 describe('speech recognition support', () => {

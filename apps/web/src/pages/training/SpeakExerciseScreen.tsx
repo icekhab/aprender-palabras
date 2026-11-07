@@ -10,6 +10,7 @@ import {
 import { playFeedbackSound } from '../../shared/feedback-sound'
 import {
   createSpeechRecognition,
+  ensureMicrophonePermission,
   type SpeechRecognitionSession,
 } from '../../shared/speech-recognition'
 import { FEEDBACK_HOLD_MS } from './feedback'
@@ -22,10 +23,13 @@ type SpeakOutcome = {
   accentWarning?: string
 }
 
+const MIC_DENIED_MESSAGE =
+  'Permite el micrófono para continuar. Si lo bloqueaste: Ajustes → Safari → Micrófono → Permitir.'
+
 function recognitionErrorMessage(error: string): string {
   switch (error) {
     case 'not-allowed':
-      return 'Permite el micrófono para continuar.'
+      return MIC_DENIED_MESSAGE
     case 'no-speech':
       return 'No se escuchó nada. Inténtalo de nuevo.'
     case 'audio-capture':
@@ -50,6 +54,7 @@ export function SpeakExerciseScreen({
 }) {
   const sessionRef = useRef<SpeechRecognitionSession | null>(null)
   const settleTimerRef = useRef<number | null>(null)
+  const listenRequestRef = useRef(0)
   const submittedRef = useRef(false)
   const [submitted, setSubmitted] = useState(false)
   const [listenState, setListenState] = useState<ListenState>('idle')
@@ -73,6 +78,7 @@ export function SpeakExerciseScreen({
 
   useEffect(() => {
     return () => {
+      listenRequestRef.current += 1
       clearSettleTimer()
       teardownRecognition()
     }
@@ -156,76 +162,107 @@ export function SpeakExerciseScreen({
     setTranscript('')
     teardownRecognition()
 
-    let lastInterim = ''
+    const requestId = ++listenRequestRef.current
+    setListenState('listening')
 
-    const session = createSpeechRecognition({
-      lang: 'es-ES',
-      onResult: (value, isFinal) => {
-        const trimmed = value.trim()
-        setTranscript(trimmed)
+    void (async () => {
+      const permission = await ensureMicrophonePermission()
+      if (
+        requestId !== listenRequestRef.current ||
+        submittedRef.current
+      ) {
+        return
+      }
 
-        // Interim only: matching draft counts as correct immediately.
-        if (!isFinal) {
-          lastInterim = trimmed
-          if (trimmed) {
-            acceptTranscript(trimmed)
-          }
-          return
-        }
-
-        // Final: same comparison rules as typed answers (wrong = error).
-        if (!trimmed) {
-          rejectForRetry('No se escuchó nada. Inténtalo de nuevo.')
-          return
-        }
-
-        const result = compareSpanishAnswer(word.spanish, trimmed)
-        if (result.correct) {
-          acceptTranscript(trimmed)
-          return
-        }
-
-        finishWithResult(result, trimmed)
-      },
-      onError: (error) => {
-        if (submittedRef.current) {
-          return
-        }
-        const message = recognitionErrorMessage(error)
-        if (message) {
-          rejectForRetry(message)
-          return
-        }
-        teardownRecognition()
+      if (!permission.ok) {
         setListenState('idle')
-      },
-      onEnd: () => {
-        if (submittedRef.current) {
-          return
-        }
-        // Ended with only a non-matching interim — offer retry, do not score.
-        if (lastInterim) {
-          rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
-          return
-        }
-        setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
-      },
-    })
+        setErrorMessage(
+          permission.reason === 'denied'
+            ? MIC_DENIED_MESSAGE
+            : 'No se pudo usar el micrófono.',
+        )
+        return
+      }
 
-    if (!session) {
-      setErrorMessage('Este navegador no admite reconocimiento de voz.')
-      return
-    }
+      let lastInterim = ''
 
-    sessionRef.current = session
-    try {
-      session.start()
-      setListenState('listening')
-    } catch {
-      teardownRecognition()
-      setErrorMessage('No se pudo iniciar el micrófono.')
-      setListenState('idle')
-    }
+      const session = createSpeechRecognition({
+        lang: 'es-ES',
+        onResult: (value, isFinal) => {
+          const trimmed = value.trim()
+          setTranscript(trimmed)
+
+          // Interim only: matching draft counts as correct immediately.
+          if (!isFinal) {
+            lastInterim = trimmed
+            if (trimmed) {
+              acceptTranscript(trimmed)
+            }
+            return
+          }
+
+          // Final: same comparison rules as typed answers (wrong = error).
+          if (!trimmed) {
+            rejectForRetry('No se escuchó nada. Inténtalo de nuevo.')
+            return
+          }
+
+          const result = compareSpanishAnswer(word.spanish, trimmed)
+          if (result.correct) {
+            acceptTranscript(trimmed)
+            return
+          }
+
+          finishWithResult(result, trimmed)
+        },
+        onError: (error) => {
+          if (submittedRef.current) {
+            return
+          }
+          const message = recognitionErrorMessage(error)
+          if (message) {
+            rejectForRetry(message)
+            return
+          }
+          teardownRecognition()
+          setListenState('idle')
+        },
+        onEnd: () => {
+          if (submittedRef.current) {
+            return
+          }
+          // Ended with only a non-matching interim — offer retry, do not score.
+          if (lastInterim) {
+            rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
+            return
+          }
+          setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
+        },
+      })
+
+      if (
+        requestId !== listenRequestRef.current ||
+        submittedRef.current
+      ) {
+        session?.abort()
+        return
+      }
+
+      if (!session) {
+        setListenState('idle')
+        setErrorMessage('Este navegador no admite reconocimiento de voz.')
+        return
+      }
+
+      sessionRef.current = session
+      try {
+        session.start()
+      } catch {
+        teardownRecognition()
+        setErrorMessage('No se pudo iniciar el micrófono.')
+        setListenState('idle')
+      }
+    })()
   }
 
   const photographerName = word.imagePhotographerName
@@ -315,6 +352,7 @@ export function SpeakExerciseScreen({
           onCancel={() => setSkipOpen(false)}
           onConfirm={() => {
             setSkipOpen(false)
+            listenRequestRef.current += 1
             clearSettleTimer()
             teardownRecognition()
             onSkipSpeak()
