@@ -380,11 +380,7 @@ export function SpeakExerciseScreen({
   }
 
   function requestMicAccess() {
-    if (
-      disabled ||
-      listenState === 'listening' ||
-      listenState === 'stopping'
-    ) {
+    if (disabled || listenState === 'listening') {
       return
     }
 
