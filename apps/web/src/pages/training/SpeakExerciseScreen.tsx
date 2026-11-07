@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { TrainerSessionWord } from '@aprender-palabras/contracts'
 import { Button } from '@/components/ui/button'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
+import {
+  micReleaseSettleMs,
+  releaseMicToPlayback,
+} from '../../shared/audio-session'
 import { playFeedbackSound } from '../../shared/feedback-sound'
 import {
   createSpeechRecognition,
@@ -12,6 +16,11 @@ import { FEEDBACK_HOLD_MS } from './feedback'
 import { compareSpanishAnswer } from './spanish-answer'
 
 type ListenState = 'idle' | 'listening' | 'processing'
+
+type SpeakOutcome = {
+  correct: boolean
+  accentWarning?: string
+}
 
 function recognitionErrorMessage(error: string): string {
   switch (error) {
@@ -40,21 +49,32 @@ export function SpeakExerciseScreen({
   onSkipSpeak: () => void
 }) {
   const sessionRef = useRef<SpeechRecognitionSession | null>(null)
+  const settleTimerRef = useRef<number | null>(null)
   const submittedRef = useRef(false)
   const [submitted, setSubmitted] = useState(false)
   const [listenState, setListenState] = useState<ListenState>('idle')
   const [transcript, setTranscript] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-  const [outcome, setOutcome] = useState<{
-    correct: boolean
-    accentWarning?: string
-  } | null>(null)
+  const [outcome, setOutcome] = useState<SpeakOutcome | null>(null)
   const [skipOpen, setSkipOpen] = useState(false)
+
+  function teardownRecognition() {
+    sessionRef.current?.abort()
+    sessionRef.current = null
+    releaseMicToPlayback()
+  }
+
+  function clearSettleTimer() {
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current)
+      settleTimerRef.current = null
+    }
+  }
 
   useEffect(() => {
     return () => {
-      sessionRef.current?.abort()
-      sessionRef.current = null
+      clearSettleTimer()
+      teardownRecognition()
     }
   }, [])
 
@@ -72,6 +92,33 @@ export function SpeakExerciseScreen({
     }
   }, [outcome, onRevealResult])
 
+  function finishWithResult(result: SpeakOutcome, heard: string) {
+    if (submittedRef.current) {
+      return
+    }
+
+    submittedRef.current = true
+    setSubmitted(true)
+    setTranscript(heard)
+    setErrorMessage('')
+    setListenState('processing')
+    teardownRecognition()
+
+    const playAndReveal = () => {
+      settleTimerRef.current = null
+      playFeedbackSound(result.correct ? 'correct' : 'incorrect')
+      setOutcome(result)
+    }
+
+    const settleMs = micReleaseSettleMs()
+    if (settleMs <= 0) {
+      playAndReveal()
+      return
+    }
+
+    settleTimerRef.current = window.setTimeout(playAndReveal, settleMs)
+  }
+
   function acceptTranscript(value: string) {
     if (submittedRef.current) {
       return
@@ -86,20 +133,14 @@ export function SpeakExerciseScreen({
       return
     }
 
-    submittedRef.current = true
-    setSubmitted(true)
-    setTranscript(trimmed)
-    setErrorMessage('')
-    setListenState('processing')
-    setOutcome(result)
-    playFeedbackSound('correct')
-    sessionRef.current?.stop()
+    finishWithResult(result, trimmed)
   }
 
   function rejectForRetry(message: string) {
     if (submittedRef.current) {
       return
     }
+    teardownRecognition()
     setTranscript('')
     setListenState('idle')
     setErrorMessage(message)
@@ -110,9 +151,10 @@ export function SpeakExerciseScreen({
       return
     }
 
+    clearSettleTimer()
     setErrorMessage('')
     setTranscript('')
-    sessionRef.current?.abort()
+    teardownRecognition()
 
     let lastInterim = ''
 
@@ -143,11 +185,7 @@ export function SpeakExerciseScreen({
           return
         }
 
-        submittedRef.current = true
-        setSubmitted(true)
-        setListenState('processing')
-        setOutcome(result)
-        playFeedbackSound('incorrect')
+        finishWithResult(result, trimmed)
       },
       onError: (error) => {
         if (submittedRef.current) {
@@ -158,6 +196,7 @@ export function SpeakExerciseScreen({
           rejectForRetry(message)
           return
         }
+        teardownRecognition()
         setListenState('idle')
       },
       onEnd: () => {
@@ -183,6 +222,7 @@ export function SpeakExerciseScreen({
       session.start()
       setListenState('listening')
     } catch {
+      teardownRecognition()
       setErrorMessage('No se pudo iniciar el micrófono.')
       setListenState('idle')
     }
@@ -275,7 +315,8 @@ export function SpeakExerciseScreen({
           onCancel={() => setSkipOpen(false)}
           onConfirm={() => {
             setSkipOpen(false)
-            sessionRef.current?.abort()
+            clearSettleTimer()
+            teardownRecognition()
             onSkipSpeak()
           }}
         />

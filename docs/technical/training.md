@@ -41,6 +41,10 @@ hablar?» пишется в `sessionStorage` и переживает «Continuar
 тренажёр; сбрасывается при уходе на главную. Старый UI audio→type
 (`Exercise4Screen`) в репозитории остаётся, в роутинг сессии не подключён.
 
+После speak на iOS: `abort` recognition → `releaseMicToPlayback()` (kick
+audioSession в `playback`) → короткая пауза (~400ms) → feedback / TTS карточки.
+Иначе Web Audio остаётся «приглушённым» после режима микрофона.
+
 ## Якорь времени
 
 | Поле | Описание |
