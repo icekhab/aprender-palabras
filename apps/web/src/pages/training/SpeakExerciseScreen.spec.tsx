@@ -79,11 +79,13 @@ afterEach(() => {
 })
 
 describe('SpeakExerciseScreen mic access', () => {
-  it('does not call getUserMedia on Hablar', async () => {
+  it('starts SpeechRecognition synchronously on Hablar without getUserMedia or release', () => {
     const getUserMedia = vi.fn<
       (constraints: MediaStreamConstraints) => Promise<MediaStream>
     >()
-    stubRecognition()
+    const recognition = stubRecognition()
+    const releaseSpy = vi.spyOn(audioSession, 'releaseMicToPlayback')
+    const prepareSpy = vi.spyOn(audioSession, 'prepareAudioSessionForMicrophone')
     vi.stubGlobal('navigator', {
       ...navigator,
       mediaDevices: { getUserMedia },
@@ -100,10 +102,11 @@ describe('SpeakExerciseScreen mic access', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
 
-    await waitFor(() => {
-      expect(screen.getByText('Escuchando…')).toBeInTheDocument()
-    })
+    expect(screen.getByText('Escuchando…')).toBeInTheDocument()
+    expect(recognition.latest()?.start).toHaveBeenCalledOnce()
+    expect(prepareSpy).toHaveBeenCalledOnce()
     expect(getUserMedia).not.toHaveBeenCalled()
+    expect(releaseSpy).not.toHaveBeenCalled()
   })
 
   it('shows Permitir micrófono after STT denial and primes only via the link', async () => {
@@ -207,5 +210,64 @@ describe('SpeakExerciseScreen mic access', () => {
       expect(feedbackSpy).toHaveBeenCalledWith('correct')
     })
     expect(order).toEqual(['release', 'reset', 'feedback'])
+  })
+
+  it('second click without interim stops listening and allows start again', () => {
+    const recognition = stubRecognition()
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia: vi.fn() },
+      audioSession: { type: 'auto' },
+    })
+
+    render(
+      <SpeakExerciseScreen
+        word={word()}
+        onRevealResult={vi.fn()}
+        onSkipSpeak={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    expect(screen.getByText('Escuchando…')).toBeInTheDocument()
+    expect(recognition.latest()?.start).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escuchando…' }))
+    expect(screen.getByText('Di la palabra en español')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hablar' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    expect(screen.getByText('Escuchando…')).toBeInTheDocument()
+    expect(recognition.latest()?.start).toHaveBeenCalledOnce()
+  })
+
+  it('second click with wrong interim scores incorrect', async () => {
+    const feedbackSpy = vi.spyOn(feedbackSound, 'playFeedbackSound')
+    const recognition = stubRecognition()
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia: vi.fn() },
+      audioSession: { type: 'auto' },
+    })
+
+    render(
+      <SpeakExerciseScreen
+        word={word()}
+        onRevealResult={vi.fn()}
+        onSkipSpeak={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hablar' }))
+    recognition.latest()?.onresult?.({
+      results: [{ isFinal: false, 0: { transcript: 'adios' } }],
+    })
+    expect(screen.getByText('Escuchando…')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escuchando…' }))
+
+    await waitFor(() => {
+      expect(feedbackSpy).toHaveBeenCalledWith('incorrect')
+    })
   })
 })

@@ -46,15 +46,14 @@ Web Speech API (Firefox и т.п.), либо после opt-out «¿No puedes ha
 (см. [auth.md](./auth.md)): типы 1/3/4/5 фильтруются настройками; тип 2
 остаётся системным для `completedTrainerCount <= 1`.
 
-После speak на iOS: `abort` recognition → дождаться `onend` →
-`releaseMicToPlayback()` → пересоздать Web Audio graph → пауза (~700ms) →
-feedback / TTS карточки. Иначе звук остаётся «приглушённым» после микрофона.
+Hablar: `prepareAudioSessionForMicrophone()` + `SpeechRecognition.start()`
+синхронно в клике (iOS требует user gesture). Обычный Hablar не вызывает
+`getUserMedia`; priming только по «Permitir micrófono».
 
-Перед `SpeechRecognition.start()`: `prepareAudioSessionForMicrophone()` (`auto`).
-Обычный Hablar не вызывает `getUserMedia` (один системный путь STT). Priming
-через `getUserMedia` только по ссылке «Permitir micrófono». Постоянный Allow
-из кода выдать нельзя; при Deny — подсказка Ajustes → Safari → Micrófono →
-Permitir.
+После scored speak: `abort` → дождаться `onend` → `releaseMicToPlayback()` →
+пересоздать Web Audio graph → пауза (~700ms) → feedback / TTS. Release/reset
+не вызываются перед стартом слушания. При Deny — Ajustes → Safari → Micrófono
+→ Permitir.
 
 ## Якорь времени
 

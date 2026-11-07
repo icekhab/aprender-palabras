@@ -72,6 +72,7 @@ export function SpeakExerciseScreen({
   const settleTimerRef = useRef<number | null>(null)
   const listenRequestRef = useRef(0)
   const submittedRef = useRef(false)
+  const lastInterimRef = useRef('')
   const [submitted, setSubmitted] = useState(false)
   const [listenState, setListenState] = useState<ListenState>('idle')
   const [transcript, setTranscript] = useState('')
@@ -79,7 +80,17 @@ export function SpeakExerciseScreen({
   const [outcome, setOutcome] = useState<SpeakOutcome | null>(null)
   const [skipOpen, setSkipOpen] = useState(false)
 
-  async function teardownRecognition() {
+  /** Stop STT only — do not touch playback session (keeps Hablar start in gesture). */
+  function abortListeningOnly() {
+    const session = sessionRef.current
+    sessionRef.current = null
+    if (session) {
+      void session.abort()
+    }
+  }
+
+  /** After a scored answer: wait for onend, then restore playback audio. */
+  async function releaseAfterSpeak() {
     const session = sessionRef.current
     sessionRef.current = null
     if (session) {
@@ -100,7 +111,9 @@ export function SpeakExerciseScreen({
     return () => {
       listenRequestRef.current += 1
       clearSettleTimer()
-      void teardownRecognition()
+      abortListeningOnly()
+      releaseMicToPlayback()
+      resetPlaybackAudioGraph()
     }
   }, [])
 
@@ -130,7 +143,7 @@ export function SpeakExerciseScreen({
     setListenState('processing')
 
     void (async () => {
-      await teardownRecognition()
+      await releaseAfterSpeak()
 
       const playAndReveal = () => {
         settleTimerRef.current = null
@@ -169,10 +182,43 @@ export function SpeakExerciseScreen({
     if (submittedRef.current) {
       return
     }
-    void teardownRecognition()
+    lastInterimRef.current = ''
+    abortListeningOnly()
     setTranscript('')
     setListenState('idle')
     setErrorMessage(message)
+  }
+
+  /** Second tap while listening: stop; compare interim if any, else idle. */
+  function stopListening() {
+    if (submittedRef.current || listenState !== 'listening') {
+      return
+    }
+
+    const heard = lastInterimRef.current.trim()
+    lastInterimRef.current = ''
+
+    if (heard) {
+      const result = compareSpanishAnswer(word.spanish, heard)
+      finishWithResult(result, heard)
+      return
+    }
+
+    abortListeningOnly()
+    setTranscript('')
+    setListenState('idle')
+    setErrorMessage('')
+  }
+
+  function onMicClick() {
+    if (submittedRef.current || outcome !== null) {
+      return
+    }
+    if (listenState === 'listening') {
+      stopListening()
+      return
+    }
+    startListening()
   }
 
   function startListening() {
@@ -183,100 +229,82 @@ export function SpeakExerciseScreen({
     clearSettleTimer()
     setErrorMessage('')
     setTranscript('')
-
-    const requestId = ++listenRequestRef.current
+    lastInterimRef.current = ''
+    listenRequestRef.current += 1
     setListenState('listening')
 
-    void (async () => {
-      await teardownRecognition()
-      if (
-        requestId !== listenRequestRef.current ||
-        submittedRef.current
-      ) {
-        return
-      }
+    // Abort prior session without awaiting — keep start() in the user gesture.
+    abortListeningOnly()
+    prepareAudioSessionForMicrophone()
 
-      prepareAudioSessionForMicrophone()
+    const session = createSpeechRecognition({
+      lang: 'es-ES',
+      onResult: (value, isFinal) => {
+        const trimmed = value.trim()
+        setTranscript(trimmed)
 
-      let lastInterim = ''
-
-      const session = createSpeechRecognition({
-        lang: 'es-ES',
-        onResult: (value, isFinal) => {
-          const trimmed = value.trim()
-          setTranscript(trimmed)
-
-          // Interim only: matching draft counts as correct immediately.
-          if (!isFinal) {
-            lastInterim = trimmed
-            if (trimmed) {
-              acceptTranscript(trimmed)
-            }
-            return
-          }
-
-          // Final: same comparison rules as typed answers (wrong = error).
-          if (!trimmed) {
-            rejectForRetry('No se escuchó nada. Inténtalo de nuevo.')
-            return
-          }
-
-          const result = compareSpanishAnswer(word.spanish, trimmed)
-          if (result.correct) {
+        // Interim only: matching draft counts as correct immediately.
+        if (!isFinal) {
+          lastInterimRef.current = trimmed
+          if (trimmed) {
             acceptTranscript(trimmed)
-            return
           }
+          return
+        }
 
-          finishWithResult(result, trimmed)
-        },
-        onError: (error) => {
-          if (submittedRef.current) {
-            return
-          }
-          const message = recognitionErrorMessage(error)
-          if (message) {
-            rejectForRetry(message)
-            return
-          }
-          void teardownRecognition()
-          setListenState('idle')
-        },
-        onEnd: () => {
-          if (submittedRef.current) {
-            return
-          }
-          // Ended with only a non-matching interim — offer retry, do not score.
-          if (lastInterim) {
-            rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
-            return
-          }
-          setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
-        },
-      })
+        // Final: same comparison rules as typed answers (wrong = error).
+        if (!trimmed) {
+          rejectForRetry('No se escuchó nada. Inténtalo de nuevo.')
+          return
+        }
 
-      if (
-        requestId !== listenRequestRef.current ||
-        submittedRef.current
-      ) {
-        await session?.abort()
-        return
-      }
+        const result = compareSpanishAnswer(word.spanish, trimmed)
+        if (result.correct) {
+          acceptTranscript(trimmed)
+          return
+        }
 
-      if (!session) {
+        finishWithResult(result, trimmed)
+      },
+      onError: (error) => {
+        if (submittedRef.current) {
+          return
+        }
+        const message = recognitionErrorMessage(error)
+        if (message) {
+          rejectForRetry(message)
+          return
+        }
+        abortListeningOnly()
         setListenState('idle')
-        setErrorMessage('Este navegador no admite reconocimiento de voz.')
-        return
-      }
+      },
+      onEnd: () => {
+        if (submittedRef.current) {
+          return
+        }
+        // Ended with only a non-matching interim — offer retry, do not score.
+        if (lastInterimRef.current) {
+          rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
+          return
+        }
+        setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
+      },
+    })
 
-      sessionRef.current = session
-      try {
-        session.start()
-      } catch {
-        await teardownRecognition()
-        setErrorMessage(MIC_START_FAILED_MESSAGE)
-        setListenState('idle')
-      }
-    })()
+    if (!session) {
+      setListenState('idle')
+      setErrorMessage('Este navegador no admite reconocimiento de voz.')
+      return
+    }
+
+    sessionRef.current = session
+    try {
+      session.start()
+    } catch {
+      abortListeningOnly()
+      setErrorMessage(MIC_START_FAILED_MESSAGE)
+      setListenState('idle')
+    }
   }
 
   function requestMicAccess() {
@@ -354,7 +382,7 @@ export function SpeakExerciseScreen({
             }
             disabled={disabled}
             className={`inline-flex size-28 cursor-pointer items-center justify-center rounded-full shadow-md transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 disabled:cursor-default sm:size-32 ${micTone}`}
-            onClick={startListening}
+            onClick={onMicClick}
           >
             <Mic className="size-12 sm:size-14" aria-hidden />
           </button>
@@ -400,7 +428,7 @@ export function SpeakExerciseScreen({
             setSkipOpen(false)
             listenRequestRef.current += 1
             clearSettleTimer()
-            void teardownRecognition()
+            abortListeningOnly()
             onSkipSpeak()
           }}
         />
