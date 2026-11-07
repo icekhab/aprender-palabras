@@ -69,7 +69,6 @@ export function SpeakExerciseScreen({
   onSkipSpeak: () => void
 }) {
   const sessionRef = useRef<SpeechRecognitionSession | null>(null)
-  const micStreamRef = useRef<MediaStream | null>(null)
   const settleTimerRef = useRef<number | null>(null)
   const listenRequestRef = useRef(0)
   const submittedRef = useRef(false)
@@ -81,53 +80,10 @@ export function SpeakExerciseScreen({
   const [outcome, setOutcome] = useState<SpeakOutcome | null>(null)
   const [skipOpen, setSkipOpen] = useState(false)
 
-  function stopMicStream() {
-    const stream = micStreamRef.current
-    micStreamRef.current = null
-    if (!stream) {
-      return
-    }
-    for (const track of stream.getTracks()) {
-      track.stop()
-    }
-  }
-
-  /** Hold getUserMedia for the listen window (iOS capture stability). */
-  function holdMicStream() {
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices?.getUserMedia
-    ) {
-      return
-    }
-
-    const requestId = listenRequestRef.current
-    void navigator.mediaDevices
-      .getUserMedia({ audio: true })
-      .then((stream) => {
-        if (
-          requestId !== listenRequestRef.current ||
-          submittedRef.current ||
-          sessionRef.current === null
-        ) {
-          for (const track of stream.getTracks()) {
-            track.stop()
-          }
-          return
-        }
-        stopMicStream()
-        micStreamRef.current = stream
-      })
-      .catch(() => {
-        // STT may still work without a held stream.
-      })
-  }
-
   /** Stop STT only — do not touch playback session (keeps Hablar start in gesture). */
   function abortListeningOnly() {
     const session = sessionRef.current
     sessionRef.current = null
-    stopMicStream()
     if (session) {
       void session.abort()
     }
@@ -137,7 +93,6 @@ export function SpeakExerciseScreen({
   async function releaseAfterSpeak() {
     const session = sessionRef.current
     sessionRef.current = null
-    stopMicStream()
     if (session) {
       await session.abort()
     }
@@ -256,7 +211,6 @@ export function SpeakExerciseScreen({
     setErrorMessage('')
 
     void (async () => {
-      stopMicStream()
       if (session) {
         await session.stopAndWait()
       }
@@ -355,7 +309,6 @@ export function SpeakExerciseScreen({
           rejectForRetry('No se reconoció la palabra. Inténtalo de nuevo.')
           return
         }
-        stopMicStream()
         sessionRef.current = null
         setListenState((prev) => (prev === 'listening' ? 'idle' : prev))
       },
@@ -369,9 +322,8 @@ export function SpeakExerciseScreen({
 
     sessionRef.current = session
     try {
-      // Keep start() in the user gesture; hold stream without awaiting.
+      // Keep start() in the user gesture (no await / no parallel getUserMedia).
       session.start()
-      holdMicStream()
     } catch {
       abortListeningOnly()
       setErrorMessage(MIC_START_FAILED_MESSAGE)
