@@ -19,13 +19,14 @@ import type {
 import { Prisma } from '../generated/prisma/client.js'
 import { isWordReadyForTrainer } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
-import { WordsService } from '../words/words.service.js'
 import {
   compareByPriority,
   madridDateString,
   MAX_TRAINER_WORDS,
   type SelectionCard,
 } from '../training/selection.js'
+import { TrainingService } from '../training/training.service.js'
+import { WordsService } from '../words/words.service.js'
 
 type CollectionWithItems = {
   id: string
@@ -51,6 +52,7 @@ export class CollectionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wordsService: WordsService,
+    private readonly trainingService: TrainingService,
   ) {}
 
   async list(
@@ -258,6 +260,8 @@ export class CollectionsService {
     })
     const position = (maxPosition._max.position ?? 0) + 1
 
+    const offeredByUser = new Map<string, string[]>()
+
     await this.prisma.$transaction(async (tx) => {
       await tx.wordCollectionItem.create({
         data: { collectionId, wordId, position },
@@ -269,9 +273,23 @@ export class CollectionsService {
       })
 
       for (const membership of memberships) {
-        await this.ensureCardForUser(tx, membership.userId, collectionId, wordId)
+        const cardId = await this.ensureCardForUser(
+          tx,
+          membership.userId,
+          collectionId,
+          wordId,
+        )
+        if (cardId) {
+          const list = offeredByUser.get(membership.userId) ?? []
+          list.push(cardId)
+          offeredByUser.set(membership.userId, list)
+        }
       }
     })
+
+    for (const [userId, cardIds] of offeredByUser) {
+      await this.trainingService.offerNewWordsToTodaySlot5(userId, cardIds)
+    }
 
     return this.getById(actorUserId, collectionId, 'admin')
   }
@@ -352,6 +370,8 @@ export class CollectionsService {
       throw new NotFoundException('Collection not found')
     }
 
+    const offeredCardIds: string[] = []
+
     await this.prisma.$transaction(async (tx) => {
       await tx.userCollection.upsert({
         where: {
@@ -362,9 +382,19 @@ export class CollectionsService {
       })
 
       for (const item of collection.items) {
-        await this.ensureCardForUser(tx, userId, collectionId, item.wordId)
+        const cardId = await this.ensureCardForUser(
+          tx,
+          userId,
+          collectionId,
+          item.wordId,
+        )
+        if (cardId) {
+          offeredCardIds.push(cardId)
+        }
       }
     })
+
+    await this.trainingService.offerNewWordsToTodaySlot5(userId, offeredCardIds)
 
     return this.getById(userId, collectionId)
   }
@@ -598,12 +628,13 @@ export class CollectionsService {
     return new Map(cards.map((card) => [card.wordId, card]))
   }
 
+  /** Returns userCardId when the card newly entered the dictionary. */
   private async ensureCardForUser(
     tx: Prisma.TransactionClient,
     userId: string,
     collectionId: string,
     wordId: string,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const existing = await tx.userCard.findUnique({
       where: {
         userId_wordId: { userId, wordId },
@@ -624,11 +655,12 @@ export class CollectionsService {
           create: { userId, collectionId, wordId },
           update: {},
         })
+        return existing.id
       }
-      return
+      return null
     }
 
-    await tx.userCard.create({
+    const created = await tx.userCard.create({
       data: {
         userId,
         wordId,
@@ -639,6 +671,7 @@ export class CollectionsService {
     await tx.userCollectionIntroducedWord.create({
       data: { userId, collectionId, wordId },
     })
+    return created.id
   }
 
   private toListItem(

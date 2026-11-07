@@ -36,6 +36,7 @@ import { getMissingTrainerFields } from '../lessons/lesson-readiness.js'
 import { PrismaService } from '../prisma.service.js'
 import { QuotaService } from '../quotas/quota.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
+import { TrainingService } from '../training/training.service.js'
 import { canEditWord } from './word-edit-access.js'
 import {
   WORD_GENERATION_ERROR_MAX_LENGTH,
@@ -58,6 +59,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     private readonly unsplashService: UnsplashService,
     private readonly wordAudioService: WordAudioService,
     private readonly quotaService: QuotaService,
+    private readonly trainingService: TrainingService,
   ) {}
 
   onModuleInit(): void {
@@ -729,7 +731,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      return await this.prisma.userCard.create({
+      const card = await this.prisma.userCard.create({
         data: {
           userId,
           wordId,
@@ -738,6 +740,8 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
           progress: 0,
         },
       })
+      await this.trainingService.offerNewWordsToTodaySlot5(userId, [card.id])
+      return card
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -772,7 +776,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     createdNewWord: boolean
   }> {
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         let existing = await tx.word.findUnique({
           where: {
             normalizedSpanish_normalizedRussian: {
@@ -845,6 +849,14 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
 
         return { card, word: existing, createdNewWord }
       })
+
+      if (input.generationStatus === 'ready') {
+        await this.trainingService.offerNewWordsToTodaySlot5(input.userId, [
+          result.card.id,
+        ])
+      }
+
+      return result
     } catch (error) {
       if (error instanceof ConflictException) {
         throw error
@@ -951,6 +963,8 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
           error,
         )
       }
+
+      await this.trainingService.offerReadyWordToTodaySlot5(wordId)
     } catch (error) {
       const message = truncateGenerationError(
         error instanceof Error ? error.message : 'Word generation failed',
@@ -1161,7 +1175,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
       partOfSpeech === 'sustantivo' ? draft.gender : null
 
     try {
-      const { word, createdNewWord } = await this.prisma.$transaction(
+      const { word, createdNewWord, cardId } = await this.prisma.$transaction(
         async (tx) => {
           let existing = await tx.word.findUnique({
             where: {
@@ -1233,7 +1247,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
             throw new ConflictException('Word already exists')
           }
 
-          await tx.userCard.create({
+          const card = await tx.userCard.create({
             data: {
               userId,
               wordId: existing.id,
@@ -1243,7 +1257,11 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
             },
           })
 
-          return { word: existing, createdNewWord: wasCreated }
+          return {
+            word: existing,
+            createdNewWord: wasCreated,
+            cardId: card.id,
+          }
         },
       )
 
@@ -1258,6 +1276,8 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
       if (createdNewWord) {
         await this.wordAudioService.ensureWordAudio(word.id)
       }
+
+      await this.trainingService.offerNewWordsToTodaySlot5(userId, [cardId])
 
       return toWordResponse(word)
     } catch (error) {

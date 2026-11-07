@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common'
 import type {
@@ -19,6 +20,7 @@ import { applyProgressChange } from './progress.js'
 import {
   buildDailyTrainers,
   buildExtraTrainer,
+  MAX_TRAINER_WORDS,
   madridDateString,
   resolveAnchor,
   type SelectionCard,
@@ -26,6 +28,8 @@ import {
 
 @Injectable()
 export class TrainingService {
+  private readonly logger = new Logger(TrainingService.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getTrainerSession(
@@ -228,6 +232,194 @@ export class TrainingService {
     }
 
     return this.buildTodayResponse(userId, date, day, readyCardCount)
+  }
+
+  /**
+   * If today's day already has daily trainers and slot 5 is missing or
+   * not_started with free capacity, append ready unstarted dictionary cards.
+   * No-op when the day does not exist or has zero daily trainers (so a later
+   * createDay / fillDailyTrainers can still build slots 1–4).
+   */
+  async offerNewWordsToTodaySlot5(
+    userId: string,
+    userCardIds: string[],
+  ): Promise<void> {
+    const uniqueIds = [...new Set(userCardIds.filter(Boolean))]
+    if (uniqueIds.length === 0) {
+      return
+    }
+
+    try {
+      await this.offerNewWordsToTodaySlot5Unsafe(userId, uniqueIds)
+    } catch (error) {
+      this.logger.error(
+        `Failed to offer new words to today slot 5 (user=${userId})`,
+        error,
+      )
+    }
+  }
+
+  /** After a shared Word becomes ready, offer it for every owner's dictionary card. */
+  async offerReadyWordToTodaySlot5(wordId: string): Promise<void> {
+    const cards = await this.prisma.userCard.findMany({
+      where: {
+        wordId,
+        inDictionary: true,
+        completedTrainerCount: 0,
+      },
+      select: { id: true, userId: true },
+    })
+
+    const byUser = new Map<string, string[]>()
+    for (const card of cards) {
+      const list = byUser.get(card.userId)
+      if (list) {
+        list.push(card.id)
+      } else {
+        byUser.set(card.userId, [card.id])
+      }
+    }
+
+    for (const [ownerId, ids] of byUser) {
+      await this.offerNewWordsToTodaySlot5(ownerId, ids)
+    }
+  }
+
+  private async offerNewWordsToTodaySlot5Unsafe(
+    userId: string,
+    uniqueIds: string[],
+  ): Promise<void> {
+    const dayDate = calendarDate(madridDateString())
+    const day = await this.prisma.dailyTrainingDay.findUnique({
+      where: {
+        userId_date: { userId, date: dayDate },
+      },
+      include: {
+        trainers: {
+          where: { kind: 'daily' },
+          include: {
+            words: {
+              select: { userCardId: true, position: true },
+              orderBy: { position: 'asc' },
+            },
+          },
+        },
+      },
+    })
+
+    if (!day || day.trainers.length === 0) {
+      return
+    }
+
+    const slot5 = day.trainers.find((trainer) => trainer.slot === 5)
+    if (slot5?.status === 'completed') {
+      return
+    }
+
+    const usedInDaily = new Set(
+      day.trainers.flatMap((trainer) =>
+        trainer.words.map((word) => word.userCardId),
+      ),
+    )
+
+    const cards = await this.prisma.userCard.findMany({
+      where: {
+        id: { in: uniqueIds },
+        userId,
+        inDictionary: true,
+        completedTrainerCount: 0,
+      },
+      select: {
+        id: true,
+        word: {
+          select: {
+            spanish: true,
+            russian: true,
+            wrongRussian: true,
+            wrongSpanish: true,
+            generationStatus: true,
+          },
+        },
+      },
+    })
+
+    const eligible = cards
+      .filter((card) => isWordReadyForTrainer(card.word))
+      .filter((card) => !usedInDaily.has(card.id))
+      .map((card) => card.id)
+
+    if (eligible.length === 0) {
+      return
+    }
+
+    if (slot5) {
+      const free = MAX_TRAINER_WORDS - slot5.words.length
+      if (free <= 0) {
+        return
+      }
+      const toAdd = eligible.slice(0, free)
+      const maxPosition =
+        slot5.words.length === 0
+          ? 0
+          : Math.max(...slot5.words.map((word) => word.position))
+
+      await this.prisma.dailyTrainerWord.createMany({
+        data: toAdd.map((userCardId, index) => ({
+          trainerId: slot5.id,
+          userCardId,
+          position: maxPosition + index + 1,
+        })),
+        skipDuplicates: true,
+      })
+      return
+    }
+
+    const toAdd = eligible.slice(0, MAX_TRAINER_WORDS)
+    const hasActiveCourseLesson = await this.hasActiveCourseLesson(userId)
+    const sourceLabel = hasActiveCourseLesson
+      ? 'Nuevas y próxima lección'
+      : 'Palabras nuevas'
+
+    try {
+      await this.prisma.dailyTrainer.create({
+        data: {
+          dayId: day.id,
+          kind: 'daily',
+          slot: 5,
+          sourceLabel,
+          words: {
+            create: toAdd.map((userCardId, index) => ({
+              userCardId,
+              position: index + 1,
+            })),
+          },
+        },
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        await this.offerNewWordsToTodaySlot5Unsafe(userId, uniqueIds)
+        return
+      }
+      throw error
+    }
+  }
+
+  private async hasActiveCourseLesson(userId: string): Promise<boolean> {
+    const count = await this.prisma.courseMembership.count({
+      where: {
+        userId,
+        status: 'accepted',
+        currentLessonId: { not: null },
+        course: {
+          active: true,
+          createdBy: { role: { in: ['teacher', 'admin'] } },
+        },
+      },
+    })
+    return count > 0
   }
 
   async generateToday(userId: string): Promise<DailyTrainingTodayResponse> {

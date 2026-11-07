@@ -21,6 +21,7 @@ import type {
 } from '@aprender-palabras/contracts'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
+import { TrainingService } from '../training/training.service.js'
 import {
   isEffectivelyActive,
   isTeacherOrAdmin,
@@ -39,7 +40,10 @@ type CourseWithCreator = {
 
 @Injectable()
 export class CoursesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly trainingService: TrainingService,
+  ) {}
 
   async list(
     userId: string,
@@ -281,6 +285,7 @@ export class CoursesService {
     const firstLesson = selfInvite ? (course.lessons[0] ?? null) : null
 
     try {
+      let offeredCardIds: string[] = []
       const membership = await this.prisma.$transaction(async (tx) => {
         const created = await tx.courseMembership.create({
           data: {
@@ -302,7 +307,7 @@ export class CoursesService {
           const next = course.lessons.find(
             (lesson) => lesson.position === firstLesson.position + 1,
           )
-          await this.transferCourseWindowToDictionary(
+          offeredCardIds = await this.transferCourseWindowToDictionary(
             tx,
             target.id,
             courseId,
@@ -312,6 +317,13 @@ export class CoursesService {
 
         return created
       })
+
+      if (offeredCardIds.length > 0) {
+        await this.trainingService.offerNewWordsToTodaySlot5(
+          target.id,
+          offeredCardIds,
+        )
+      }
 
       return this.toMemberItem(membership, course.lessons)
     } catch (error) {
@@ -339,6 +351,7 @@ export class CoursesService {
     const course = await this.loadCourse(courseId)
     const firstLesson = course.lessons[0] ?? null
 
+    let offeredCardIds: string[] = []
     await this.prisma.$transaction(async (tx) => {
       await tx.courseMembership.update({
         where: { id: membership.id },
@@ -353,7 +366,7 @@ export class CoursesService {
         const next = course.lessons.find(
           (lesson) => lesson.position === firstLesson.position + 1,
         )
-        await this.transferCourseWindowToDictionary(
+        offeredCardIds = await this.transferCourseWindowToDictionary(
           tx,
           userId,
           courseId,
@@ -361,6 +374,13 @@ export class CoursesService {
         )
       }
     })
+
+    if (offeredCardIds.length > 0) {
+      await this.trainingService.offerNewWordsToTodaySlot5(
+        userId,
+        offeredCardIds,
+      )
+    }
 
     return this.getById(userId, courseId)
   }
@@ -547,8 +567,9 @@ export class CoursesService {
       (item) => item.position === lesson.position + 1,
     )
 
+    let offeredCardIds: string[] = []
     const updated = await this.prisma.$transaction(async (tx) => {
-      await this.transferCourseWindowToDictionary(
+      offeredCardIds = await this.transferCourseWindowToDictionary(
         tx,
         targetUserId,
         courseId,
@@ -566,6 +587,13 @@ export class CoursesService {
         },
       })
     })
+
+    if (offeredCardIds.length > 0) {
+      await this.trainingService.offerNewWordsToTodaySlot5(
+        targetUserId,
+        offeredCardIds,
+      )
+    }
 
     return this.toMemberItem(updated, course.lessons)
   }
@@ -669,12 +697,13 @@ export class CoursesService {
     }
   }
 
+  /** Returns userCardIds newly entered into the dictionary. */
   async transferCourseWindowToDictionary(
     tx: Prisma.TransactionClient,
     userId: string,
     courseId: string,
     maxPositionInclusive: number,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const lessons = await tx.lesson.findMany({
       where: {
         courseId,
@@ -689,6 +718,8 @@ export class CoursesService {
       ),
     ]
 
+    const offeredCardIds: string[] = []
+
     for (const wordId of wordIds) {
       const card = await tx.userCard.findUnique({
         where: {
@@ -702,9 +733,10 @@ export class CoursesService {
             where: { id: card.id },
             data: { inDictionary: true },
           })
+          offeredCardIds.push(card.id)
         }
       } else {
-        await tx.userCard.create({
+        const created = await tx.userCard.create({
           data: {
             userId,
             wordId,
@@ -713,8 +745,11 @@ export class CoursesService {
             progress: 0,
           },
         })
+        offeredCardIds.push(created.id)
       }
     }
+
+    return offeredCardIds
   }
 
   async ensureFirstLessonCurrent(

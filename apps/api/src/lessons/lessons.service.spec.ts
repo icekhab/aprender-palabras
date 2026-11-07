@@ -112,6 +112,9 @@ describe('LessonsService.addNewWord', () => {
       wordAudioService as unknown as WordAudioService,
       coursesService as unknown as CoursesService,
       unsplashService as unknown as UnsplashService,
+      {
+        offerNewWordsToTodaySlot5: vi.fn().mockResolvedValue(undefined),
+      } as never,
     )
   })
 

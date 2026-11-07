@@ -79,13 +79,20 @@ describe('CollectionsService', () => {
   const wordsService = {
     createAdminWord: vi.fn<(userId: string, draft: unknown) => Promise<{ id: string }>>(),
   }
+  const trainingService = {
+    offerNewWordsToTodaySlot5: vi.fn<
+      (userId: string, userCardIds: string[]) => Promise<void>
+    >(),
+  }
   const service = new CollectionsService(
     prisma as never,
     wordsService as never,
+    trainingService as never,
   )
 
   beforeEach(() => {
     vi.clearAllMocks()
+    trainingService.offerNewWordsToTodaySlot5.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof prisma) => Promise<unknown>) =>
         callback(prisma),

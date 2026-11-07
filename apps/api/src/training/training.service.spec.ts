@@ -38,6 +38,7 @@ function createPrismaMock() {
     },
     dailyTrainerWord: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+      createMany: vi.fn<(args: unknown) => Promise<unknown>>(),
     },
     user: {
       findUniqueOrThrow: vi.fn<(args: unknown) => Promise<unknown>>(),
@@ -53,6 +54,7 @@ function createPrismaMock() {
     },
     courseMembership: {
       findMany: vi.fn<(args: unknown) => Promise<unknown[]>>(),
+      count: vi.fn<(args: unknown) => Promise<number>>(),
     },
   }
 }
@@ -664,5 +666,237 @@ describe('TrainingService.completeTrainer', () => {
       ]),
     ).rejects.toBeInstanceOf(BadRequestException)
     expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+})
+
+function readyWordFields() {
+  return {
+    spanish: 'hola',
+    russian: 'привет',
+    wrongRussian: ['a', 'b', 'c'],
+    wrongSpanish: ['x', 'y', 'z'],
+    generationStatus: 'ready' as const,
+  }
+}
+
+describe('TrainingService.offerNewWordsToTodaySlot5', () => {
+  const prisma = createPrismaMock()
+  let service: TrainingService
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    service = new TrainingService(prisma as never)
+    prisma.courseMembership.count.mockResolvedValue(0)
+    prisma.dailyTrainerWord.createMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('no-ops when there is no day', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue(null)
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.userCard.findMany).not.toHaveBeenCalled()
+    expect(prisma.dailyTrainer.create).not.toHaveBeenCalled()
+    expect(prisma.dailyTrainerWord.createMany).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when the day has zero daily trainers', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [],
+    })
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.userCard.findMany).not.toHaveBeenCalled()
+  })
+
+  it('appends into not_started slot 5 when there is free capacity', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't1',
+          slot: 1,
+          status: 'not_started',
+          words: [{ userCardId: 'card-old', position: 1 }],
+        },
+        {
+          id: 't5',
+          slot: 5,
+          status: 'not_started',
+          words: [{ userCardId: 'card-1', position: 1 }],
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      { id: 'card-new', word: readyWordFields() },
+    ])
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.dailyTrainerWord.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          trainerId: 't5',
+          userCardId: 'card-new',
+          position: 2,
+        },
+      ],
+      skipDuplicates: true,
+    })
+    expect(prisma.dailyTrainer.create).not.toHaveBeenCalled()
+  })
+
+  it('creates slot 5 when the day has other daily trainers but no slot 5', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't1',
+          slot: 1,
+          status: 'not_started',
+          words: [{ userCardId: 'card-old', position: 1 }],
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      { id: 'card-new', word: readyWordFields() },
+    ])
+    prisma.dailyTrainer.create.mockResolvedValue({ id: 't5' })
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.dailyTrainer.create).toHaveBeenCalledWith({
+      data: {
+        dayId: 'day-1',
+        kind: 'daily',
+        slot: 5,
+        sourceLabel: 'Palabras nuevas',
+        words: {
+          create: [{ userCardId: 'card-new', position: 1 }],
+        },
+      },
+    })
+  })
+
+  it('no-ops when slot 5 is already completed', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't5',
+          slot: 5,
+          status: 'completed',
+          words: [{ userCardId: 'card-1', position: 1 }],
+        },
+      ],
+    })
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.userCard.findMany).not.toHaveBeenCalled()
+    expect(prisma.dailyTrainerWord.createMany).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when slot 5 is already full', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't5',
+          slot: 5,
+          status: 'not_started',
+          words: Array.from({ length: 12 }, (_, index) => ({
+            userCardId: `card-${index + 1}`,
+            position: index + 1,
+          })),
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      { id: 'card-new', word: readyWordFields() },
+    ])
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.dailyTrainerWord.createMany).not.toHaveBeenCalled()
+  })
+
+  it('skips cards that are not ready for the trainer', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't5',
+          slot: 5,
+          status: 'not_started',
+          words: [],
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      {
+        id: 'card-new',
+        word: {
+          ...readyWordFields(),
+          wrongRussian: [],
+          generationStatus: 'generating',
+        },
+      },
+    ])
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-new'])
+
+    expect(prisma.dailyTrainerWord.createMany).not.toHaveBeenCalled()
+  })
+
+  it('truncates bulk offers to free capacity', async () => {
+    prisma.dailyTrainingDay.findUnique.mockResolvedValue({
+      id: 'day-1',
+      trainers: [
+        {
+          id: 't5',
+          slot: 5,
+          status: 'not_started',
+          words: Array.from({ length: 11 }, (_, index) => ({
+            userCardId: `card-${index + 1}`,
+            position: index + 1,
+          })),
+        },
+      ],
+    })
+    prisma.userCard.findMany.mockResolvedValue([
+      { id: 'card-a', word: readyWordFields() },
+      { id: 'card-b', word: readyWordFields() },
+    ])
+
+    await service.offerNewWordsToTodaySlot5('user-1', ['card-a', 'card-b'])
+
+    expect(prisma.dailyTrainerWord.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          trainerId: 't5',
+          userCardId: 'card-a',
+          position: 12,
+        },
+      ],
+      skipDuplicates: true,
+    })
+  })
+
+  it('offers a ready word to each owner via offerReadyWordToTodaySlot5', async () => {
+    prisma.userCard.findMany.mockResolvedValue([
+      { id: 'card-u1', userId: 'user-1' },
+      { id: 'card-u2', userId: 'user-2' },
+    ])
+    const offerSpy = vi
+      .spyOn(service, 'offerNewWordsToTodaySlot5')
+      .mockResolvedValue(undefined)
+
+    await service.offerReadyWordToTodaySlot5('word-1')
+
+    expect(offerSpy).toHaveBeenCalledWith('user-1', ['card-u1'])
+    expect(offerSpy).toHaveBeenCalledWith('user-2', ['card-u2'])
   })
 })

@@ -118,6 +118,13 @@ describe('WordsService', () => {
     consumeImageGeneration: vi.fn<(wordId: string) => Promise<void>>(),
   }
 
+  const trainingService = {
+    offerNewWordsToTodaySlot5: vi.fn<
+      (userId: string, userCardIds: string[]) => Promise<void>
+    >(),
+    offerReadyWordToTodaySlot5: vi.fn<(wordId: string) => Promise<void>>(),
+  }
+
   let service: WordsService
 
   beforeEach(() => {
@@ -126,6 +133,8 @@ describe('WordsService', () => {
     wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
     quotaService.consumeGeneration.mockResolvedValue(undefined)
     quotaService.consumeImageGeneration.mockResolvedValue(undefined)
+    trainingService.offerNewWordsToTodaySlot5.mockResolvedValue(undefined)
+    trainingService.offerReadyWordToTodaySlot5.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     )
@@ -135,6 +144,7 @@ describe('WordsService', () => {
       unsplashService as unknown as UnsplashService,
       wordAudioService as unknown as WordAudioService,
       quotaService as never,
+      trainingService as never,
     )
   })
 

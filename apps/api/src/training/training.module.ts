@@ -5,5 +5,6 @@ import { TrainingService } from './training.service.js'
 @Module({
   controllers: [TrainingController],
   providers: [TrainingService],
+  exports: [TrainingService],
 })
 export class TrainingModule {}

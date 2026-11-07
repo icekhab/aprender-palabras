@@ -28,6 +28,7 @@ import { UnsplashService } from '../integrations/unsplash/unsplash.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma.service.js'
 import { WordAudioService } from '../speech/word-audio.service.js'
+import { TrainingService } from '../training/training.service.js'
 import {
   normalizeSearchKey,
   normalizeWordKey,
@@ -44,6 +45,7 @@ export class LessonsService {
     private readonly wordAudioService: WordAudioService,
     private readonly coursesService: CoursesService,
     private readonly unsplashService: UnsplashService,
+    private readonly trainingService: TrainingService,
   ) {}
 
   async list(
@@ -255,6 +257,8 @@ export class LessonsService {
           })
         : null
 
+    const offeredByUser = new Map<string, string[]>()
+
     await this.prisma.$transaction(async (tx) => {
       await tx.courseMembership.updateMany({
         where: { courseId, currentLessonId: lessonId },
@@ -299,12 +303,16 @@ export class LessonsService {
           : updatedPrevious.position
 
         for (const membership of membershipsOnLesson) {
-          await this.coursesService.transferCourseWindowToDictionary(
-            tx,
-            membership.userId,
-            courseId,
-            maxPosition,
-          )
+          const cardIds =
+            await this.coursesService.transferCourseWindowToDictionary(
+              tx,
+              membership.userId,
+              courseId,
+              maxPosition,
+            )
+          if (cardIds.length > 0) {
+            offeredByUser.set(membership.userId, cardIds)
+          }
           await tx.courseMembership.update({
             where: { id: membership.id },
             data: { currentLessonId: previousLesson.id },
@@ -312,6 +320,13 @@ export class LessonsService {
         }
       }
     })
+
+    for (const [memberUserId, cardIds] of offeredByUser) {
+      await this.trainingService.offerNewWordsToTodaySlot5(
+        memberUserId,
+        cardIds,
+      )
+    }
   }
 
   async addExistingWord(
@@ -356,8 +371,9 @@ export class LessonsService {
     })
 
     try {
-      const [lessonWord, ensuredCard] = await this.prisma.$transaction(
-        async (tx) => {
+      const [lessonWord, ensuredCard, enteredDictionary] =
+        await this.prisma.$transaction(async (tx) => {
+          let newlyInDictionary = false
           if (!card) {
             await tx.userCard.create({
               data: {
@@ -368,11 +384,13 @@ export class LessonsService {
                 progress: 0,
               },
             })
+            newlyInDictionary = addToDictionary
           } else if (addToDictionary && !card.inDictionary) {
             await tx.userCard.update({
               where: { id: card.id },
               data: { inDictionary: true },
             })
+            newlyInDictionary = true
           }
 
           const created = await tx.lessonWord.create({
@@ -385,9 +403,14 @@ export class LessonsService {
             },
           })
 
-          return [created, userCard] as const
-        },
-      )
+          return [created, userCard, newlyInDictionary] as const
+        })
+
+      if (enteredDictionary) {
+        await this.trainingService.offerNewWordsToTodaySlot5(userId, [
+          ensuredCard.id,
+        ])
+      }
 
       return {
         wordId: word.id,
@@ -435,8 +458,8 @@ export class LessonsService {
     const searchRussian = normalizeSearchKey(russian)
 
     try {
-      const { word, createdNewWord } = await this.prisma.$transaction(
-        async (tx) => {
+      const { word, createdNewWord, dictionaryCardId } =
+        await this.prisma.$transaction(async (tx) => {
           let existing = await tx.word.findUnique({
             where: {
               normalizedSpanish_normalizedRussian: {
@@ -515,8 +538,10 @@ export class LessonsService {
             },
           })
 
+          let dictionaryCardId: string | null = null
+
           if (!existingCard) {
-            await tx.userCard.create({
+            const createdCard = await tx.userCard.create({
               data: {
                 userId,
                 wordId: existing.id,
@@ -525,11 +550,15 @@ export class LessonsService {
                 progress: 0,
               },
             })
+            if (addToDictionary) {
+              dictionaryCardId = createdCard.id
+            }
           } else if (addToDictionary && !existingCard.inDictionary) {
             await tx.userCard.update({
               where: { id: existingCard.id },
               data: { inDictionary: true },
             })
+            dictionaryCardId = existingCard.id
           }
 
           const aggregate = await tx.lessonWord.aggregate({
@@ -545,9 +574,12 @@ export class LessonsService {
             },
           })
 
-          return { word: existing, createdNewWord: wasCreated }
-        },
-      )
+          return {
+            word: existing,
+            createdNewWord: wasCreated,
+            dictionaryCardId,
+          }
+        })
 
       if (
         createdNewWord &&
@@ -559,6 +591,12 @@ export class LessonsService {
 
       if (createdNewWord) {
         await this.wordAudioService.ensureWordAudio(word.id)
+      }
+
+      if (dictionaryCardId) {
+        await this.trainingService.offerNewWordsToTodaySlot5(userId, [
+          dictionaryCardId,
+        ])
       }
 
       return {
@@ -650,6 +688,8 @@ export class LessonsService {
       return { requiresDisposition: true }
     }
 
+    let offeredCardId: string | null = null
+
     await this.prisma.$transaction(async (tx) => {
       await tx.lessonWord.delete({ where: { id: link.id } })
 
@@ -685,6 +725,7 @@ export class LessonsService {
             source: 'manual',
           },
         })
+        offeredCardId = card.id
       }
 
       if (
@@ -696,6 +737,12 @@ export class LessonsService {
         await tx.userCard.delete({ where: { id: card.id } })
       }
     })
+
+    if (offeredCardId) {
+      await this.trainingService.offerNewWordsToTodaySlot5(userId, [
+        offeredCardId,
+      ])
+    }
 
     return { requiresDisposition: false }
   }
