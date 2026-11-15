@@ -118,7 +118,6 @@ describe('WordsService', () => {
   const quotaService = {
     consumeGeneration: vi.fn<(userId: string) => Promise<void>>(),
     consumeSuggestions: vi.fn<(userId: string) => Promise<void>>(),
-    consumeImageGeneration: vi.fn<(wordId: string) => Promise<void>>(),
   }
 
   const trainingService = {
@@ -135,7 +134,6 @@ describe('WordsService', () => {
     wordAudioService.ensureWordAudio.mockResolvedValue(true)
     wordAudioService.ensureWordsAudio.mockResolvedValue(undefined)
     quotaService.consumeGeneration.mockResolvedValue(undefined)
-    quotaService.consumeImageGeneration.mockResolvedValue(undefined)
     trainingService.offerNewWordsToTodaySlot5.mockResolvedValue(undefined)
     trainingService.offerReadyWordToTodaySlot5.mockResolvedValue(undefined)
     prisma.$transaction.mockImplementation(

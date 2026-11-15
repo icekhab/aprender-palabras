@@ -129,7 +129,6 @@ model Word {
   imagePhotographerUrl   String?
   imagePageUrl           String?
   imageProvider          ImageProvider?
-  imageGenerationCount   Int                   @default(0)
   generationStatus       WordGenerationStatus  @default(ready)
   generationStartedAt    DateTime?             @db.Timestamptz(3)
   generationAttemptCount Int                   @default(0)

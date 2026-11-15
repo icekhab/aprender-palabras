@@ -1,7 +1,5 @@
 import type { UserRole } from '@aprender-palabras/contracts'
 
-export const MAX_IMAGE_GENERATIONS_PER_WORD = 3
-
 export const DEFAULT_GENERATION_LIMIT: Record<
   Exclude<UserRole, 'admin'>,
   number

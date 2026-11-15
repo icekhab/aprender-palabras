@@ -492,7 +492,6 @@ export class LessonsService {
                   imagePhotographerUrl: draft.imagePhotographerUrl,
                   imagePageUrl: draft.imagePageUrl,
                   imageProvider: draft.imageProvider,
-                  imageGenerationCount: draft.imageUrl ? 1 : 0,
                   createdByUserId: userId,
                   createdViaLesson: true,
                 },

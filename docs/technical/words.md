@@ -18,8 +18,8 @@
   `user` — никогда; иначе `PATCH` → `403`, без карандаша;
 - admin: «Todas las palabras» → каталог; edit по `wordId`; в шапке —
   suggestions (add в общий `Word` без `UserCard`); фильтр списка отдельно;
-- картинки: create + `POST /words/image/regenerate`, max **3** суммарно на
-  `Word` (`imageGenerationCount`); квоты — [quotas.md](./quotas.md);
+- картинки: create + `POST /words/image/regenerate` без per-word лимита;
+  дневные квоты gen/suggestions — [quotas.md](./quotas.md);
 - лимиты основной пары: ES 1–100 символов / ≤10 слов; RU 1–120 символов;
 - воспроизведение — из `WordAudio` mp3.
 
@@ -37,7 +37,7 @@
 Поля: испанский текст, основной русский перевод, дополнительные переводы,
 определение на испанском, примеры, часть речи, род, до десяти неверных вариантов
 каждого направления (для задания выбираются 3 случайных), URL изображения и
-атрибуция Unsplash, **`createdByUserId`**, **`imageGenerationCount`**
+атрибуция Unsplash, **`createdByUserId`**
 (0..3), **`generationStatus`** (`generating` | `ready` | `failed`),
 **`generationStartedAt`**, **`generationAttemptCount`**, **`generationError`**.
 При создании новой пары — текущий пользователь; при reuse владельца
@@ -49,7 +49,7 @@
 Для admin/teacher формы sentinel не предлагается — нужна категория из списка.
 Готовность к тренировке от части речи не зависит.
 
-Backfill: автор = seed-admin; `imageGenerationCount = 0`.
+Backfill: автор = seed-admin.
 
 `createdViaLesson` пишется при create из урока (для аудита / курсов);
 на `canEdit` влияет только роль и `createdByUserId` (см.
@@ -181,17 +181,16 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 ### `POST /words/image/regenerate`
 
-Тело: `{ "spanish", "russian", "unsplashQuery?", "excludeImageUrl?", "wordId?" }`.
+Тело: `{ "spanish", "russian", "unsplashQuery?", "excludeImageUrl?" }`.
 
 Ищет до **8** кандидатов на Unsplash. Если передан `unsplashQuery` — ищет
 по нему (без OpenAI); иначе генерирует фразу через OpenAI. Старается не
 повторить `excludeImageUrl`. Без записи в БД. Первая картинка — выбранная.
 
 Успех `200`: поля выбранного изображения + `imageDownloadLocation` +
-`imageCandidates` + `unsplashQuery`. При `wordId` — инкремент
-`imageGenerationCount` (лимит 3 на слово).
+`imageCandidates` + `unsplashQuery`.
 
-Ошибки: `400`, `429` при превышении лимита, `503` если сервисы недоступны.
+Ошибки: `400`, `503` если сервисы недоступны.
 
 ### `POST /words/:cardId/reset-progress`
 

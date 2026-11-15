@@ -104,24 +104,6 @@ describe('QuotaService', () => {
     )
   })
 
-  it('rejects fourth image generation for a word', async () => {
-    prisma.$executeRaw.mockResolvedValue(0)
-    prisma.word.findUnique.mockResolvedValue({
-      id: 'word-1',
-      imageGenerationCount: 3,
-    })
-
-    await expect(service.consumeImageGeneration('word-1')).rejects.toBeInstanceOf(
-      HttpException,
-    )
-  })
-
-  it('increments image generation when under limit', async () => {
-    prisma.$executeRaw.mockResolvedValue(1)
-    await service.consumeImageGeneration('word-1')
-    expect(prisma.word.findUnique).not.toHaveBeenCalled()
-  })
-
   it('assertGenerationAvailable rejects without consuming', async () => {
     prisma.user.findUniqueOrThrow.mockResolvedValue({
       role: 'user',

@@ -95,13 +95,13 @@
 
 ## 5. Квоты платных API
 
-**Цель:** дневные лимиты (gen + suggestions) + картинки ≤ 3 на слово;
+**Цель:** дневные лимиты (gen + suggestions);
 проверка **до** внешних вызовов. Лимиты полей ES/RU — см. [quotas.md](./quotas.md),
 [01-words §12](../product/01-words.md).
 
 - [x] Prisma `User`: nullable `dailyGenerationLimit`, `dailySuggestionsLimit`;
   счётчики `generationsCount` / `suggestionsCount` + `quotaDate` (Madrid).
-- [x] Prisma `Word.imageGenerationCount` (0..3).
+- [x] Per-word image quota removed (`imageGenerationCount` dropped).
 - [x] Сервис квот: сброс по дате Madrid; дефолты по роли
   (user gen 60 / sug 450; teacher gen 100 / sug 600); admin без дневных.
 - [x] Генерация (поиск или урок): один счётчик `generations`.

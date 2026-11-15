@@ -73,7 +73,6 @@ export function WordCardForm({
   isSubmitting,
   saveError,
   conflictMessage = 'Ya existe otra palabra con esta traducción.',
-  wordId,
   onSubmit,
   onCancel,
 }: {
@@ -84,8 +83,6 @@ export function WordCardForm({
   isSubmitting: boolean
   saveError: unknown
   conflictMessage?: string
-  /** When set, image regenerations count against the word's image quota. */
-  wordId?: string
   onSubmit: (payload: UpdateWordCardInput) => void
   onCancel: () => void
 }) {
@@ -116,7 +113,6 @@ export function WordCardForm({
       regenerateWordImage({
         spanish: form.spanish.trim() || initial.spanish,
         russian: form.russian.trim() || initial.russian,
-        wordId,
         excludeImageUrl: form.imageUrl ?? undefined,
         unsplashQuery,
       }),

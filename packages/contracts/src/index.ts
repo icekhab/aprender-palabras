@@ -388,7 +388,6 @@ export type UpdateWordCardInput = z.infer<typeof updateWordCardSchema>
 export const regenerateWordImageSchema = z.object({
   spanish: spanishFieldSchema,
   russian: russianFieldSchema,
-  wordId: z.string().uuid().optional(),
   excludeImageUrl: z.string().trim().url().optional(),
   /** When set, Unsplash is searched with this phrase (skips OpenAI). */
   unsplashQuery: z.string().trim().min(1).max(200).optional(),

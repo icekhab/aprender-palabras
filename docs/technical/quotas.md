@@ -35,15 +35,8 @@ TTS **не** вызывается из trainer, lazy `GET /speech` или про
 
 **admin** дневные квоты gen/suggestions не применяет.
 
-## Лимит картинок на слово (все роли, включая admin)
-
-| Лимит | Значение |
-|---|---:|
-| Успешных генераций картинки на один `Word` | **3** суммарно за жизнь записи |
-
-Считается каждое успешное получение картинки (create + «Otra imagen»).
-Поле `Word.imageGenerationCount` (0..3). Четвёртый вызов → ошибка без
-OpenAI/Unsplash.
+Отдельной квоты на картинки Unsplash нет: `POST /words/image/regenerate`
+и поиск при генерации карточки не лимитируются per-word.
 
 ## Поля `User` (override)
 
@@ -64,6 +57,6 @@ OpenAI/Unsplash.
 |---|---|
 | Генерация+создание слова из поиска (user auto-add / teacher|admin preview+create) | generations |
 | Генерация при добавлении слова в урок | generations (тот же счётчик) |
-| `POST /words/image/regenerate` (и первая картинка при create) | `imageGenerationCount` на Word |
+| `POST /words/image/regenerate` / Unsplash при preview | нет |
 | `GET /suggestions/ai` | suggestions (consume) + generation (check only) |
 | `GET /suggestions/db` | нет |

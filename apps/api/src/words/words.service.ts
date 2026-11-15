@@ -470,7 +470,6 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
           imagePhotographerUrl: draft.imagePhotographerUrl,
           imagePageUrl: draft.imagePageUrl,
           imageProvider: draft.imageProvider,
-          imageGenerationCount: draft.imageUrl ? 1 : 0,
           createdByUserId: userId,
           createdViaLesson: false,
         },
@@ -619,10 +618,6 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
       (needsOpenAi && !this.openAiService.isConfigured())
     ) {
       throw new ServiceUnavailableException('Image regeneration unavailable')
-    }
-
-    if (input.wordId) {
-      await this.quotaService.consumeImageGeneration(input.wordId)
     }
 
     try {
@@ -984,7 +979,6 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
           imagePhotographerUrl: generated.imagePhotographerUrl,
           imagePageUrl: generated.imagePageUrl,
           imageProvider: generated.imageProvider,
-          imageGenerationCount: generated.imageUrl ? 1 : 0,
           generationStatus: 'ready',
           generationError: null,
           generationStartedAt: null,
@@ -1256,7 +1250,6 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
                   imagePhotographerUrl: draft.imagePhotographerUrl,
                   imagePageUrl: draft.imagePageUrl,
                   imageProvider: draft.imageProvider,
-                  imageGenerationCount: draft.imageUrl ? 1 : 0,
                   createdByUserId: userId,
                   createdViaLesson: false,
                 },

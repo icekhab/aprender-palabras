@@ -87,7 +87,6 @@ function WordCardEditForm({ card }: { card: UserCardDetail }) {
   return (
     <WordCardForm
       initial={card}
-      wordId={card.wordId}
       spanishEditable={false}
       submitLabel="Guardar"
       submittingLabel="Guardando…"

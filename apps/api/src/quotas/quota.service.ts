@@ -1,16 +1,10 @@
-import {
-  HttpException,
-  HttpStatus,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common'
 import type { UserRole } from '@aprender-palabras/contracts'
 import { PrismaService } from '../prisma.service.js'
 import { madridDateString } from '../training/selection.js'
 import {
   DEFAULT_GENERATION_LIMIT,
   DEFAULT_SUGGESTIONS_LIMIT,
-  MAX_IMAGE_GENERATIONS_PER_WORD,
 } from './quota.constants.js'
 
 @Injectable()
@@ -35,37 +29,6 @@ export class QuotaService {
    */
   async assertGenerationAvailable(userId: string): Promise<void> {
     await this.assertDailyAvailable(userId, 'generation')
-  }
-
-  /**
-   * Reserve one image generation for an existing Word (0..3).
-   * Applies to all roles including admin.
-   */
-  async consumeImageGeneration(wordId: string): Promise<void> {
-    const updated = await this.prisma.$executeRaw`
-      UPDATE "Word"
-      SET "imageGenerationCount" = "imageGenerationCount" + 1
-      WHERE "id" = ${wordId}::uuid
-        AND "imageGenerationCount" < ${MAX_IMAGE_GENERATIONS_PER_WORD}
-    `
-
-    if (updated === 0) {
-      const word = await this.prisma.word.findUnique({
-        where: { id: wordId },
-        select: { id: true, imageGenerationCount: true },
-      })
-      if (!word) {
-        throw new NotFoundException('Word not found')
-      }
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: 'Image generation limit reached for this word',
-          code: 'IMAGE_GENERATION_QUOTA_EXCEEDED',
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      )
-    }
   }
 
   private async assertDailyAvailable(
