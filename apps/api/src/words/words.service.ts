@@ -20,6 +20,7 @@ import {
   type DictionaryListItem,
   type DictionaryListQuery,
   type DictionaryListResponse,
+  type ImageSearchQueryResult,
   type RegeneratedWordImage,
   type RegenerateWordImageInput,
   type UpdateWordCardInput,
@@ -115,6 +116,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
         imageProvider: image?.imageProvider ?? null,
         imageDownloadLocation: image?.imageDownloadLocation ?? null,
         imageCandidates,
+        unsplashQuery: content.unsplashQuery,
       }
     } catch (error) {
       this.logger.error('Word preview generation failed', error)
@@ -587,10 +589,35 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async suggestImageSearchQuery(
+    input: WordPairInput,
+  ): Promise<ImageSearchQueryResult> {
+    if (!this.openAiService.isConfigured()) {
+      throw new ServiceUnavailableException('Image search query unavailable')
+    }
+
+    try {
+      const unsplashQuery = await this.openAiService.generateUnsplashQuery(
+        input.spanish.trim(),
+        input.russian.trim(),
+      )
+      return { unsplashQuery }
+    } catch (error) {
+      this.logger.error('Image search query suggestion failed', error)
+      throw new ServiceUnavailableException('Image search query unavailable')
+    }
+  }
+
   async regenerateImage(
     input: RegenerateWordImageInput,
   ): Promise<RegeneratedWordImage> {
-    if (!this.openAiService.isConfigured() || !this.unsplashService.isConfigured()) {
+    const providedQuery = input.unsplashQuery?.replace(/\s+/g, ' ').trim()
+    const needsOpenAi = !providedQuery
+
+    if (
+      !this.unsplashService.isConfigured() ||
+      (needsOpenAi && !this.openAiService.isConfigured())
+    ) {
       throw new ServiceUnavailableException('Image regeneration unavailable')
     }
 
@@ -599,10 +626,12 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const unsplashQuery = await this.openAiService.generateUnsplashQuery(
-        input.spanish.trim(),
-        input.russian.trim(),
-      )
+      const unsplashQuery =
+        providedQuery ||
+        (await this.openAiService.generateUnsplashQuery(
+          input.spanish.trim(),
+          input.russian.trim(),
+        ))
       const imageCandidates = await this.unsplashService.searchImages(
         unsplashQuery,
         {
@@ -619,6 +648,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
       return {
         ...image,
         imageCandidates,
+        unsplashQuery,
       }
     } catch (error) {
       if (
@@ -1332,6 +1362,7 @@ function emptyWordDraft(spanish: string, russian: string): WordDraft {
     imageProvider: null,
     imageDownloadLocation: null,
     imageCandidates: [],
+    unsplashQuery: null,
   }
 }
 

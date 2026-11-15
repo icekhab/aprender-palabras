@@ -22,6 +22,7 @@ import {
   wordPairSchema,
   type DictionaryListItem,
   type DictionaryListResponse,
+  type ImageSearchQueryResult,
   type RegeneratedWordImage,
   type UserCardDetail,
   type Word,
@@ -89,6 +90,18 @@ export class WordsController {
     )
   }
 
+  @Post('image/search-query')
+  suggestImageSearchQuery(
+    @Body() body: unknown,
+  ): Promise<ImageSearchQueryResult> {
+    const result = wordPairSchema.safeParse(body)
+    if (!result.success) {
+      throw new BadRequestException('Invalid word pair')
+    }
+
+    return this.wordsService.suggestImageSearchQuery(result.data)
+  }
+
   @Post('image/regenerate')
   regenerateImage(@Body() body: unknown): Promise<RegeneratedWordImage> {
     const result = regenerateWordImageSchema.safeParse(body)
@@ -113,6 +126,7 @@ export class WordsController {
       ...result.data,
       additionalTranslations: [],
       imageCandidates: [],
+      unsplashQuery: null,
     }
 
     return this.wordsService.create(request.authUser.id, draft)

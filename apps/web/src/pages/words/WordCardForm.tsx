@@ -15,7 +15,10 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { UnsplashAttribution } from '@/components/unsplash-attribution'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/shared/api/auth'
-import { regenerateWordImage } from '@/shared/api/words'
+import {
+  fetchImageSearchQuery,
+  regenerateWordImage,
+} from '@/shared/api/words'
 
 const fieldClassName =
   'mt-1 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200'
@@ -38,6 +41,7 @@ export type WordCardFormInitial = {
   imageProvider: 'unsplash' | null
   imageDownloadLocation?: string | null
   imageCandidates?: UnsplashImage[]
+  unsplashQuery?: string | null
 }
 
 type FormState = {
@@ -56,6 +60,7 @@ type FormState = {
   imageProvider: 'unsplash' | null
   imageDownloadLocation: string | null
   imageCandidates: UnsplashImage[]
+  unsplashQuery: string | null
 }
 
 type FieldErrors = Partial<Record<keyof UpdateWordCardInput | 'form', string>>
@@ -87,28 +92,63 @@ export function WordCardForm({
   const [form, setForm] = useState<FormState>(() => toFormState(initial))
   const [errors, setErrors] = useState<FieldErrors>({})
   const [showErrors, setShowErrors] = useState(false)
+  const [searchPromptOpen, setSearchPromptOpen] = useState(false)
+  const [searchPrompt, setSearchPrompt] = useState('')
 
   const parsed = useMemo(
     () => updateWordCardSchema.safeParse(toUpdatePayload(form)),
     [form],
   )
 
-  const regenerateMutation = useMutation({
+  const suggestQueryMutation = useMutation({
     mutationFn: () =>
+      fetchImageSearchQuery({
+        spanish: form.spanish.trim() || initial.spanish,
+        russian: form.russian.trim() || initial.russian,
+      }),
+    onSuccess: (result) => {
+      setSearchPrompt(result.unsplashQuery)
+    },
+  })
+
+  const regenerateMutation = useMutation({
+    mutationFn: (unsplashQuery: string) =>
       regenerateWordImage({
         spanish: form.spanish.trim() || initial.spanish,
         russian: form.russian.trim() || initial.russian,
         wordId,
         excludeImageUrl: form.imageUrl ?? undefined,
+        unsplashQuery,
       }),
     onSuccess: (image: RegeneratedWordImage) => {
       setForm((current) => ({
         ...current,
         ...selectedImageFields(image),
         imageCandidates: image.imageCandidates,
+        unsplashQuery: image.unsplashQuery,
       }))
+      setSearchPromptOpen(false)
     },
   })
+
+  function openSearchPrompt() {
+    const existing = form.unsplashQuery?.trim() ?? ''
+    setSearchPrompt(existing)
+    suggestQueryMutation.reset()
+    regenerateMutation.reset()
+    setSearchPromptOpen(true)
+    if (!existing) {
+      suggestQueryMutation.mutate()
+    }
+  }
+
+  function handleSearchPrompt() {
+    const query = searchPrompt.replace(/\s+/g, ' ').trim()
+    if (!query) {
+      return
+    }
+    regenerateMutation.mutate(query)
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -125,6 +165,9 @@ export function WordCardForm({
 
   const isSustantivo = form.partOfSpeech === 'sustantivo'
   const pending = isSubmitting || regenerateMutation.isPending
+  const promptLoading =
+    searchPromptOpen && !form.unsplashQuery && suggestQueryMutation.isPending
+  const promptReady = searchPrompt.trim().length > 0 && !promptLoading
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit} noValidate>
@@ -213,16 +256,25 @@ export function WordCardForm({
           type="button"
           variant="outline"
           disabled={pending || !form.russian.trim() || !form.spanish.trim()}
-          onClick={() => regenerateMutation.mutate()}
+          onClick={openSearchPrompt}
         >
-          {regenerateMutation.isPending ? 'Buscando…' : 'Otra imagen'}
+          Otra imagen
         </Button>
-        {regenerateMutation.isError ? (
-          <p className="text-sm text-red-700" role="alert">
-            No se pudo generar otra imagen.
-          </p>
-        ) : null}
       </div>
+
+      {searchPromptOpen ? (
+        <ImageSearchPromptModal
+          value={searchPrompt}
+          loadingQuery={promptLoading}
+          queryError={suggestQueryMutation.isError}
+          searching={regenerateMutation.isPending}
+          searchError={regenerateMutation.isError}
+          canSubmit={promptReady}
+          onChange={setSearchPrompt}
+          onClose={() => setSearchPromptOpen(false)}
+          onSearch={handleSearchPrompt}
+        />
+      ) : null}
 
       <Field
         label="Traducción"
@@ -443,6 +495,7 @@ export function toFormState(initial: WordCardFormInitial): FormState {
     imageProvider: initial.imageProvider,
     imageDownloadLocation: initial.imageDownloadLocation ?? null,
     imageCandidates: initial.imageCandidates ?? [],
+    unsplashQuery: initial.unsplashQuery ?? null,
   }
 }
 
@@ -557,5 +610,96 @@ export function updatePayloadToWordDraft(
     ...payload,
     additionalTranslations: [],
     imageCandidates: [],
+    unsplashQuery: null,
   }
+}
+
+function ImageSearchPromptModal({
+  value,
+  loadingQuery,
+  queryError,
+  searching,
+  searchError,
+  canSubmit,
+  onChange,
+  onClose,
+  onSearch,
+}: {
+  value: string
+  loadingQuery: boolean
+  queryError: boolean
+  searching: boolean
+  searchError: boolean
+  canSubmit: boolean
+  onChange: (value: string) => void
+  onClose: () => void
+  onSearch: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-orange-950/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Buscar otra imagen"
+    >
+      <div className="w-full max-w-md rounded-2xl border border-orange-100 bg-white p-6 shadow-lg">
+        <h2 className="text-xl font-bold tracking-tight">Otra imagen</h2>
+        <p className="mt-2 text-sm text-orange-900/70">
+          Edita la frase de búsqueda en inglés para Unsplash.
+        </p>
+        <label
+          className="mt-5 mb-1.5 block text-sm font-medium"
+          htmlFor="unsplash-search-prompt"
+        >
+          Búsqueda
+        </label>
+        <input
+          id="unsplash-search-prompt"
+          autoFocus
+          disabled={loadingQuery || searching}
+          className="h-10 w-full rounded-lg border border-orange-200 bg-white px-3 outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-200 disabled:opacity-60"
+          value={value}
+          placeholder={loadingQuery ? 'Generando…' : 'parade crowd'}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') {
+              return
+            }
+            event.preventDefault()
+            if (canSubmit && !searching) {
+              onSearch()
+            }
+          }}
+        />
+        {queryError ? (
+          <p className="mt-2 text-sm text-red-700" role="alert">
+            No se pudo sugerir una frase. Escríbela manualmente.
+          </p>
+        ) : null}
+        {searchError ? (
+          <p className="mt-2 text-sm text-red-700" role="alert">
+            No se pudo buscar otra imagen.
+          </p>
+        ) : null}
+        <div className="mt-6 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={searching}
+            onClick={onClose}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            className="bg-orange-700 hover:bg-orange-800"
+            disabled={!canSubmit || searching}
+            onClick={onSearch}
+          >
+            {searching ? 'Buscando…' : 'Buscar'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }

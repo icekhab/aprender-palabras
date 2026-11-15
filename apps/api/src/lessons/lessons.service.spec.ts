@@ -24,6 +24,7 @@ const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
   imageProvider: null,
   imageDownloadLocation: null,
   imageCandidates: [],
+  unsplashQuery: null,
   ...overrides,
 })
 

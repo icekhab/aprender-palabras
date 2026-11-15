@@ -1505,6 +1505,7 @@ describe('App', () => {
       imageProvider: null,
       imageDownloadLocation: null,
       imageCandidates: [],
+      unsplashQuery: null,
     }
 
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
@@ -1727,6 +1728,7 @@ describe('App', () => {
       imageProvider: null,
       imageDownloadLocation: null,
       imageCandidates: [],
+      unsplashQuery: null,
     }
 
     vi.stubGlobal(

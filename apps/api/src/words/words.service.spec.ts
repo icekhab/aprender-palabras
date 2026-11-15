@@ -33,6 +33,7 @@ const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
   imageProvider: null,
   imageDownloadLocation: null,
   imageCandidates: [],
+  unsplashQuery: null,
   ...overrides,
 })
 
@@ -197,6 +198,7 @@ describe('WordsService', () => {
           imageUrl: 'https://images.unsplash.com/photo-2.jpg',
         }),
       ],
+      unsplashQuery: 'waiting person',
     })
     expect(unsplashService.searchImages).toHaveBeenCalledWith('waiting person', {
       perPage: 8,
@@ -226,6 +228,7 @@ describe('WordsService', () => {
       imageProvider: null,
       imageDownloadLocation: null,
       imageCandidates: [],
+      unsplashQuery: null,
     })
     expect(openAiService.generateWordContent).not.toHaveBeenCalled()
   })
@@ -1243,7 +1246,45 @@ describe('WordsService', () => {
     })
   })
 
-  it('regenerates an image using AI query and Unsplash', async () => {
+  it('regenerates an image using a provided Unsplash query', async () => {
+    unsplashService.isConfigured.mockReturnValue(true)
+    unsplashService.searchImages.mockResolvedValue([
+      {
+        imageUrl: 'https://images.unsplash.com/new.jpg',
+        imagePhotographerName: 'Ada',
+        imagePhotographerUrl: 'https://unsplash.com/@ada',
+        imagePageUrl: 'https://unsplash.com/photos/new',
+        imageProvider: 'unsplash',
+        imageDownloadLocation: 'https://api.unsplash.com/photos/new/download',
+      },
+    ])
+
+    await expect(
+      service.regenerateImage({
+        spanish: 'esperar',
+        russian: 'ждать',
+        excludeImageUrl: 'https://images.unsplash.com/old.jpg',
+        unsplashQuery: 'waiting person',
+      }),
+    ).resolves.toMatchObject({
+      imageUrl: 'https://images.unsplash.com/new.jpg',
+      imageProvider: 'unsplash',
+      unsplashQuery: 'waiting person',
+      imageCandidates: [
+        expect.objectContaining({
+          imageUrl: 'https://images.unsplash.com/new.jpg',
+        }),
+      ],
+    })
+
+    expect(openAiService.generateUnsplashQuery).not.toHaveBeenCalled()
+    expect(unsplashService.searchImages).toHaveBeenCalledWith('waiting person', {
+      excludeImageUrl: 'https://images.unsplash.com/old.jpg',
+      perPage: 8,
+    })
+  })
+
+  it('falls back to AI query when unsplashQuery is omitted', async () => {
     openAiService.isConfigured.mockReturnValue(true)
     unsplashService.isConfigured.mockReturnValue(true)
     openAiService.generateUnsplashQuery.mockResolvedValue('waiting person')
@@ -1262,22 +1303,27 @@ describe('WordsService', () => {
       service.regenerateImage({
         spanish: 'esperar',
         russian: 'ждать',
-        excludeImageUrl: 'https://images.unsplash.com/old.jpg',
       }),
     ).resolves.toMatchObject({
-      imageUrl: 'https://images.unsplash.com/new.jpg',
-      imageProvider: 'unsplash',
-      imageCandidates: [
-        expect.objectContaining({
-          imageUrl: 'https://images.unsplash.com/new.jpg',
-        }),
-      ],
+      unsplashQuery: 'waiting person',
     })
 
-    expect(unsplashService.searchImages).toHaveBeenCalledWith('waiting person', {
-      excludeImageUrl: 'https://images.unsplash.com/old.jpg',
-      perPage: 8,
-    })
+    expect(openAiService.generateUnsplashQuery).toHaveBeenCalledWith(
+      'esperar',
+      'ждать',
+    )
+  })
+
+  it('suggests an Unsplash search query via OpenAI', async () => {
+    openAiService.isConfigured.mockReturnValue(true)
+    openAiService.generateUnsplashQuery.mockResolvedValue('parade crowd')
+
+    await expect(
+      service.suggestImageSearchQuery({
+        spanish: 'el desfile',
+        russian: 'парад',
+      }),
+    ).resolves.toEqual({ unsplashQuery: 'parade crowd' })
   })
 
   it('throws when image regeneration services are unavailable', async () => {

@@ -298,6 +298,8 @@ export const wordDraftSchema = z.object({
     .array(unsplashImageSchema)
     .max(IMAGE_CANDIDATES_MAX)
     .default([]),
+  /** Ephemeral Unsplash search phrase used for candidates; not persisted. */
+  unsplashQuery: z.string().trim().min(1).max(200).nullable().default(null),
 })
 
 export type WordDraft = z.infer<typeof wordDraftSchema>
@@ -388,6 +390,8 @@ export const regenerateWordImageSchema = z.object({
   russian: russianFieldSchema,
   wordId: z.string().uuid().optional(),
   excludeImageUrl: z.string().trim().url().optional(),
+  /** When set, Unsplash is searched with this phrase (skips OpenAI). */
+  unsplashQuery: z.string().trim().min(1).max(200).optional(),
 })
 
 export type RegenerateWordImageInput = z.infer<typeof regenerateWordImageSchema>
@@ -400,6 +404,11 @@ export interface RegeneratedWordImage {
   imageProvider: 'unsplash'
   imageDownloadLocation: string
   imageCandidates: UnsplashImage[]
+  unsplashQuery: string
+}
+
+export interface ImageSearchQueryResult {
+  unsplashQuery: string
 }
 
 export interface Word {

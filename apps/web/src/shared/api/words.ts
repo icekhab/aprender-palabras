@@ -3,6 +3,7 @@ import type {
   DictionaryListItem,
   DictionaryListQuery,
   DictionaryListResponse,
+  ImageSearchQueryResult,
   RegeneratedWordImage,
   RegenerateWordImageInput,
   UpdateWordCardInput,
@@ -110,6 +111,20 @@ export async function updateWordCard(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(input),
+  })
+}
+
+export async function fetchImageSearchQuery(
+  input: WordPairInput,
+  signal?: AbortSignal,
+): Promise<ImageSearchQueryResult> {
+  return request<ImageSearchQueryResult>('/api/words/image/search-query', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+    signal,
   })
 }
 

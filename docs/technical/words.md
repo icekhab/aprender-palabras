@@ -169,16 +169,26 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 Ошибки: `401`, `403` не admin, `404`, `409` на create.
 
+### `POST /words/image/search-query`
+
+Тело: `{ "spanish", "russian" }`.
+
+Возвращает английскую фразу поиска Unsplash через OpenAI (без квоты
+картинок и без Unsplash). Для префилла попапа «Otra imagen», когда в форме
+ещё нет `unsplashQuery`.
+
+Успех `200`: `{ "unsplashQuery" }`. Ошибки: `400`, `503`.
+
 ### `POST /words/image/regenerate`
 
-Тело: `{ "spanish", "russian", "excludeImageUrl?", "wordId?" }`.
+Тело: `{ "spanish", "russian", "unsplashQuery?", "excludeImageUrl?", "wordId?" }`.
 
-Генерирует Unsplash-запрос через OpenAI и возвращает до **8** кандидатов
-(стараясь не повторить `excludeImageUrl`). Без записи в БД. Первая картинка
-в наборе — выбранная по умолчанию.
+Ищет до **8** кандидатов на Unsplash. Если передан `unsplashQuery` — ищет
+по нему (без OpenAI); иначе генерирует фразу через OpenAI. Старается не
+повторить `excludeImageUrl`. Без записи в БД. Первая картинка — выбранная.
 
 Успех `200`: поля выбранного изображения + `imageDownloadLocation` +
-`imageCandidates` (массив до 8). При передаче `wordId` инкремент
+`imageCandidates` + `unsplashQuery`. При `wordId` — инкремент
 `imageGenerationCount` (лимит 3 на слово).
 
 Ошибки: `400`, `429` при превышении лимита, `503` если сервисы недоступны.
@@ -211,10 +221,11 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 ```
 
 Ответ `200`: полный draft карточки без записи в БД. Unsplash отдаёт до
-**8** кандидатов в `imageCandidates`; поля `image*` — первая (выбранная).
-Кандидаты ephemeral (форма выбора), в БД не сохраняются. Если OpenAI или
-Unsplash недоступны, обязательная пара возвращается, опциональные поля
-остаются пустыми. Используется форма перед save.
+**8** кандидатов в `imageCandidates`; поля `image*` — первая (выбранная);
+`unsplashQuery` — фраза поиска. Кандидаты и query ephemeral (форма), в БД
+не сохраняются. Если OpenAI или Unsplash недоступны, обязательная пара
+возвращается, опциональные поля остаются пустыми. Используется форма
+перед save.
 
 ### `POST /words/generate`
 

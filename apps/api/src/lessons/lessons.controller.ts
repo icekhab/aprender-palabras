@@ -172,6 +172,7 @@ export class LessonsController {
       ...result.data,
       additionalTranslations: [],
       imageCandidates: [],
+      unsplashQuery: null,
     }
 
     return this.lessonsService.addNewWord(

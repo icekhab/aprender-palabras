@@ -51,6 +51,7 @@ export class AdminWordsController {
       ...result.data,
       additionalTranslations: [],
       imageCandidates: [],
+      unsplashQuery: null,
     }
 
     return this.wordsService.createAdminWord(request.authUser.id, draft)

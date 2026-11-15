@@ -150,6 +150,7 @@ export class CollectionsController {
       ...parsed.data,
       additionalTranslations: [],
       imageCandidates: [],
+      unsplashQuery: null,
     }
     return this.collectionsService.addNewWord(
       request.authUser.id,
