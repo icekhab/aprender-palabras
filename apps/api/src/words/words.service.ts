@@ -11,6 +11,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import {
+  IMAGE_CANDIDATES_MAX,
   isKnownPartOfSpeech,
   PART_OF_SPEECH_UNDETERMINED,
   type AdminWordDetail,
@@ -91,7 +92,11 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
         spanish,
         russian,
       )
-      const image = await this.unsplashService.searchImage(content.unsplashQuery)
+      const imageCandidates = await this.unsplashService.searchImages(
+        content.unsplashQuery,
+        { perPage: IMAGE_CANDIDATES_MAX },
+      )
+      const image = imageCandidates[0] ?? null
 
       return {
         spanish,
@@ -109,6 +114,7 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
         imagePageUrl: image?.imagePageUrl ?? null,
         imageProvider: image?.imageProvider ?? null,
         imageDownloadLocation: image?.imageDownloadLocation ?? null,
+        imageCandidates,
       }
     } catch (error) {
       this.logger.error('Word preview generation failed', error)
@@ -597,16 +603,23 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
         input.spanish.trim(),
         input.russian.trim(),
       )
-      const image = await this.unsplashService.searchImage(unsplashQuery, {
-        excludeImageUrl: input.excludeImageUrl,
-        perPage: 10,
-      })
+      const imageCandidates = await this.unsplashService.searchImages(
+        unsplashQuery,
+        {
+          excludeImageUrl: input.excludeImageUrl,
+          perPage: IMAGE_CANDIDATES_MAX,
+        },
+      )
+      const image = imageCandidates[0] ?? null
 
       if (!image) {
         throw new ServiceUnavailableException('No image found')
       }
 
-      return image
+      return {
+        ...image,
+        imageCandidates,
+      }
     } catch (error) {
       if (
         error instanceof ServiceUnavailableException ||
@@ -1010,7 +1023,11 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
       spanish,
       russian,
     )
-    const image = await this.unsplashService.searchImage(content.unsplashQuery)
+    const imageCandidates = await this.unsplashService.searchImages(
+      content.unsplashQuery,
+      { perPage: IMAGE_CANDIDATES_MAX },
+    )
+    const image = imageCandidates[0] ?? null
 
     return {
       additionalTranslations: content.additionalTranslations,
@@ -1314,6 +1331,7 @@ function emptyWordDraft(spanish: string, russian: string): WordDraft {
     imagePageUrl: null,
     imageProvider: null,
     imageDownloadLocation: null,
+    imageCandidates: [],
   }
 }
 

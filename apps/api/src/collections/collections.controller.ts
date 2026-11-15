@@ -149,6 +149,7 @@ export class CollectionsController {
     const draft: WordDraft = {
       ...parsed.data,
       additionalTranslations: [],
+      imageCandidates: [],
     }
     return this.collectionsService.addNewWord(
       request.authUser.id,

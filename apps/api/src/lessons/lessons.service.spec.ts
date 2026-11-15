@@ -23,6 +23,7 @@ const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
   imagePageUrl: null,
   imageProvider: null,
   imageDownloadLocation: null,
+  imageCandidates: [],
   ...overrides,
 })
 

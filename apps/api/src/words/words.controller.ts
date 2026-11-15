@@ -112,6 +112,7 @@ export class WordsController {
     const draft: WordDraft = {
       ...result.data,
       additionalTranslations: [],
+      imageCandidates: [],
     }
 
     return this.wordsService.create(request.authUser.id, draft)

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 
 const UNSPLASH_API_BASE = 'https://api.unsplash.com'
 const UTM_SOURCE = 'aprender-palabras'
+const DEFAULT_PER_PAGE = 8
+const MAX_PER_PAGE = 10
 /** Homepage attribution link required by Unsplash guidelines. */
 export const UNSPLASH_HOME_REFERRAL_URL = `https://unsplash.com/?utm_source=${UTM_SOURCE}&utm_medium=referral`
 
@@ -31,16 +33,27 @@ export class UnsplashService {
     query: string,
     options: { excludeImageUrl?: string; perPage?: number } = {},
   ): Promise<UnsplashImage | null> {
+    const images = await this.searchImages(query, options)
+    return images[0] ?? null
+  }
+
+  async searchImages(
+    query: string,
+    options: { excludeImageUrl?: string; perPage?: number } = {},
+  ): Promise<UnsplashImage[]> {
     if (!this.accessKey) {
-      return null
+      return []
     }
 
     const trimmedQuery = query.replace(/\s+/g, ' ').trim()
     if (!trimmedQuery) {
-      return null
+      return []
     }
 
-    const perPage = Math.min(Math.max(options.perPage ?? 1, 1), 10)
+    const perPage = Math.min(
+      Math.max(options.perPage ?? DEFAULT_PER_PAGE, 1),
+      MAX_PER_PAGE,
+    )
     const params = new URLSearchParams({
       query: trimmedQuery,
       per_page: String(perPage),
@@ -63,35 +76,31 @@ export class UnsplashService {
         this.logger.error(
           `Unsplash search failed with status ${response.status}`,
         )
-        return null
+        return []
       }
 
       const payload = (await response.json()) as UnsplashSearchResponse
       const photos = payload.results ?? []
       const exclude = options.excludeImageUrl ?? null
-      const photo =
-        photos.find(
+
+      return photos
+        .filter(
           (item) =>
             item.urls?.regular &&
             item.user?.name &&
             (!exclude || item.urls.regular !== exclude),
-        ) ?? photos.find((item) => item.urls?.regular && item.user?.name)
-
-      if (!photo?.urls?.regular || !photo.user?.name) {
-        return null
-      }
-
-      return {
-        imageUrl: photo.urls.regular,
-        imagePhotographerName: photo.user.name,
-        imagePhotographerUrl: withUtm(photo.user.links.html),
-        imagePageUrl: withUtm(photo.links.html),
-        imageProvider: 'unsplash',
-        imageDownloadLocation: photo.links.download_location,
-      }
+        )
+        .map((photo) => ({
+          imageUrl: photo.urls!.regular!,
+          imagePhotographerName: photo.user!.name!,
+          imagePhotographerUrl: withUtm(photo.user!.links.html),
+          imagePageUrl: withUtm(photo.links.html),
+          imageProvider: 'unsplash' as const,
+          imageDownloadLocation: photo.links.download_location,
+        }))
     } catch (error) {
       this.logger.error('Unsplash search request failed', error)
-      return null
+      return []
     }
   }
 

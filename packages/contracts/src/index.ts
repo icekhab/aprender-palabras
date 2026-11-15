@@ -269,6 +269,19 @@ const imageFieldsSchema = {
   imageDownloadLocation: z.string().trim().url().nullable(),
 }
 
+export const unsplashImageSchema = z.object({
+  imageUrl: z.string().trim().url(),
+  imagePhotographerName: z.string().trim().min(1).max(200),
+  imagePhotographerUrl: z.string().trim().url(),
+  imagePageUrl: z.string().trim().url(),
+  imageProvider: z.literal('unsplash'),
+  imageDownloadLocation: z.string().trim().url(),
+})
+
+export type UnsplashImage = z.infer<typeof unsplashImageSchema>
+
+export const IMAGE_CANDIDATES_MAX = 8
+
 export const wordDraftSchema = z.object({
   spanish: spanishFieldSchema,
   russian: russianFieldSchema,
@@ -280,6 +293,11 @@ export const wordDraftSchema = z.object({
   wrongRussian: z.array(z.string().trim().min(1).max(200)).max(10),
   wrongSpanish: z.array(z.string().trim().min(1).max(200)).max(10),
   ...imageFieldsSchema,
+  /** Ephemeral Unsplash suggestions for the add/edit form; not persisted. */
+  imageCandidates: z
+    .array(unsplashImageSchema)
+    .max(IMAGE_CANDIDATES_MAX)
+    .default([]),
 })
 
 export type WordDraft = z.infer<typeof wordDraftSchema>
@@ -381,6 +399,7 @@ export interface RegeneratedWordImage {
   imagePageUrl: string
   imageProvider: 'unsplash'
   imageDownloadLocation: string
+  imageCandidates: UnsplashImage[]
 }
 
 export interface Word {

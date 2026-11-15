@@ -171,6 +171,7 @@ export class LessonsController {
     const draft: WordDraft = {
       ...result.data,
       additionalTranslations: [],
+      imageCandidates: [],
     }
 
     return this.lessonsService.addNewWord(

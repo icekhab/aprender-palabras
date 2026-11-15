@@ -50,6 +50,7 @@ export class AdminWordsController {
     const draft: WordDraft = {
       ...result.data,
       additionalTranslations: [],
+      imageCandidates: [],
     }
 
     return this.wordsService.createAdminWord(request.authUser.id, draft)

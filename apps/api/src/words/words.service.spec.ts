@@ -32,6 +32,7 @@ const emptyDraft = (overrides: Partial<WordDraft> = {}): WordDraft => ({
   imagePageUrl: null,
   imageProvider: null,
   imageDownloadLocation: null,
+  imageCandidates: [],
   ...overrides,
 })
 
@@ -104,6 +105,7 @@ describe('WordsService', () => {
   const unsplashService = {
     isConfigured: vi.fn<() => boolean>(),
     searchImage: vi.fn<(query: string, options?: unknown) => Promise<unknown>>(),
+    searchImages: vi.fn<(query: string, options?: unknown) => Promise<unknown[]>>(),
     trackDownload: vi.fn<(downloadLocation: string) => Promise<void>>(),
   }
 
@@ -160,14 +162,24 @@ describe('WordsService', () => {
       wrongSpanish: ['comer', 'vivir', 'hablar'],
       unsplashQuery: 'waiting person',
     })
-    unsplashService.searchImage.mockResolvedValue({
-      imageUrl: 'https://images.unsplash.com/photo.jpg',
-      imagePhotographerName: 'Ada',
-      imagePhotographerUrl: 'https://unsplash.com/@ada',
-      imagePageUrl: 'https://unsplash.com/photos/abc',
-      imageProvider: 'unsplash',
-      imageDownloadLocation: 'https://api.unsplash.com/photos/abc/download',
-    })
+    unsplashService.searchImages.mockResolvedValue([
+      {
+        imageUrl: 'https://images.unsplash.com/photo.jpg',
+        imagePhotographerName: 'Ada',
+        imagePhotographerUrl: 'https://unsplash.com/@ada',
+        imagePageUrl: 'https://unsplash.com/photos/abc',
+        imageProvider: 'unsplash',
+        imageDownloadLocation: 'https://api.unsplash.com/photos/abc/download',
+      },
+      {
+        imageUrl: 'https://images.unsplash.com/photo-2.jpg',
+        imagePhotographerName: 'Bob',
+        imagePhotographerUrl: 'https://unsplash.com/@bob',
+        imagePageUrl: 'https://unsplash.com/photos/def',
+        imageProvider: 'unsplash',
+        imageDownloadLocation: 'https://api.unsplash.com/photos/def/download',
+      },
+    ])
 
     await expect(
       service.preview('user-1', { spanish: 'esperar', russian: 'ждать' }),
@@ -177,6 +189,17 @@ describe('WordsService', () => {
       additionalTranslations: ['ожидать'],
       imageUrl: 'https://images.unsplash.com/photo.jpg',
       imageProvider: 'unsplash',
+      imageCandidates: [
+        expect.objectContaining({
+          imageUrl: 'https://images.unsplash.com/photo.jpg',
+        }),
+        expect.objectContaining({
+          imageUrl: 'https://images.unsplash.com/photo-2.jpg',
+        }),
+      ],
+    })
+    expect(unsplashService.searchImages).toHaveBeenCalledWith('waiting person', {
+      perPage: 8,
     })
     expect(quotaService.consumeGeneration).toHaveBeenCalledWith('user-1')
   })
@@ -202,6 +225,7 @@ describe('WordsService', () => {
       imagePageUrl: null,
       imageProvider: null,
       imageDownloadLocation: null,
+      imageCandidates: [],
     })
     expect(openAiService.generateWordContent).not.toHaveBeenCalled()
   })
@@ -740,7 +764,7 @@ describe('WordsService', () => {
       wrongSpanish: ['x', 'y', 'z'],
       unsplashQuery: 'waiting',
     })
-    unsplashService.searchImage.mockResolvedValue(null)
+    unsplashService.searchImages.mockResolvedValue([])
     tx.word.findUnique.mockResolvedValue(null)
     tx.word.create.mockResolvedValue({
       id: 'word-1',
@@ -1223,14 +1247,16 @@ describe('WordsService', () => {
     openAiService.isConfigured.mockReturnValue(true)
     unsplashService.isConfigured.mockReturnValue(true)
     openAiService.generateUnsplashQuery.mockResolvedValue('waiting person')
-    unsplashService.searchImage.mockResolvedValue({
-      imageUrl: 'https://images.unsplash.com/new.jpg',
-      imagePhotographerName: 'Ada',
-      imagePhotographerUrl: 'https://unsplash.com/@ada',
-      imagePageUrl: 'https://unsplash.com/photos/new',
-      imageProvider: 'unsplash',
-      imageDownloadLocation: 'https://api.unsplash.com/photos/new/download',
-    })
+    unsplashService.searchImages.mockResolvedValue([
+      {
+        imageUrl: 'https://images.unsplash.com/new.jpg',
+        imagePhotographerName: 'Ada',
+        imagePhotographerUrl: 'https://unsplash.com/@ada',
+        imagePageUrl: 'https://unsplash.com/photos/new',
+        imageProvider: 'unsplash',
+        imageDownloadLocation: 'https://api.unsplash.com/photos/new/download',
+      },
+    ])
 
     await expect(
       service.regenerateImage({
@@ -1241,11 +1267,16 @@ describe('WordsService', () => {
     ).resolves.toMatchObject({
       imageUrl: 'https://images.unsplash.com/new.jpg',
       imageProvider: 'unsplash',
+      imageCandidates: [
+        expect.objectContaining({
+          imageUrl: 'https://images.unsplash.com/new.jpg',
+        }),
+      ],
     })
 
-    expect(unsplashService.searchImage).toHaveBeenCalledWith('waiting person', {
+    expect(unsplashService.searchImages).toHaveBeenCalledWith('waiting person', {
       excludeImageUrl: 'https://images.unsplash.com/old.jpg',
-      perPage: 10,
+      perPage: 8,
     })
   })
 

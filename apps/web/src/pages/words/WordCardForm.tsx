@@ -6,6 +6,7 @@ import {
   updateWordCardSchema,
   type PartOfSpeech,
   type RegeneratedWordImage,
+  type UnsplashImage,
   type UpdateWordCardInput,
   type WordGender,
 } from '@aprender-palabras/contracts'
@@ -36,6 +37,7 @@ export type WordCardFormInitial = {
   imagePageUrl: string | null
   imageProvider: 'unsplash' | null
   imageDownloadLocation?: string | null
+  imageCandidates?: UnsplashImage[]
 }
 
 type FormState = {
@@ -53,6 +55,7 @@ type FormState = {
   imagePageUrl: string | null
   imageProvider: 'unsplash' | null
   imageDownloadLocation: string | null
+  imageCandidates: UnsplashImage[]
 }
 
 type FieldErrors = Partial<Record<keyof UpdateWordCardInput | 'form', string>>
@@ -101,12 +104,8 @@ export function WordCardForm({
     onSuccess: (image: RegeneratedWordImage) => {
       setForm((current) => ({
         ...current,
-        imageUrl: image.imageUrl,
-        imagePhotographerName: image.imagePhotographerName,
-        imagePhotographerUrl: image.imagePhotographerUrl,
-        imagePageUrl: image.imagePageUrl,
-        imageProvider: image.imageProvider,
-        imageDownloadLocation: image.imageDownloadLocation,
+        ...selectedImageFields(image),
+        imageCandidates: image.imageCandidates,
       }))
     },
   })
@@ -170,6 +169,44 @@ export function WordCardForm({
       ) : (
         <p className="text-sm text-orange-900/50">Sin imagen</p>
       )}
+
+      {form.imageCandidates.length > 0 ? (
+        <div
+          className="-mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="listbox"
+          aria-label="Imágenes sugeridas"
+        >
+          {form.imageCandidates.map((candidate) => {
+            const selected = candidate.imageUrl === form.imageUrl
+            return (
+              <button
+                key={candidate.imageUrl}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                disabled={pending}
+                className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-orange-200 ${
+                  selected
+                    ? 'ring-3 ring-orange-600'
+                    : 'ring-1 ring-orange-200 hover:ring-orange-400'
+                }`}
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    ...selectedImageFields(candidate),
+                  }))
+                }
+              >
+                <img
+                  src={candidate.imageUrl}
+                  alt=""
+                  className="size-full object-cover"
+                />
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-3">
         <Button
@@ -405,6 +442,18 @@ export function toFormState(initial: WordCardFormInitial): FormState {
     imagePageUrl: initial.imagePageUrl,
     imageProvider: initial.imageProvider,
     imageDownloadLocation: initial.imageDownloadLocation ?? null,
+    imageCandidates: initial.imageCandidates ?? [],
+  }
+}
+
+function selectedImageFields(image: UnsplashImage) {
+  return {
+    imageUrl: image.imageUrl,
+    imagePhotographerName: image.imagePhotographerName,
+    imagePhotographerUrl: image.imagePhotographerUrl,
+    imagePageUrl: image.imagePageUrl,
+    imageProvider: image.imageProvider,
+    imageDownloadLocation: image.imageDownloadLocation,
   }
 }
 
@@ -507,5 +556,6 @@ export function updatePayloadToWordDraft(
   return {
     ...payload,
     additionalTranslations: [],
+    imageCandidates: [],
   }
 }
