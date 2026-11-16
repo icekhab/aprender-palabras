@@ -151,6 +151,18 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
   результат идёт в **общий каталог**: нет `wordId` → `/admin/words/new?…`
   (preview → форма → `POST /admin/words` → редирект на список); есть
   `wordId` → edit («En catálogo»), без `POST /words/existing`;
+- **Importar CSV** → `/admin/words/import` (и из детали коллекции с
+  `?collectionId=`): UTF-8 CSV, заголовок обязателен, ≤50 валидных строк;
+  колонки `spanish,russian,definitionEs,examples,partOfSpeech,gender,wrongRussian,wrongSpanish,unsplashQuery`
+  (списки через `|`); без URL картинки. `unsplashQuery` — английская фраза
+  Unsplash (опционально). Очередь в `sessionStorage` →
+  `/admin/words/import/run`: для каждой строки `GET /admin/words/by-pair`;
+  существующая пара — skip (каталог) или `POST /collections/:id/words`
+  (коллекция); новая с **полным** текстом CSV —
+  `POST /words/image/regenerate` (с `unsplashQuery` из CSV, если есть;
+  без OpenAI content); иначе `POST /words/preview` + merge CSV, форма,
+  `POST /admin/words` или `POST /collections/:id/words/new`, затем
+  следующая. Финал → `/admin/words` или `/colecciones/:id`.
 - ниже списка: фильтр каталога (`q`) + сортировка Actualización / Alta;
   в строке Act. / Alta (дата+время); клик → edit по `wordId`.
 
@@ -160,6 +172,8 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
   es/ru, без учёта регистра); `sortBy=updatedAt|createdAt` (default
   `updatedAt`, всегда `DESC`). `totalCount` — по всему каталогу (без `q`);
   `hasMore` — по совпадениям с фильтром. В items: `createdAt`, `updatedAt`.
+- `GET /admin/words/by-pair?spanish=&russian=` — `{ wordId }` по
+  нормализованной паре; `404` если нет. Для CSV-импорта (skip/link).
 - `POST /admin/words` — создать `Word` **без** `UserCard`
   (тело как draft/`POST /words`); `409` + `wordId` если пара уже есть;
   TTS при новом слове; UI после успеха → список каталога.
@@ -168,6 +182,11 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
   не требует `UserCard` админа на это слово.
 
 Ошибки: `401`, `403` не admin, `404`, `409` на create.
+
+Константа лимита CSV: `CSV_WORD_IMPORT_MAX_ROWS = 50` в contracts.
+Пример шаблона UI: списки `examples` / `wrong*` через `|`; если колонка
+заполнена, `examples` — 2–3, `wrong*` — 3–10. `unsplashQuery` — до 200
+символов, английская фраза для Unsplash.
 
 ### `POST /words/image/search-query`
 

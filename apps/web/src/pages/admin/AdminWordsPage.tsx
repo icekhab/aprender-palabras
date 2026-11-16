@@ -131,7 +131,13 @@ export function AdminWordsPage({
             </p>
           </div>
 
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
+            <Button
+              variant="outline"
+              onClick={() => navigate('/admin/words/import')}
+            >
+              Importar CSV
+            </Button>
             <div
               className="relative w-full sm:w-80"
               onFocus={() => {

@@ -421,6 +421,27 @@ export class WordsService implements OnModuleInit, OnModuleDestroy {
     return toAdminWordDetail(word)
   }
 
+  async findAdminWordByPair(
+    spanish: string,
+    russian: string,
+  ): Promise<{ wordId: string }> {
+    const word = await this.prisma.word.findUnique({
+      where: {
+        normalizedSpanish_normalizedRussian: {
+          normalizedSpanish: normalizeWordKey(spanish),
+          normalizedRussian: normalizeWordKey(russian),
+        },
+      },
+      select: { id: true },
+    })
+
+    if (!word) {
+      throw new NotFoundException('Word not found')
+    }
+
+    return { wordId: word.id }
+  }
+
   async createAdminWord(
     userId: string,
     draft: WordDraft,

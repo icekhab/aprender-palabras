@@ -1192,6 +1192,32 @@ describe('WordsService', () => {
     expect(prisma.word.create).not.toHaveBeenCalled()
   })
 
+  it('finds an admin word by normalized pair', async () => {
+    prisma.word.findUnique.mockResolvedValue({ id: 'word-1' })
+
+    await expect(
+      service.findAdminWordByPair('  Esperar ', 'Ждать'),
+    ).resolves.toEqual({ wordId: 'word-1' })
+
+    expect(prisma.word.findUnique).toHaveBeenCalledWith({
+      where: {
+        normalizedSpanish_normalizedRussian: {
+          normalizedSpanish: 'esperar',
+          normalizedRussian: 'ждать',
+        },
+      },
+      select: { id: true },
+    })
+  })
+
+  it('throws NotFoundException when admin pair lookup misses', async () => {
+    prisma.word.findUnique.mockResolvedValue(null)
+
+    await expect(
+      service.findAdminWordByPair('esperar', 'ждать'),
+    ).rejects.toBeInstanceOf(NotFoundException)
+  })
+
   it('filters and sorts admin words by createdAt when requested', async () => {
     const createdAt = new Date('2026-10-18T12:00:00.000Z')
     const updatedAt = new Date('2026-10-20T12:00:00.000Z')

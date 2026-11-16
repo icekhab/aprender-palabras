@@ -272,6 +272,16 @@ export function CollectionDetailPage({
                       ) : null}
                       <Button
                         variant="outline"
+                        onClick={() =>
+                          navigate(
+                            `/admin/words/import?collectionId=${collectionId}`,
+                          )
+                        }
+                      >
+                        Importar CSV
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => setRenameOpen(true)}
                       >
                         <Pencil className="size-4" aria-hidden />

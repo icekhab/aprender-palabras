@@ -526,6 +526,17 @@ export const adminWordsListQuerySchema = z.object({
 
 export type AdminWordsListQuery = z.infer<typeof adminWordsListQuerySchema>
 
+/** Max valid rows in one admin CSV word import. */
+export const CSV_WORD_IMPORT_MAX_ROWS = 50
+
+export const adminWordByPairQuerySchema = wordPairSchema
+
+export type AdminWordByPairQuery = z.infer<typeof adminWordByPairQuerySchema>
+
+export interface AdminWordByPairResult {
+  wordId: string
+}
+
 export interface AdminWordListItem {
   id: string
   spanish: string

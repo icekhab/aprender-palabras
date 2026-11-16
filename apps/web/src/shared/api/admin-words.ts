@@ -1,9 +1,11 @@
 import type {
+  AdminWordByPairResult,
   AdminWordDetail,
   AdminWordsListQuery,
   AdminWordsListResponse,
   UpdateWordCardInput,
   WordDraft,
+  WordPairInput,
 } from '@aprender-palabras/contracts'
 import { ApiError } from './auth'
 
@@ -41,6 +43,21 @@ export async function getAdminWord(
   signal?: AbortSignal,
 ): Promise<AdminWordDetail> {
   return request<AdminWordDetail>(`/api/admin/words/${wordId}`, {
+    method: 'GET',
+    signal,
+  })
+}
+
+export async function findAdminWordByPair(
+  pair: WordPairInput,
+  signal?: AbortSignal,
+): Promise<AdminWordByPairResult> {
+  const params = new URLSearchParams({
+    spanish: pair.spanish,
+    russian: pair.russian,
+  })
+
+  return request<AdminWordByPairResult>(`/api/admin/words/by-pair?${params}`, {
     method: 'GET',
     signal,
   })

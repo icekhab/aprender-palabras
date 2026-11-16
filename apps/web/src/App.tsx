@@ -47,6 +47,8 @@ import { ProgressDot } from '@/components/progress-dot'
 import { WordRow } from '@/components/word-row'
 import { AdminWordEditPage } from './pages/admin/AdminWordEditPage'
 import { AdminWordNewPage } from './pages/admin/AdminWordNewPage'
+import { AdminWordsImportPage } from './pages/admin/AdminWordsImportPage'
+import { AdminWordsImportWizardPage } from './pages/admin/AdminWordsImportWizardPage'
 import { AdminWordsPage } from './pages/admin/AdminWordsPage'
 import { CollectionDetailPage } from './pages/collections/CollectionDetailPage'
 import { CollectionsPage } from './pages/collections/CollectionsPage'
@@ -160,6 +162,26 @@ function App() {
           <ProtectedRoute>
             <AdminRoute>
               <AdminWordNewPage />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/words/import"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminWordsImportPage />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/words/import/run"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminWordsImportWizardPage />
             </AdminRoute>
           </ProtectedRoute>
         }

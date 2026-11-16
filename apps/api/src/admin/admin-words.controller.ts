@@ -12,8 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import {
+  adminWordByPairQuerySchema,
   adminWordsListQuerySchema,
   updateWordCardSchema,
+  type AdminWordByPairResult,
   type AdminWordDetail,
   type AdminWordsListResponse,
   type WordDraft,
@@ -35,6 +37,19 @@ export class AdminWordsController {
     }
 
     return this.wordsService.listAdminWords(result.data)
+  }
+
+  @Get('by-pair')
+  findByPair(@Query() query: unknown): Promise<AdminWordByPairResult> {
+    const result = adminWordByPairQuerySchema.safeParse(query)
+    if (!result.success) {
+      throw new BadRequestException('Invalid word pair query')
+    }
+
+    return this.wordsService.findAdminWordByPair(
+      result.data.spanish,
+      result.data.russian,
+    )
   }
 
   @Post()
