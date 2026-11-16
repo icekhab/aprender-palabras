@@ -68,15 +68,15 @@ describe('parseCsvWordImport', () => {
     ])
   })
 
-  it('rejects more than 50 valid rows', () => {
+  it('rejects more than 150 valid rows', () => {
     const lines = [HEADER]
-    for (let i = 0; i < 51; i += 1) {
+    for (let i = 0; i < 151; i += 1) {
       lines.push(`palabra${i},слово${i},,,,,,,`)
     }
 
     const result = parseCsvWordImport(lines.join('\n'))
     expect(result.rows).toEqual([])
-    expect(result.errors[0]?.message).toContain('Máximo 50')
+    expect(result.errors[0]?.message).toContain('Máximo 150')
   })
 })
 

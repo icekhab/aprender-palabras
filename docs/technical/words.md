@@ -152,7 +152,7 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
   (preview → форма → `POST /admin/words` → редирект на список); есть
   `wordId` → edit («En catálogo»), без `POST /words/existing`;
 - **Importar CSV** → `/admin/words/import` (и из детали коллекции с
-  `?collectionId=`): UTF-8 CSV, заголовок обязателен, ≤50 валидных строк;
+  `?collectionId=`): UTF-8 CSV, заголовок обязателен, ≤150 валидных строк;
   колонки `spanish,russian,definitionEs,examples,partOfSpeech,gender,wrongRussian,wrongSpanish,unsplashQuery`
   (списки через `|`); без URL картинки. `unsplashQuery` — английская фраза
   Unsplash (опционально). Очередь в `sessionStorage` →
@@ -183,7 +183,7 @@ Query: `limit` (1–50, по умолчанию 20), `offset` (>= 0, по умо
 
 Ошибки: `401`, `403` не admin, `404`, `409` на create.
 
-Константа лимита CSV: `CSV_WORD_IMPORT_MAX_ROWS = 50` в contracts.
+Константа лимита CSV: `CSV_WORD_IMPORT_MAX_ROWS = 150` в contracts.
 Пример шаблона UI: списки `examples` / `wrong*` через `|`; если колонка
 заполнена, `examples` — 2–3, `wrong*` — 3–10. `unsplashQuery` — до 200
 символов, английская фраза для Unsplash.
