@@ -4,8 +4,11 @@ import { useMemo, useState, type ChangeEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BrandLink } from '@/components/brand-link'
 import { Button } from '@/components/ui/button'
-import { listCollections } from '@/shared/api/collections'
-import { COLLECTIONS_QUERY_KEY } from '../collections/query-keys'
+import { getCollection, listCollections } from '@/shared/api/collections'
+import {
+  COLLECTIONS_QUERY_KEY,
+  collectionQueryKey,
+} from '../collections/query-keys'
 import {
   CSV_WORD_IMPORT_TEMPLATE,
   parseCsvWordImport,
@@ -34,6 +37,12 @@ export function AdminWordsImportPage() {
     queryKey: COLLECTIONS_QUERY_KEY,
     queryFn: ({ signal }) => listCollections(undefined, signal),
     enabled: targetKind === 'collection' && !presetCollectionId,
+  })
+
+  const presetCollectionQuery = useQuery({
+    queryKey: collectionQueryKey(presetCollectionId ?? ''),
+    queryFn: ({ signal }) => getCollection(presetCollectionId!, signal),
+    enabled: Boolean(presetCollectionId),
   })
 
   const collectionOptions = useMemo(() => {
@@ -147,7 +156,11 @@ export function AdminWordsImportPage() {
           <p className="text-sm font-medium">Destino</p>
           {presetCollectionId ? (
             <p className="text-sm text-orange-900/70">
-              Colección actual (id: {presetCollectionId})
+              {presetCollectionQuery.isPending
+                ? 'Colección…'
+                : presetCollectionQuery.data
+                  ? `Colección: ${presetCollectionQuery.data.title}`
+                  : 'Colección actual'}
             </p>
           ) : (
             <div className="flex flex-col gap-3">
